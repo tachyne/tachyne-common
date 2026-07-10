@@ -77,17 +77,22 @@ type Rehome struct {
 	Token   string `json:"token"`
 }
 
-// World shape (overworld v1; Welcome restates these so a future world can
-// differ without a codec change).
+// World shape defaults (the vanilla-height world; Welcome and ChunkHeader
+// restate the actual shape so a TALL world — earth mode at true vertical
+// scale — differs without a codec change).
 const (
-	Sections    = 24  // 16-block sections per chunk column
-	MinY        = -64 // world floor
+	Sections    = 24  // default 16-block sections per chunk column
+	MinY        = -64 // world floor (fixed; only the ceiling is configurable)
 	BlocksPerCh = Sections * 4096
+	// MaxSections bounds a chunk column: Java dimension heights top out at
+	// y=2032, and MinY is fixed, so (2032+64)/16 = 131.
+	MaxSections = 131
 )
 
-// MaxFrame bounds one frame; a raw chunk is ~590KB and compresses far below
-// this, so anything bigger is a broken peer.
-const MaxFrame = 4 << 20
+// MaxFrame bounds one frame; a raw vanilla-height chunk is ~590KB and a
+// max-height one ~3.2MB, both compressing far below this, so anything bigger
+// is a broken peer.
+const MaxFrame = 16 << 20
 
 // Pos is a position + look.
 //
@@ -179,9 +184,23 @@ type ChunkHeader struct {
 	CZ     int32    `json:"cz"`
 	Dim    int32    `json:"dim"`
 	Biomes []string `json:"biomes"` // one name per section, bottom→top
+	// Sections is this chunk's column height in 16-block sections (the body
+	// arrays are sized by it). 0 = the legacy default (24) so pre-tall-world
+	// peers interoperate. Dimensions may differ — a tall earth overworld
+	// coexists with a vanilla-height nether.
+	Sections int `json:"sections,omitempty"`
 	// BEs is the chunk's block-entity section in canonical wire form (count +
 	// entries) — scaffolding like MsgRaw; empty means none.
 	BEs []byte `json:"bes,omitempty"`
+}
+
+// SectionCount resolves the chunk's section count, defaulting the legacy
+// wire form (no sections field) to the vanilla-height 24.
+func (h ChunkHeader) SectionCount() int {
+	if h.Sections > 0 {
+		return h.Sections
+	}
+	return Sections
 }
 
 // ChunkBody is the domain form of one chunk column. Index within a section:
@@ -234,11 +253,17 @@ func WriteJSON(w io.Writer, typ byte, v any) error {
 	return WriteFrame(w, typ, payload)
 }
 
-// EncodeChunk frames one chunk (header + zlib-compressed body).
+// EncodeChunk frames one chunk (header + zlib-compressed body). Body array
+// lengths must match the header's section count.
 func EncodeChunk(h ChunkHeader, b *ChunkBody) ([]byte, error) {
-	if len(b.BlockStates) != BlocksPerCh || len(b.Heightmap) != 256 ||
-		len(b.SkyLight) != BlocksPerCh || len(b.BlockLight) != BlocksPerCh {
-		return nil, fmt.Errorf("attach: bad chunk body dimensions")
+	sec := h.SectionCount()
+	if sec > MaxSections {
+		return nil, fmt.Errorf("attach: %d sections exceeds the dimension limit", sec)
+	}
+	blocks := sec * 4096
+	if len(b.BlockStates) != blocks || len(b.Heightmap) != 256 ||
+		len(b.SkyLight) != blocks || len(b.BlockLight) != blocks {
+		return nil, fmt.Errorf("attach: bad chunk body dimensions for %d sections", sec)
 	}
 	hdr, err := json.Marshal(h)
 	if err != nil {
@@ -253,8 +278,11 @@ func EncodeChunk(h ChunkHeader, b *ChunkBody) ([]byte, error) {
 	out.Write(l2[:])
 	out.Write(hdr)
 
-	zw := zlib.NewWriter(&out)
-	raw := make([]byte, 0, 4*BlocksPerCh)
+	// BestSpeed: chunk bodies are long runs (air/stone/light nibbles), which
+	// compress to a few percent at ANY level — default-level zlib just burns
+	// CPU per chunk, and a tall chunk's raw body is ~2.6MB.
+	zw, _ := zlib.NewWriterLevel(&out, zlib.BestSpeed)
+	raw := make([]byte, 0, 4*blocks)
 	for _, s := range b.BlockStates {
 		raw = binary.LittleEndian.AppendUint32(raw, s)
 	}
@@ -290,22 +318,27 @@ func DecodeChunk(payload []byte) (ChunkHeader, *ChunkBody, error) {
 		return h, nil, err
 	}
 	defer zr.Close()
-	const rawLen = 4*BlocksPerCh + 512 + BlocksPerCh + BlocksPerCh
+	sec := h.SectionCount()
+	if sec > MaxSections {
+		return h, nil, fmt.Errorf("attach: %d sections exceeds the dimension limit", sec)
+	}
+	blocks := sec * 4096
+	rawLen := 4*blocks + 512 + blocks + blocks
 	raw := make([]byte, rawLen)
 	if _, err := io.ReadFull(zr, raw); err != nil {
 		return h, nil, fmt.Errorf("attach: chunk body: %w", err)
 	}
 	b := &ChunkBody{
-		BlockStates: make([]uint32, BlocksPerCh),
+		BlockStates: make([]uint32, blocks),
 		Heightmap:   make([]int16, 256),
-		SkyLight:    raw[4*BlocksPerCh+512 : 4*BlocksPerCh+512+BlocksPerCh],
-		BlockLight:  raw[4*BlocksPerCh+512+BlocksPerCh:],
+		SkyLight:    raw[4*blocks+512 : 4*blocks+512+blocks],
+		BlockLight:  raw[4*blocks+512+blocks:],
 	}
 	for i := range b.BlockStates {
 		b.BlockStates[i] = binary.LittleEndian.Uint32(raw[i*4:])
 	}
 	for i := range b.Heightmap {
-		b.Heightmap[i] = int16(binary.LittleEndian.Uint16(raw[4*BlocksPerCh+i*2:]))
+		b.Heightmap[i] = int16(binary.LittleEndian.Uint16(raw[4*blocks+i*2:]))
 	}
 	return h, b, nil
 }

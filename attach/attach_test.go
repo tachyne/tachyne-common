@@ -75,3 +75,50 @@ func TestChunkDimensionGuard(t *testing.T) {
 		t.Fatal("bad dimensions must be rejected")
 	}
 }
+
+// TestTallChunkRoundTrip: a tall-world chunk (108 sections — earth mode at
+// true vertical scale) must survive encode/decode with its own array sizes,
+// and a header WITHOUT a sections field must keep decoding as the legacy 24.
+func TestTallChunkRoundTrip(t *testing.T) {
+	const sec = 108
+	blocks := sec * 4096
+	h := ChunkHeader{CX: -96, CZ: 260, Sections: sec, Biomes: make([]string, sec)}
+	for i := range h.Biomes {
+		h.Biomes[i] = "minecraft:plains"
+	}
+	b := &ChunkBody{
+		BlockStates: make([]uint32, blocks),
+		Heightmap:   make([]int16, 256),
+		SkyLight:    make([]uint8, blocks),
+		BlockLight:  make([]uint8, blocks),
+	}
+	b.BlockStates[blocks-1] = 42 // top-of-world block survives
+	b.Heightmap[0] = 1600
+	payload, err := EncodeChunk(h, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h2, b2, err := DecodeChunk(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h2.SectionCount() != sec || len(b2.BlockStates) != blocks {
+		t.Fatalf("sections %d blocks %d", h2.SectionCount(), len(b2.BlockStates))
+	}
+	if b2.BlockStates[blocks-1] != 42 || b2.Heightmap[0] != 1600 {
+		t.Fatal("tall body data mangled")
+	}
+
+	// Mismatched body must refuse to encode.
+	if _, err := EncodeChunk(ChunkHeader{Sections: 24}, b); err == nil {
+		t.Fatal("24-section header with 108-section body must not encode")
+	}
+	// Absent sections field = legacy 24.
+	if (ChunkHeader{}).SectionCount() != Sections {
+		t.Fatal("legacy header must default to 24 sections")
+	}
+	// Beyond the Java dimension limit must refuse.
+	if _, err := EncodeChunk(ChunkHeader{Sections: MaxSections + 1}, b); err == nil {
+		t.Fatal("over-limit sections must not encode")
+	}
+}

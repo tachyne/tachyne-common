@@ -12,9 +12,7 @@ import (
 )
 
 const (
-	sections      = attach.Sections
-	lightSections = sections + 2 // one below + one above the world
-	minY          = attach.MinY
+	minY = attach.MinY
 
 	heightmapMotionBlocking = 4
 )
@@ -107,30 +105,90 @@ func packNibbles(levels []uint8) [2048]byte {
 	return a
 }
 
-// appendHeightmap: one MOTION_BLOCKING entry, 9 bits/value, 7 per long.
-func appendHeightmap(b []byte, hm []int16) []byte {
-	const bits = 9
-	const perLong = 64 / bits
-	const nLongs = (256 + perLong - 1) / perLong
-	var longs [nLongs]int64
+// bitsFor is the client's heightmap bits-per-entry rule: ceil(log2(n)) with a
+// floor of 1 (vanilla MathHelper.ceillog2 applied to worldHeight+1).
+func bitsFor(n int) int {
+	bits := 1
+	for 1<<bits < n {
+		bits++
+	}
+	return bits
+}
+
+// appendHeightmap: one MOTION_BLOCKING entry. Bits-per-value derives from the
+// dimension height exactly as the client computes it — 9 bits / 7-per-long
+// for a vanilla 384 world, 11 bits for a tall earth world.
+func appendHeightmap(b []byte, hm []int16, sections int) []byte {
+	bits := bitsFor(sections*16 + 1)
+	perLong := 64 / bits
+	nLongs := (256 + perLong - 1) / perLong
+	longs := make([]int64, nLongs)
+	mask := int64(1)<<bits - 1
 	for i := 0; i < 256; i++ {
 		v := int64(hm[i]) - int64(minY) + 1
 		if v < 0 {
 			v = 0
 		}
-		longs[i/perLong] |= (v & 0x1FF) << uint((i%perLong)*bits)
+		longs[i/perLong] |= (v & mask) << uint((i%perLong)*bits)
 	}
 	b = protocol.AppendVarInt(b, 1)
 	b = protocol.AppendVarInt(b, heightmapMotionBlocking)
-	b = protocol.AppendVarInt(b, nLongs)
+	b = protocol.AppendVarInt(b, int32(nLongs))
 	for _, l := range longs {
 		b = protocol.AppendI64(b, l)
 	}
 	return b
 }
 
-// chunkPacket renders one domain chunk into Chunk Data and Update Light.
+// appendFullMask appends a BitSet with the low n bits set (varint long count,
+// then longs). One long for a vanilla-height world; tall worlds spill over.
+func appendFullMask(b []byte, n int) []byte {
+	nLongs := (n + 63) / 64
+	b = protocol.AppendVarInt(b, int32(nLongs))
+	for i := 0; i < nLongs; i++ {
+		if rem := n - i*64; rem >= 64 {
+			b = protocol.AppendI64(b, -1)
+		} else {
+			b = protocol.AppendI64(b, int64(1)<<uint(rem)-1)
+		}
+	}
+	return b
+}
+
+// appendMaskList appends a BitSet with exactly the listed bits set.
+func appendMaskList(b []byte, bits []int, total int) []byte {
+	nLongs := (total + 63) / 64
+	longs := make([]int64, nLongs)
+	for _, i := range bits {
+		longs[i/64] |= int64(1) << uint(i%64)
+	}
+	// Trim trailing zero longs (vanilla BitSet.toLongArray does the same).
+	for nLongs > 0 && longs[nLongs-1] == 0 {
+		nLongs--
+	}
+	b = protocol.AppendVarInt(b, int32(nLongs))
+	for i := 0; i < nLongs; i++ {
+		b = protocol.AppendI64(b, longs[i])
+	}
+	return b
+}
+
+// sectionHasLight reports whether any block in the 4096-cell slice emits.
+func sectionHasLight(levels []uint8) bool {
+	for _, v := range levels {
+		if v != 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// chunkPacket renders one domain chunk into Chunk Data and Update Light. All
+// sizes derive from the chunk's own section count (attach ChunkHeader), so a
+// tall earth overworld and a vanilla-height nether render from one path.
 func chunkPacket(h attach.ChunkHeader, body *attach.ChunkBody) []byte {
+	sections := h.SectionCount()
+	lightSections := sections + 2 // one below + one above the world
 	var col []byte
 	for sec := 0; sec < sections; sec++ {
 		biome := "minecraft:plains"
@@ -142,7 +200,7 @@ func chunkPacket(h attach.ChunkHeader, body *attach.ChunkBody) []byte {
 
 	b := protocol.AppendI32(nil, h.CX)
 	b = protocol.AppendI32(b, h.CZ)
-	b = appendHeightmap(b, body.Heightmap)
+	b = appendHeightmap(b, body.Heightmap, sections)
 	b = protocol.AppendVarInt(b, int32(len(col)))
 	b = append(b, col...)
 	if len(h.BEs) > 0 {
@@ -151,15 +209,54 @@ func chunkPacket(h attach.ChunkHeader, body *attach.ChunkBody) []byte {
 		b = protocol.AppendVarInt(b, 0)
 	}
 
-	b = protocol.AppendVarInt(b, 1)
-	b = protocol.AppendI64(b, int64((1<<lightSections)-1))
-	b = protocol.AppendVarInt(b, 1)
-	b = protocol.AppendI64(b, int64((1<<lightSections)-1))
-	b = protocol.AppendVarInt(b, 0)
-	b = protocol.AppendVarInt(b, 0)
+	// Light sections are TRIMMED in the overworld: sky arrays stop one section
+	// above the highest terrain — the client's SkyLightSectionStorage returns
+	// 15 for anything at/above its topmost stored section (decompiled-source
+	// fact), so open sky costs nothing on the wire or in client heap. Block
+	// light ships only sections that actually contain a lit cell (absent
+	// sections default to 0). This is what keeps a tall (108-section) world
+	// inside a stock client heap: untrimmed, light alone is ~450 KB/chunk ×
+	// 4225 chunks at render distance 32 ≈ 1.9 GB — an instant client OOM.
+	// The no-sky dims keep the legacy full-array form (24 sections, cheap).
+	skyBits := make([]int, 0, lightSections)
+	blkBits := make([]int, 0, lightSections)
+	if h.Dim == 0 {
+		maxH := minY - 1
+		for _, hv := range body.Heightmap {
+			if int(hv) > maxH {
+				maxH = int(hv)
+			}
+		}
+		topLit := (maxH-minY)/16 + 1 // one block-section above the surface
+		if topLit > sections-1 {
+			topLit = sections - 1
+		}
+		skyLit := topLit + 2 // +1: light index 0 is the below-world section
+		if skyLit > lightSections {
+			skyLit = lightSections
+		}
+		for i := 0; i < skyLit; i++ {
+			skyBits = append(skyBits, i)
+		}
+		for i := 1; i < lightSections-1; i++ {
+			if sectionHasLight(body.BlockLight[(i-1)*4096 : i*4096]) {
+				blkBits = append(blkBits, i)
+			}
+		}
+	} else {
+		for i := 0; i < lightSections; i++ {
+			skyBits = append(skyBits, i)
+			blkBits = append(blkBits, i)
+		}
+	}
 
-	b = protocol.AppendVarInt(b, lightSections)
-	for i := 0; i < lightSections; i++ {
+	b = appendMaskList(b, skyBits, lightSections) // sky-light mask
+	b = appendMaskList(b, blkBits, lightSections) // block-light mask
+	b = protocol.AppendVarInt(b, 0)               // empty sky-light mask
+	b = protocol.AppendVarInt(b, 0)               // empty block-light mask
+
+	b = protocol.AppendVarInt(b, int32(len(skyBits)))
+	for _, i := range skyBits {
 		b = protocol.AppendVarInt(b, 2048)
 		switch {
 		case i == 0:
@@ -171,8 +268,8 @@ func chunkPacket(h attach.ChunkHeader, body *attach.ChunkBody) []byte {
 			b = append(b, s[:]...)
 		}
 	}
-	b = protocol.AppendVarInt(b, lightSections)
-	for i := 0; i < lightSections; i++ {
+	b = protocol.AppendVarInt(b, int32(len(blkBits)))
+	for _, i := range blkBits {
 		b = protocol.AppendVarInt(b, 2048)
 		if i == 0 || i == lightSections-1 {
 			b = append(b, fullDark[:]...)

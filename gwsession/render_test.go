@@ -2,6 +2,8 @@ package gwsession
 
 import (
 	"bytes"
+	"encoding/binary"
+	"io"
 	"testing"
 
 	attach "github.com/tachyne/tachyne-common/attach"
@@ -126,7 +128,7 @@ func TestHeightmapShape(t *testing.T) {
 	for i := range hm {
 		hm[i] = 64
 	}
-	b := appendHeightmap(nil, hm)
+	b := appendHeightmap(nil, hm, attach.Sections)
 	r := bytes.NewReader(b)
 	if n, _ := protocol.ReadVarInt(r); n != 1 {
 		t.Fatalf("entry count = %d", n)
@@ -140,5 +142,126 @@ func TestHeightmapShape(t *testing.T) {
 	}
 	if r.Len() != 37*8 {
 		t.Fatalf("payload = %d bytes, want %d", r.Len(), 37*8)
+	}
+}
+
+// Tall-world shapes: an 108-section chunk needs 11-bit heightmap entries
+// (5 per long → 52 longs) and multi-long light masks (110 bits → 2 longs).
+func TestTallHeightmapAndMasks(t *testing.T) {
+	hm := make([]int16, 256)
+	for i := range hm {
+		hm[i] = 1100
+	}
+	b := appendHeightmap(nil, hm, 108)
+	r := bytes.NewReader(b)
+	protocol.ReadVarInt(r) // entry count
+	protocol.ReadVarInt(r) // kind
+	n, _ := protocol.ReadVarInt(r)
+	if n != 52 {
+		t.Fatalf("long count = %d, want 52 (11 bits, 5/long)", n)
+	}
+	if r.Len() != 52*8 {
+		t.Fatalf("payload = %d bytes", r.Len())
+	}
+
+	m := appendFullMask(nil, 110)
+	mr := bytes.NewReader(m)
+	if n, _ := protocol.ReadVarInt(mr); n != 2 {
+		t.Fatalf("mask longs = %d, want 2", n)
+	}
+	var lo, hi int64
+	binary.Read(mr, binary.BigEndian, &lo)
+	binary.Read(mr, binary.BigEndian, &hi)
+	if lo != -1 || hi != int64(1)<<46-1 {
+		t.Fatalf("mask = %x,%x", lo, hi)
+	}
+	// The vanilla-height mask must stay the single full-26-bit long.
+	m = appendFullMask(nil, 26)
+	mr = bytes.NewReader(m)
+	if n, _ := protocol.ReadVarInt(mr); n != 1 {
+		t.Fatalf("24-section mask longs = %d, want 1", n)
+	}
+	binary.Read(mr, binary.BigEndian, &lo)
+	if lo != int64(1)<<26-1 {
+		t.Fatalf("24-section mask = %x", lo)
+	}
+}
+
+// TestTrimmedLightSections: overworld chunks ship sky-light arrays only up to
+// one section above the terrain (the client infers full-bright above — a
+// decompiled-source fact), and block-light arrays only where lit. This is
+// what keeps tall-world chunks inside a stock client heap.
+func TestTrimmedLightSections(t *testing.T) {
+	const sec = 108
+	blocks := sec * 4096
+	h := attach.ChunkHeader{CX: 1, CZ: 2, Dim: 0, Sections: sec, Biomes: make([]string, sec)}
+	body := &attach.ChunkBody{
+		BlockStates: make([]uint32, blocks),
+		Heightmap:   make([]int16, 256),
+		SkyLight:    make([]uint8, blocks),
+		BlockLight:  make([]uint8, blocks),
+	}
+	for i := range body.Heightmap {
+		body.Heightmap[i] = 100 // surface at y=100 → section 10
+	}
+	// One torch high up: block section 60 must be included.
+	body.BlockLight[60*4096+123] = 14
+
+	pkt := chunkPacket(h, body)
+	r := bytes.NewReader(pkt)
+	// Skip cx, cz, heightmap, col, block entities.
+	r.Seek(8, 1)
+	protocol.ReadVarInt(r) // heightmap entry count = 1
+	protocol.ReadVarInt(r) // kind
+	n, _ := protocol.ReadVarInt(r)
+	r.Seek(int64(n)*8, 1)
+	colLen, _ := protocol.ReadVarInt(r)
+	r.Seek(int64(colLen), 1)
+	protocol.ReadVarInt(r) // block entities = 0
+
+	readMaskBits := func() int {
+		n, _ := protocol.ReadVarInt(r)
+		bits := 0
+		for i := int32(0); i < n; i++ {
+			var l int64
+			binary.Read(r, binary.BigEndian, &l)
+			for ; l != 0; l &= l - 1 {
+				bits++
+			}
+		}
+		return bits
+	}
+	skyBits := readMaskBits()
+	blkBits := readMaskBits()
+	protocol.ReadVarInt(r) // empty sky mask
+	protocol.ReadVarInt(r) // empty block mask
+
+	// Surface section 10 → topLit 11 → +below-world = 13 sky arrays.
+	if skyBits != 13 {
+		t.Fatalf("sky mask bits = %d, want 13 (trim above terrain)", skyBits)
+	}
+	if blkBits != 1 {
+		t.Fatalf("block mask bits = %d, want 1 (only the lit section)", blkBits)
+	}
+	skyN, _ := protocol.ReadVarInt(r)
+	if int(skyN) != skyBits {
+		t.Fatalf("sky array count %d != mask bits %d", skyN, skyBits)
+	}
+	for i := int32(0); i < skyN; i++ {
+		l, _ := protocol.ReadVarInt(r)
+		r.Seek(int64(l), 1)
+	}
+	blkN, _ := protocol.ReadVarInt(r)
+	if int(blkN) != 1 {
+		t.Fatalf("block array count = %d", blkN)
+	}
+	l, _ := protocol.ReadVarInt(r)
+	arr := make([]byte, l)
+	io.ReadFull(r, arr)
+	if arr[123/2]>>4 != 14 { // odd index → high nibble
+		t.Fatalf("torch nibble lost: %x", arr[123/2])
+	}
+	if r.Len() != 0 {
+		t.Fatalf("%d trailing bytes", r.Len())
 	}
 }

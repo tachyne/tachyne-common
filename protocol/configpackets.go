@@ -11,6 +11,15 @@ import "sync"
 // clients get the 26.2-added entries appended and dimension_type inlined),
 // then for 775+ the extra 26.x registries.
 func ConfigRegistryPackets(v int32) [][]byte {
+	return ConfigRegistryPacketsFor(v, 0)
+}
+
+// ConfigRegistryPacketsFor is ConfigRegistryPackets with the session's
+// overworld height in blocks (0 = vanilla 384). Gateways pass the world's
+// real height (attach Welcome) so a TALL earth world declares its true
+// ceiling; dimension_type is inlined for EVERY client version, so the
+// declared height always wins over the client's built-in registry.
+func ConfigRegistryPacketsFor(v int32, overworldHeight int32) [][]byte {
 	inlineOK := v < 775
 	var out [][]byte
 	for _, reg := range SyncedRegistries {
@@ -25,7 +34,7 @@ func ConfigRegistryPackets(v int32) [][]byte {
 		for _, entry := range entries {
 			data = AppendString(data, entry)
 			inline := inlineOK || reg.ID == "minecraft:dimension_type"
-			if nbt, hasData := RegistryEntryDataFor(reg.ID, entry, v); hasData && inline {
+			if nbt, hasData := registryEntryDataFor(reg.ID, entry, v, overworldHeight); hasData && inline {
 				data = AppendBool(data, true)
 				data = append(data, nbt...)
 			} else {

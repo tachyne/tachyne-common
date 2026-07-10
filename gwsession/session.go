@@ -190,7 +190,7 @@ func Run(cfg Config, br *bufio.Reader, c net.Conn, name string, uuid [16]byte, u
 	if err != nil || ack.ID != 0x03 {
 		return fmt.Errorf("login ack: %v", err)
 	}
-	clientView, err := configure(cfg, br, c, tr)
+	clientView, err := configure(cfg, br, c, tr, int32(welcome.Sections)*16)
 	if err != nil {
 		return fmt.Errorf("configuration: %w", err)
 	}
@@ -216,7 +216,7 @@ func loginDisconnect(c net.Conn, msg string) {
 // translated per client for gw-770's 770-772 range; native 26.x data for 776)
 // and passed through the client's translator, exactly as each gateway did
 // standalone.
-func configure(cfg Config, br *bufio.Reader, c net.Conn, tr protocol.Translator) (int32, error) {
+func configure(cfg Config, br *bufio.Reader, c net.Conn, tr protocol.Translator, worldHeight int32) (int32, error) {
 	// send composes at cfg.Proto and translates to the client version.
 	send := func(id int32, data []byte) error {
 		id, data, drop := tr.Clientbound(protocol.StateConfiguration, id, data)
@@ -257,7 +257,10 @@ func configure(cfg Config, br *bufio.Reader, c net.Conn, tr protocol.Translator)
 			if err := send(cfgClientFeatures, protocol.FeatureFlags()); err != nil {
 				return 0, err
 			}
-			for _, data := range protocol.ConfigRegistryPackets(cfg.Proto) {
+			// The overworld dimension declares the WORLD's real height
+			// (attach Welcome) — a tall earth world tells the client its
+			// true ceiling so chunk columns and the build limit match.
+			for _, data := range protocol.ConfigRegistryPacketsFor(cfg.Proto, worldHeight) {
 				if err := send(cfgClientRegistryData, data); err != nil {
 					return 0, err
 				}
@@ -365,15 +368,56 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 	}
 
 	// Chunk delivery is PACED (vanilla 1.20.2+ chunk batches): the world
-	// reader queues raw chunk frames and this pacer drains them once per tick
-	// in chunk_batch_start/finished batches, sized by the client's
+	// reader queues chunk frames and the pacer sends them once per tick in
+	// chunk_batch_start/finished batches, sized by the client's
 	// chunk_batch_received acks — a client still meshing slows the stream
-	// instead of drowning in it. A full queue blocks the world reader, which
+	// instead of drowning in it. Full queues block the world reader, which
 	// is deliberate backpressure through the attach socket to the engine's
 	// chunk build pool.
-	chunkQ := make(chan []byte, 1024)
+	//
+	// Decode+render runs in a small worker pool BETWEEN the reader and the
+	// pacer (a tall earth chunk costs ~10× a vanilla one to decode and
+	// re-render — single-threaded it caps the whole stream), with order
+	// preserved by queueing a promise per chunk: workers race ahead, the
+	// pacer consumes strictly in arrival (nearest-first) order.
+	type pacedChunk struct {
+		done        chan struct{}
+		dim, cx, cz int32
+		pkt         []byte // rendered Chunk Data wire body
+		err         error
+	}
+	// Queue depth bounds gateway memory, not just latency: a RENDERED tall
+	// chunk is ~0.5 MB (light arrays dominate), so 128 in flight ≈ 64 MB per
+	// slow session worst-case; beyond that the world reader blocks and the
+	// backpressure reaches the engine.
+	renderQ := make(chan *pacedChunk, 128) // ordered hand-off to the pacer
+	type chunkJob struct {
+		payload []byte
+		out     *pacedChunk
+	}
+	jobs := make(chan chunkJob, 128)
 	stop := make(chan struct{})
 	defer close(stop)
+	for range 4 {
+		go func() {
+			for {
+				var j chunkJob
+				select {
+				case <-stop:
+					return
+				case j = <-jobs:
+				}
+				h, body, err := attach.DecodeChunk(j.payload)
+				if err != nil {
+					j.out.err = err
+				} else {
+					j.out.dim, j.out.cx, j.out.cz = h.Dim, h.CX, h.CZ
+					j.out.pkt = chunkPacket(h, body)
+				}
+				close(j.out.done)
+			}
+		}()
+	}
 	var desired atomic.Uint32 // client's desired chunks/tick (float32 bits)
 	desired.Store(math.Float32bits(startChunksTick))
 	var unacked atomic.Int32
@@ -388,7 +432,7 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 				return
 			case <-t.C:
 			}
-			if len(chunkQ) == 0 {
+			if len(renderQ) == 0 {
 				continue
 			}
 			if unacked.Load() >= maxUnackedBatch {
@@ -414,20 +458,24 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 		drain:
 			for int(n) < budget {
 				select {
-				case payload := <-chunkQ:
-					h, body, err := attach.DecodeChunk(payload)
-					if err != nil {
-						errs <- err
+				case pc := <-renderQ:
+					select { // rendered by the worker pool; usually already done
+					case <-pc.done:
+					case <-stop:
 						return
 					}
-					if h.Dim != curDim.Load() {
+					if pc.err != nil {
+						errs <- pc.err
+						return
+					}
+					if pc.dim != curDim.Load() {
 						continue // stale chunk from before a dimension switch
 					}
-					if err := cc.send(playClientChunkData, chunkPacket(h, body)); err != nil {
+					if err := cc.send(playClientChunkData, pc.pkt); err != nil {
 						errs <- err
 						return
 					}
-					if h.CX == spawnCX && h.CZ == spawnCZ {
+					if pc.cx == spawnCX && pc.cz == spawnCZ {
 						spawnSync() // ground under the player's feet exists now
 					}
 					n++
@@ -453,10 +501,16 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 			}
 			switch typ {
 			case attach.MsgChunk:
-				// Hand the raw frame to the pacer (decode happens there);
-				// blocking on a full queue is the backpressure path.
+				// Queue the promise (ordered) and the decode job (raced);
+				// blocking on full queues is the backpressure path.
+				pc := &pacedChunk{done: make(chan struct{})}
 				select {
-				case chunkQ <- payload:
+				case renderQ <- pc:
+				case <-stop:
+					return
+				}
+				select {
+				case jobs <- chunkJob{payload: payload, out: pc}:
 				case <-stop:
 					return
 				}

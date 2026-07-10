@@ -5,7 +5,10 @@ package protocol
 // else resolves from the known pack (has_data=false). These builders provide
 // the minimal vanilla-accurate content for the entries we actually reference.
 
-func overworldNBT(v int32) []byte {
+func overworldNBT(v int32, height int32) []byte {
+	if height <= 0 {
+		height = 384 // vanilla-height world
+	}
 	b := NBTRoot()
 	b = NBTBool(b, "has_skylight", true)
 	b = NBTBool(b, "has_ceiling", false)
@@ -15,8 +18,8 @@ func overworldNBT(v int32) []byte {
 	b = NBTBool(b, "bed_works", true)
 	b = NBTBool(b, "respawn_anchor_works", false)
 	b = NBTInt(b, "min_y", -64)
-	b = NBTInt(b, "height", 384)
-	b = NBTInt(b, "logical_height", 384)
+	b = NBTInt(b, "height", height)
+	b = NBTInt(b, "logical_height", height)
 	b = NBTString(b, "infiniburn", "#minecraft:infiniburn_overworld")
 	b = NBTString(b, "effects", "minecraft:overworld")
 	b = NBTFloat(b, "ambient_light", 0)
@@ -194,10 +197,18 @@ func RegistryEntryData(registryID, entryName string) ([]byte, bool) {
 // data the client falls back to its built-in nether/End (0..256) while our
 // chunks assume -64..384, rendering every dimension 64 blocks up-shifted.
 func RegistryEntryDataFor(registryID, entryName string, v int32) ([]byte, bool) {
+	return registryEntryDataFor(registryID, entryName, v, 0)
+}
+
+// registryEntryDataFor additionally takes the overworld height in blocks
+// (0 = vanilla 384) — a TALL world (earth mode at true vertical scale)
+// declares its real ceiling so the client sizes chunk columns, heightmap
+// bit-packing, and the build limit to match.
+func registryEntryDataFor(registryID, entryName string, v, overworldHeight int32) ([]byte, bool) {
 	switch registryID {
 	case "minecraft:dimension_type":
 		if entryName == "minecraft:overworld" {
-			return overworldNBT(v), true
+			return overworldNBT(v, overworldHeight), true
 		}
 		if entryName == "minecraft:the_nether" {
 			return netherNBT(v), true
