@@ -29,6 +29,15 @@ func overworldNBT(v int32, height int32) []byte {
 	b = NBTInt(b, "monster_spawn_light_level", 0)
 	if v >= 775 {
 		b = NBTBool(b, "has_ender_dragon_fight", false)
+		// 26.x day/night: the sky follows a WORLD CLOCK referenced from the
+		// dimension. default_clock is OPTIONAL and defaults to none — without
+		// it the client's sun is frozen at the default position and every
+		// set_time clock update is ignored (found live: HUD said 22:14, sun
+		// stood at noon). timelines drive the 26.x celestial/ambience events;
+		// both values mirror vanilla's dimension_type/overworld.json, and the
+		// timeline tag ships in our Update Tags data.
+		b = NBTString(b, "default_clock", "minecraft:overworld")
+		b = NBTString(b, "timelines", "#minecraft:in_overworld")
 	}
 	return NBTEnd(b)
 }
@@ -59,6 +68,9 @@ func netherNBT(v int32) []byte {
 		// 26.1+ dimension_type requires this field (ViaVersion adds exactly
 		// this when translating 1.21.5 data forward).
 		b = NBTBool(b, "has_ender_dragon_fight", false)
+		// Vanilla nether: frozen sky (no clock), nether ambience timelines.
+		b = NBTBool(b, "has_fixed_time", true)
+		b = NBTString(b, "timelines", "#minecraft:in_nether")
 	}
 	return NBTEnd(b)
 }
@@ -115,6 +127,11 @@ func endNBT(v int32) []byte {
 		// false the dragon is an ordinary entity, exactly as in the overworld
 		// (where the flag is false and a summoned dragon renders fine).
 		b = NBTBool(b, "has_ender_dragon_fight", false)
+		// Vanilla End: frozen sky, but the End clock still exists (drives
+		// non-celestial events) and the End ambience timelines.
+		b = NBTBool(b, "has_fixed_time", true)
+		b = NBTString(b, "default_clock", "minecraft:the_end")
+		b = NBTString(b, "timelines", "#minecraft:in_end")
 	}
 	return NBTEnd(b)
 }

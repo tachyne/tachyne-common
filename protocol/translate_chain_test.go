@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"bytes"
+	"encoding/binary"
 	"io"
 	"testing"
 )
@@ -151,5 +152,89 @@ func TestChainServesThrough776(t *testing.T) {
 	}
 	if TranslatorFor(777) != nil {
 		t.Error("777 is above MaxTranslated — should be rejected")
+	}
+}
+
+// TestSetTime26xReparse strictly re-parses the 776-translated Update Time
+// exactly as the 26.2 client's codecs read it (decompiled ClientboundSetTime-
+// Packet: Long gameTime + map<VarInt holder id, (VarLong totalTicks, Float
+// partialTick, Float rate)>), including the full-consumption check the client
+// enforces. Guards the day/night cycle on 26.x clients.
+func TestSetTime26xReparse(t *testing.T) {
+	// Compose at canonical 770: gameTime, dayTime, tickDayTime — a night tick.
+	const gameTime, dayTime = 123456, 17000
+	body := AppendI64(nil, gameTime)
+	body = AppendI64(body, dayTime)
+	body = AppendBool(body, true)
+
+	tr := TranslatorFor(776)
+	id, out, drop := tr.Clientbound(StatePlay, 0x6a, body)
+	if drop {
+		t.Fatal("set_time must not be dropped for 776")
+	}
+	if id != 113 { // 26.2 datagen report: minecraft:set_time = 113
+		t.Fatalf("translated id = %d, want 113", id)
+	}
+	r := bytes.NewReader(out)
+	var gt int64
+	binary.Read(r, binary.BigEndian, &gt)
+	if gt != gameTime {
+		t.Fatalf("gameTime = %d", gt)
+	}
+	n, err := ReadVarInt(r)
+	if err != nil || n != 1 {
+		t.Fatalf("clock map size = %d err=%v, want 1", n, err)
+	}
+	clockID, err := ReadVarInt(r)
+	if err != nil || clockID != 0 {
+		t.Fatalf("clock holder id = %d err=%v, want 0 (overworld — first entry of our synced minecraft:world_clock)", clockID, err)
+	}
+	var ticks uint64
+	for shift := 0; ; shift += 7 {
+		bb, err := r.ReadByte()
+		if err != nil {
+			t.Fatalf("VarLong: %v", err)
+		}
+		ticks |= uint64(bb&0x7f) << shift
+		if bb&0x80 == 0 {
+			break
+		}
+	}
+	if int64(ticks) != dayTime {
+		t.Fatalf("clock totalTicks = %d, want %d", ticks, dayTime)
+	}
+	var partial, rate float32
+	binary.Read(r, binary.BigEndian, &partial)
+	binary.Read(r, binary.BigEndian, &rate)
+	if rate != 1 {
+		t.Fatalf("clock rate = %v, want 1 (day advances)", rate)
+	}
+	if r.Len() != 0 {
+		t.Fatalf("%d trailing bytes — the client enforces full consumption and would disconnect", r.Len())
+	}
+}
+
+// TestDimensionClockBinding: 26.x dimension_type must bind its sky to a world
+// clock — default_clock is OPTIONAL in the codec and defaults to NONE, so
+// omitting it froze the sun at noon while the HUD clock advanced (found by a
+// real 26.2 client). 770 data must NOT carry the fields (no such codec there).
+func TestDimensionClockBinding(t *testing.T) {
+	ow776, _ := RegistryEntryDataFor("minecraft:dimension_type", "minecraft:overworld", 776)
+	for _, want := range []string{"default_clock", "minecraft:overworld", "timelines", "#minecraft:in_overworld"} {
+		if !bytes.Contains(ow776, []byte(want)) {
+			t.Fatalf("26.2 overworld dimension_type missing %q", want)
+		}
+	}
+	ow770, _ := RegistryEntryDataFor("minecraft:dimension_type", "minecraft:overworld", 770)
+	if bytes.Contains(ow770, []byte("default_clock")) {
+		t.Fatal("770 overworld dimension_type must not carry 26.x clock fields")
+	}
+	ne776, _ := RegistryEntryDataFor("minecraft:dimension_type", "minecraft:the_nether", 776)
+	if !bytes.Contains(ne776, []byte("has_fixed_time")) || !bytes.Contains(ne776, []byte("#minecraft:in_nether")) {
+		t.Fatal("26.2 nether dimension_type missing fixed-time/timelines")
+	}
+	end776, _ := RegistryEntryDataFor("minecraft:dimension_type", "minecraft:the_end", 776)
+	if !bytes.Contains(end776, []byte("minecraft:the_end")) || !bytes.Contains(end776, []byte("#minecraft:in_end")) {
+		t.Fatal("26.2 End dimension_type missing clock/timelines")
 	}
 }
