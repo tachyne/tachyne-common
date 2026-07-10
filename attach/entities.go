@@ -1,0 +1,523 @@
+package attach
+
+// Entity/presence frames (attach v2): the hub's multiplayer state as domain
+// events, so any gateway renders any player/mob for any client version.
+// Positions are absolute; angles are degrees.
+const (
+	MsgPlayerInfo   = 0x0a // w→gw: tab-list add
+	MsgPlayerGone   = 0x0b // w→gw: tab-list remove
+	MsgEntityAdd    = 0x0c // w→gw: entity appears (players AND mobs)
+	MsgEntityMove   = 0x0d // w→gw: absolute position/look
+	MsgEntityHead   = 0x0e // w→gw: head yaw
+	MsgEntityRemove = 0x0f // w→gw: entities gone
+	MsgChat         = 0x10 // gw→w: player chat line; w→gw: chat to display
+)
+
+type PlayerInfo struct {
+	UUID  [16]byte   `json:"uuid"`
+	Name  string     `json:"name"`
+	Props []Property `json:"props,omitempty"` // game-profile properties (textures = skin)
+}
+
+// Property is one game-profile property (the "textures" blob carries skins).
+type Property struct {
+	Name      string `json:"name"`
+	Value     string `json:"value"`
+	Signature string `json:"signature,omitempty"`
+}
+
+type PlayerGone struct {
+	UUID [16]byte `json:"uuid"`
+}
+
+type EntityAdd struct {
+	EID   int32    `json:"eid"`
+	UUID  [16]byte `json:"uuid"`
+	Type  int32    `json:"type"` // network entity-type id (1.21.5 registry)
+	X     float64  `json:"x"`
+	Y     float64  `json:"y"`
+	Z     float64  `json:"z"`
+	Yaw   float32  `json:"yaw"`
+	Pitch float32  `json:"pitch"`
+	Data  int32    `json:"data,omitempty"` // spawn "object data" (e.g. shooter eid+1 for arrows)
+	VX    float64  `json:"vx,omitempty"`   // initial velocity, blocks/tick — how the client
+	VY    float64  `json:"vy,omitempty"`   // learns a projectile's launch arc before the
+	VZ    float64  `json:"vz,omitempty"`   // first move event
+}
+
+type EntityMove struct {
+	EID      int32   `json:"eid"`
+	X        float64 `json:"x"`
+	Y        float64 `json:"y"`
+	Z        float64 `json:"z"`
+	Yaw      float32 `json:"yaw"`
+	Pitch    float32 `json:"pitch"`
+	OnGround bool    `json:"on_ground"`
+	// NoSync marks movement that must always render as RELATIVE moves, never
+	// sync_entity_position: the 770→776 translation of that packet loses the
+	// entity on 26.x clients (observed with the ender dragon). Renderers
+	// saturate oversized deltas and converge instead of resyncing.
+	NoSync bool `json:"no_sync,omitempty"`
+}
+
+type EntityHead struct {
+	EID int32   `json:"eid"`
+	Yaw float32 `json:"yaw"`
+}
+
+type EntityRemove struct {
+	EIDs []int32 `json:"eids"`
+}
+
+type Chat struct {
+	Text string `json:"text"`
+	// ActionBar renders the text as the above-hotbar overlay instead of a
+	// chat line (the engine's HUD uses it).
+	ActionBar bool `json:"action_bar,omitempty"`
+}
+
+// Interaction frames (attach v2.1): block breaking/placing from gateway
+// players, and block changes streaming back to every session.
+const (
+	MsgDig      = 0x11 // gw→w: player action on a block
+	MsgPlace    = 0x12 // gw→w: use item on a block face
+	MsgHeldSlot = 0x13 // gw→w: hotbar slot selection
+	MsgBlockSet = 0x14 // w→gw: a block changed (render + cache invalidation)
+)
+
+// Dig statuses follow vanilla semantics (0 start/creative break, 2 finish,
+// 3/4 drop stack/one, 5 release use); the world validates.
+type Dig struct {
+	Status int32 `json:"status"`
+	X      int   `json:"x"`
+	Y      int   `json:"y"`
+	Z      int   `json:"z"`
+	Face   int32 `json:"face"`
+}
+
+type Place struct {
+	Hand   int32   `json:"hand"`
+	X      int     `json:"x"`
+	Y      int     `json:"y"`
+	Z      int     `json:"z"`
+	Face   int32   `json:"face"`
+	CX     float32 `json:"cx"` // cursor within the face
+	CY     float32 `json:"cy"`
+	CZ     float32 `json:"cz"`
+	Inside bool    `json:"inside"`
+}
+
+type HeldSlot struct {
+	Slot int16 `json:"slot"`
+}
+
+type BlockSet struct {
+	X     int    `json:"x"`
+	Y     int    `json:"y"`
+	Z     int    `json:"z"`
+	State uint32 `json:"state"`
+}
+
+// Dimension frames (attach v3): portal travel through gateways.
+const (
+	MsgDimension = 0x15 // w→gw: the player moved to another dimension
+	MsgTeleport  = 0x16 // w→gw: server-authoritative position (dim switch, /tp)
+)
+
+type Dimension struct {
+	Dim int32 `json:"dim"` // 0 overworld, 1 nether, 2 end
+	// Gamemode rides along so the respawn packet carries the player's real
+	// mode (0 survival, 1 creative, 2 adventure, 3 spectator).
+	Gamemode int32 `json:"gamemode,omitempty"`
+}
+
+type Teleport struct {
+	Pos
+}
+
+// MsgCommand (gw→w): a /command typed by the player (no leading slash).
+const MsgCommand = 0x17
+
+type Command struct {
+	Cmd string `json:"cmd"`
+}
+
+// (0x18/0x19 were MsgRaw/MsgRawServer, the raw play-packet bridge — deleted
+// with stage 6 of the domain-events refactor: every frame is typed now.)
+
+// Serverbound action frames (stage 6b): every player intent is typed.
+const (
+	MsgUseItem      = 0x34 // gw→w: right-click the held item (eat/draw/throw)
+	MsgUseEntity    = 0x35 // gw→w: attack / interact with an entity
+	MsgSelTrade     = 0x36 // gw→w: select a merchant offer
+	MsgInput        = 0x37 // gw→w: movement-input flags (sneak = dismount)
+	MsgWindowClick  = 0x38 // gw→w: container slot click
+	MsgCraft        = 0x39 // gw→w: recipe-book auto-fill request
+	MsgWindowClose  = 0x3a // gw→w: close the open container
+	MsgNameItem     = 0x3b // gw→w: anvil rename box
+	MsgEnchant      = 0x3c // gw→w: enchant-table option click
+	MsgPlayerAction = 0x3d // gw→w: player command (sneak/sprint/leave-bed)
+	MsgRespawnReq   = 0x3e // gw→w: death screen's respawn button
+	MsgCreativeSlot = 0x3f // gw→w: creative-mode slot set
+)
+
+type UseItem struct{}
+
+type UseEntity struct {
+	Target int32 `json:"target"`
+	Attack bool  `json:"attack,omitempty"` // false = interact
+}
+
+type SelTrade struct {
+	Slot int32 `json:"slot"`
+}
+
+type Input struct {
+	Sneak bool `json:"sneak,omitempty"`
+}
+
+// ClickChange is one slot the client's click prediction changed. Item carries
+// id+count only (the wire form is hashed; the world revalidates anyway).
+type ClickChange struct {
+	Slot int32     `json:"slot"`
+	Item ItemStack `json:"item"`
+}
+
+type WindowClick struct {
+	ID      int32         `json:"id"`
+	Slot    int32         `json:"slot"`
+	Mode    int32         `json:"mode"`
+	Changed []ClickChange `json:"changed,omitempty"`
+	Cursor  ItemStack     `json:"cursor"`
+}
+
+type Craft struct {
+	Window int32 `json:"window"`
+	Recipe int32 `json:"recipe"`
+}
+
+type WindowClose struct{}
+
+type NameItem struct {
+	Name string `json:"name"`
+}
+
+type Enchant struct {
+	Button int32 `json:"button"`
+}
+
+// PlayerAction mirrors the vanilla player_command action ids
+// (0 sneak, 1 unsneak, 2 leave bed, 3 sprint, 4 unsprint).
+type PlayerAction struct {
+	Action int32 `json:"action"`
+}
+
+type RespawnReq struct{}
+
+type CreativeSlot struct {
+	Slot int32     `json:"slot"`
+	Item ItemStack `json:"item"` // id+count (components not needed world-side)
+}
+
+// Survival-state frames (stage 3 of the domain-events refactor) — all
+// player-directed: the session's own health/XP/effects/death UI.
+const (
+	MsgHealth = 0x1b // w→gw: health + food + saturation
+	MsgXP     = 0x1c // w→gw: experience bar/level
+	MsgEffect = 0x1d // w→gw: status effect applied/removed
+	MsgHurt   = 0x1e // w→gw: hurt animation (red flash + directional tilt)
+	MsgDeath  = 0x1f // w→gw: death screen
+)
+
+type Health struct {
+	Health     float32 `json:"health"` // 0..20 half-hearts
+	Food       int32   `json:"food"`   // 0..20 drumsticks
+	Saturation float32 `json:"saturation"`
+}
+
+type XP struct {
+	Progress float32 `json:"progress"` // 0..1 bar fill
+	Level    int32   `json:"level"`
+	Total    int32   `json:"total"`
+}
+
+type Effect struct {
+	EID    int32 `json:"eid"`
+	ID     int32 `json:"id"` // minecraft:mob_effect registry id
+	Amp    int32 `json:"amp,omitempty"`
+	Ticks  int32 `json:"ticks,omitempty"`
+	Remove bool  `json:"remove,omitempty"` // true = effect ended
+}
+
+type Hurt struct {
+	EID int32   `json:"eid"`
+	Yaw float32 `json:"yaw"` // attack direction for the camera tilt
+}
+
+type Death struct {
+	EID     int32  `json:"eid"`
+	Message string `json:"message"`
+}
+
+// Item/container frames (stage 4 of the domain-events refactor).
+const (
+	MsgEquipment   = 0x20 // w→gw: an entity's worn/held loadout
+	MsgEntityMeta  = 0x21 // w→gw: entity appearance metadata (opaque, typed later)
+	MsgWindowOpen  = 0x22 // w→gw: open a container screen
+	MsgWindowItems = 0x23 // w→gw: full window contents
+	MsgWindowSlot  = 0x24 // w→gw: one window slot changed
+	MsgWindowData  = 0x25 // w→gw: window property (furnace progress bars)
+	MsgHeldSync    = 0x26 // w→gw: server-set hotbar selection
+	MsgCollect     = 0x27 // w→gw: item-pickup fly-to-player animation
+)
+
+// ItemStack is the domain item: id + count, plus the stack's structured
+// components (durability, enchantments, custom name, …) in CANONICAL (770)
+// wire form — opaque scaffolding, typed later. Gateways pass the component
+// bytes through their translator chain, which renumbers per client version.
+// A zero Count means the empty stack.
+type ItemStack struct {
+	ID         int32  `json:"id,omitempty"`
+	Count      int32  `json:"count,omitempty"`
+	Components []byte `json:"components,omitempty"` // add-count + remove-count + entries
+}
+
+// Equipment slot order on the wire (Slots array index).
+const (
+	EquipMainHand = 0
+	EquipOffhand  = 1
+	EquipFeet     = 2
+	EquipLegs     = 3
+	EquipChest    = 4
+	EquipHead     = 5
+	EquipBody     = 6 // 1.20.5+ body slot: wolf/horse armor, happy-ghast harness
+)
+
+type Equipment struct {
+	EID   int32        `json:"eid"`
+	Slots [7]ItemStack `json:"slots"` // indexed by the Equip* constants (incl. body)
+}
+
+// EntityMeta carries an entity's appearance metadata (poses, fire, baby,
+// sheared, slime size, saddles, the dropped-item stack, …) as the canonical
+// metadata list — opaque scaffolding with the same typed-later story as
+// ItemStack.Components.
+type EntityMeta struct {
+	EID  int32  `json:"eid"`
+	Meta []byte `json:"meta"` // canonical entity-metadata list, terminator included
+}
+
+type WindowOpen struct {
+	ID    int32  `json:"id"`
+	Menu  int32  `json:"menu"` // canonical minecraft:menu registry id
+	Title string `json:"title"`
+}
+
+type WindowItems struct {
+	ID      int32       `json:"id"`
+	StateID int32       `json:"state_id"`
+	Slots   []ItemStack `json:"slots"`
+	Cursor  ItemStack   `json:"cursor"`
+}
+
+type WindowSlot struct {
+	ID      int32     `json:"id"`
+	StateID int32     `json:"state_id"`
+	Slot    int32     `json:"slot"`
+	Item    ItemStack `json:"item"`
+}
+
+type WindowData struct {
+	ID    int32 `json:"id"`
+	Prop  int32 `json:"prop"`
+	Value int32 `json:"value"`
+}
+
+type HeldSync struct {
+	Slot int32 `json:"slot"`
+}
+
+type Collect struct {
+	Collected int32 `json:"collected"` // the item/orb entity being scooped up
+	Collector int32 `json:"collector"` // the player entity collecting it
+	Count     int32 `json:"count"`
+}
+
+// World-effect frames (stage 5 of the domain-events refactor).
+const (
+	MsgSound     = 0x28 // w→gw: named positioned sound
+	MsgParticles = 0x29 // w→gw: payload-free particle burst
+	MsgWorldFX   = 0x2a // w→gw: positioned world event (block-break FX, …)
+)
+
+// Sound is a positioned sound BY NAME — the version-proof holder form; the
+// client ignores names it doesn't know.
+type Sound struct {
+	Name     string  `json:"name"`
+	Category int32   `json:"category"` // soundSource enum (stable across versions)
+	X        float64 `json:"x"`
+	Y        float64 `json:"y"`
+	Z        float64 `json:"z"`
+	Volume   float32 `json:"volume"`
+	Pitch    float32 `json:"pitch"`
+}
+
+// Particles is a payload-free particle burst. PID is the CANONICAL (770)
+// particle type id; gateway translator chains remap it per client version.
+type Particles struct {
+	PID    int32   `json:"pid"`
+	X      float64 `json:"x"`
+	Y      float64 `json:"y"`
+	Z      float64 `json:"z"`
+	Spread float32 `json:"spread"`
+	Speed  float32 `json:"speed"`
+	Count  int32   `json:"count"`
+}
+
+// WorldFX is a positioned world event (e.g. 2001 = block-break particles +
+// sound, rendered by the client from Data = the block state).
+type WorldFX struct {
+	Event int32 `json:"event"`
+	X     int   `json:"x"`
+	Y     int   `json:"y"`
+	Z     int   `json:"z"`
+	Data  int32 `json:"data"`
+}
+
+// Stage-6a frames: the last clientbound stragglers become typed events.
+const (
+	MsgGameEvent   = 0x2b // w→gw: game event (rain, gamemode change, wait-for-chunks)
+	MsgAbilities   = 0x2c // w→gw: the session's own movement abilities
+	MsgPassengers  = 0x2d // w→gw: who rides an entity
+	MsgVehicleMove = 0x2e // w→gw: authoritative vehicle position (snap-back)
+	MsgVelocity    = 0x2f // w→gw: entity velocity impulse (knockback, jumps)
+	MsgTrades      = 0x30 // w→gw: merchant offers (opaque, typed later)
+	MsgCursorItem  = 0x31 // w→gw: the stack carried on the mouse cursor
+	MsgDifficulty  = 0x32 // w→gw: world difficulty
+	MsgCommandTree = 0x33 // w→gw: brigadier command tree (opaque, typed later)
+)
+
+// GameEvent mirrors the vanilla game_event packet (a stable enum + value).
+type GameEvent struct {
+	Event int32   `json:"event"`
+	Value float32 `json:"value,omitempty"`
+}
+
+type Abilities struct {
+	Invulnerable bool `json:"invulnerable,omitempty"`
+	Flying       bool `json:"flying,omitempty"`
+	MayFly       bool `json:"may_fly,omitempty"`
+	Creative     bool `json:"creative,omitempty"` // instabuild
+}
+
+type Passengers struct {
+	Vehicle int32   `json:"vehicle"`
+	Riders  []int32 `json:"riders"` // empty = everyone dismounted
+}
+
+type VehicleMove struct {
+	X   float64 `json:"x"`
+	Y   float64 `json:"y"`
+	Z   float64 `json:"z"`
+	Yaw float32 `json:"yaw"`
+}
+
+// Velocity is an impulse in blocks/tick (renderers scale to wire units).
+type Velocity struct {
+	EID int32   `json:"eid"`
+	VX  float64 `json:"vx"`
+	VY  float64 `json:"vy"`
+	VZ  float64 `json:"vz"`
+}
+
+// Trades carries the canonical merchant_offers body — opaque, typed later.
+type Trades struct {
+	Data []byte `json:"data"`
+}
+
+type CursorItem struct {
+	Item ItemStack `json:"item"`
+}
+
+type Difficulty struct {
+	Level  int32 `json:"level"`
+	Locked bool  `json:"locked,omitempty"`
+}
+
+// CommandTree carries the canonical brigadier tree — opaque, typed later.
+type CommandTree struct {
+	Data []byte `json:"data"`
+}
+
+// Entity animation frames (stage 6c sweep).
+const (
+	MsgEntityStatus = 0x40 // w→gw: entity status event (death animation, love, tame)
+	MsgSwing        = 0x41 // w→gw: arm swing
+)
+
+// EntityStatus mirrors the vanilla entity_event byte (a stable enum: 3 death
+// animation, 6/7 tame fail/ok, 18 love hearts, …).
+type EntityStatus struct {
+	EID    int32 `json:"eid"`
+	Status int32 `json:"status"`
+}
+
+type Swing struct {
+	EID int32 `json:"eid"`
+}
+
+// MsgRecipeBook (w→gw): the full recipe list for the green crafting book, sent
+// once at join. Item ids are CANONICAL (770); the renderer remaps them into
+// the client's id space per version (recipe_book_add carries raw item ids and
+// has no body rewriter in the translation chain, so it must be built at the
+// client's real version).
+const MsgRecipeBook = 0x42
+
+// RecipeBook lists every craftable recipe as a book display entry. Display id
+// = index: shaped entries first (0..len(Shaped)-1), then shapeless — the same
+// ids the client echoes back in craft_recipe_request.
+type RecipeBook struct {
+	Shaped    []ShapedRecipe    `json:"shaped,omitempty"`
+	Shapeless []ShapelessRecipe `json:"shapeless,omitempty"`
+}
+
+// ShapedRecipe is a WxH row-major pattern (Cells has W*H entries, 0 = empty).
+type ShapedRecipe struct {
+	W      int32   `json:"w"`
+	H      int32   `json:"h"`
+	Cells  []int32 `json:"cells"`
+	Result int32   `json:"result"`
+	Count  int32   `json:"count"`
+}
+
+// ShapelessRecipe is an unordered ingredient list → result.
+type ShapelessRecipe struct {
+	Ingredients []int32 `json:"ing"`
+	Result      int32   `json:"result"`
+	Count       int32   `json:"count"`
+}
+
+// MsgResync (w→gw): re-request the current chunk window with Force set — the
+// world side of /refresh (fixes client-side render loss). Carries no fields;
+// the gateway already knows its window.
+const MsgResync = 0x43
+
+// Resync is the (empty) MsgResync payload.
+type Resync struct{}
+
+// MsgBossBar (w→gw): boss-fight health bar (the dragon, the wither).
+const MsgBossBar = 0x1a
+
+// BossBar operations (mirroring the vanilla packet's action ids).
+const (
+	BossBarAdd    = 0 // show the bar: Title + Health used
+	BossBarRemove = 1 // hide the bar
+	BossBarHealth = 2 // update the fill fraction: Health used
+)
+
+type BossBar struct {
+	UUID   [16]byte `json:"uuid"`
+	Op     int32    `json:"op"`
+	Title  string   `json:"title,omitempty"`
+	Health float32  `json:"health,omitempty"` // 0..1 fill fraction
+}
