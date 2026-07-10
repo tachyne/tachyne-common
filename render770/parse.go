@@ -16,6 +16,8 @@ import (
 
 // Canonical-770 serverbound play packet IDs for the actions parsed here.
 const (
+	SIDChunkBatchReceived = 0x09 // chunk-batch ack + desired chunks-per-tick
+
 	SIDClientCommand = 0x0a // respawn request
 	SIDEnchantItem   = 0x0f
 	SIDWindowClick   = 0x10
@@ -39,6 +41,22 @@ func readI16(br *bytes.Reader) (int16, bool) {
 		return 0, false
 	}
 	return int16(binary.BigEndian.Uint16(b[:])), true
+}
+
+// ParseChunkBatchReceived decodes chunk_batch_received: the client's ack of a
+// chunk batch, carrying how many chunks per tick it wants (float; vanilla
+// derives it from its own processing time). The gateway uses it to pace chunk
+// delivery — this packet is gateway-local flow control and never reaches the
+// world.
+func ParseChunkBatchReceived(data []byte) (float32, bool) {
+	if len(data) < 4 {
+		return 0, false
+	}
+	v := math.Float32frombits(binary.BigEndian.Uint32(data))
+	if math.IsNaN(float64(v)) || math.IsInf(float64(v), 0) || v < 0 {
+		return 0, false
+	}
+	return v, true
 }
 
 // ParseUseEntity decodes interact_entity; ok=false for interact_at (2),

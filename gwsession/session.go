@@ -44,7 +44,24 @@ type Config struct {
 	Backend      string // world pod attach address (login shard)
 	WorldPattern string // dial pattern for a neighbour shard on handover (%d = sid)
 	AttachToken  string
-	SID          int // this gateway's ordinal (Hello stamp)
+	SID          int   // this gateway's ordinal (Hello stamp)
+	ViewCap      int32 // max honored render distance in chunks; 0 = defaultViewCap
+}
+
+// viewCap resolves the deployment's render-distance ceiling: the client's
+// slider is honored up to this. Kept well below the engine's hard attach
+// limit (32) by default — honoring a maxed 32-slider means a 65×65 = 4225
+// chunk window, ~10× a vanilla server's default cap of 10, which is exactly
+// the "sluggish flight + long Loading terrain" regression. Deployments with a
+// reason (earth-mode vistas) raise it explicitly via TACHYNE_VIEW_CAP.
+func (cfg Config) viewCap() int32 {
+	switch {
+	case cfg.ViewCap <= 0:
+		return defaultViewCap
+	case cfg.ViewCap > attachMaxRadius:
+		return attachMaxRadius
+	}
+	return cfg.ViewCap
 }
 
 // 770 packet IDs the session uses (see minecraft/server play.go for the map).
@@ -63,13 +80,15 @@ const (
 	cfgServerFinish        = 0x03
 	cfgServerClientInfo    = 0x00 // Client Information (locale, view distance, …)
 
-	playClientLogin        = 0x2b
-	playClientGameEvent    = 0x22
-	playClientCenterChunk  = 0x57
-	playClientChunkData    = 0x27
-	playClientSyncPosition = 0x41
-	playClientKeepAlive    = 0x26
-	playClientUpdateTime   = 0x6a
+	playClientLogin            = 0x2b
+	playClientGameEvent        = 0x22
+	playClientCenterChunk      = 0x57
+	playClientChunkData        = 0x27
+	playClientChunkBatchStart  = 0x0c // empty body; opens a paced chunk batch
+	playClientChunkBatchFinish = 0x0b // VarInt batch size; client replies chunk_batch_received
+	playClientSyncPosition     = 0x41
+	playClientKeepAlive        = 0x26
+	playClientUpdateTime       = 0x6a
 
 	playClientAckDig = 0x04
 
@@ -83,8 +102,21 @@ const (
 	playServerLook         = 0x1e
 	playServerClientInfo   = 0x0c // Client Information (mid-game render-distance change)
 
-	viewRadius = 6  // default chunk radius when the client hasn't sent Client Information
-	viewCap    = 32 // ceiling — matches the world pod's attach maxRadius (raised for earth-mode vistas)
+	viewRadius      = 6  // default chunk radius when the client hasn't sent Client Information
+	defaultViewCap  = 12 // default honored render-distance ceiling (vanilla server default is 10)
+	attachMaxRadius = 32 // the world pod's hard attach radius cap — Config.ViewCap can't exceed it
+)
+
+// Chunk-batch pacing (vanilla 1.20.2+ flow control): chunks are delivered in
+// chunk_batch_start/finished batches and the client acks each batch with its
+// desired chunks-per-tick, so a client that is still meshing slows the stream
+// instead of drowning. Values mirror vanilla's ChunkSender.
+const (
+	batchInterval    = 50 * time.Millisecond // one game tick
+	startChunksTick  = 9.0                   // rate before the client's first ack
+	maxChunksTick    = 64.0                  // per-batch ceiling regardless of ack
+	maxUnackedBatch  = 10                    // in-flight batches before we hold
+	batchAckDeadline = 2 * time.Second       // no ack for this long → assume a non-batching client, stop holding
 )
 
 // Canonical entity-type ids whose metadata needs version-specific surgery (see
@@ -263,8 +295,8 @@ func clientViewDist(data []byte) (int32, bool) {
 
 // effectiveView clamps a client's requested view distance to the range the
 // gateway will actually stream. 0 (client never told us) falls back to the
-// default; the ceiling matches the world pod's attach radius cap.
-func effectiveView(clientView int32) int32 {
+// default; cap is the deployment ceiling (Config.viewCap).
+func effectiveView(clientView, cap int32) int32 {
 	v := clientView
 	if v <= 0 {
 		v = viewRadius
@@ -272,8 +304,8 @@ func effectiveView(clientView int32) int32 {
 	if v < 2 {
 		v = 2
 	}
-	if v > viewCap {
-		v = viewCap
+	if v > cap {
+		v = cap
 	}
 	return v
 }
@@ -303,8 +335,12 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 	// client→world reader updates it on a video-settings change while the
 	// world→client reader reads it for teleport/refresh re-Wants.
 	var viewDist atomic.Int32
-	viewDist.Store(effectiveView(clientView))
+	viewDist.Store(effectiveView(clientView, cfg.viewCap()))
 	onGround := true // updated from every movement packet's flag bit
+	// The join-time center chunk, immutable: its arrival releases the client
+	// from "Loading terrain" (spawnSync). ccx/ccz drift with movement and
+	// belong to the reader goroutines; the pacer must not race on them.
+	spawnCX, spawnCZ := ccx, ccz
 
 	cc.send(playClientLogin, joinPacket(welcome.EID, welcome.Gamemode, viewDist.Load()))
 	cc.send(playClientGameEvent, []byte{13, 0, 0, 0, 0})
@@ -320,13 +356,92 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 	// resyncs, NoSync entities, skins, projectile launch arcs.
 	view := render770.NewEntityView()
 
-	errs := make(chan error, 2)
+	errs := make(chan error, 4)
 	var once sync.Once
 	spawnSync := func() {
 		once.Do(func() {
 			cc.send(playClientSyncPosition, syncPositionBody(pos))
 		})
 	}
+
+	// Chunk delivery is PACED (vanilla 1.20.2+ chunk batches): the world
+	// reader queues raw chunk frames and this pacer drains them once per tick
+	// in chunk_batch_start/finished batches, sized by the client's
+	// chunk_batch_received acks — a client still meshing slows the stream
+	// instead of drowning in it. A full queue blocks the world reader, which
+	// is deliberate backpressure through the attach socket to the engine's
+	// chunk build pool.
+	chunkQ := make(chan []byte, 1024)
+	stop := make(chan struct{})
+	defer close(stop)
+	var desired atomic.Uint32 // client's desired chunks/tick (float32 bits)
+	desired.Store(math.Float32bits(startChunksTick))
+	var unacked atomic.Int32
+	var lastAck atomic.Int64 // unix nanos of the newest batch ack
+	lastAck.Store(time.Now().UnixNano())
+	go func() {
+		t := time.NewTicker(batchInterval)
+		defer t.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-t.C:
+			}
+			if len(chunkQ) == 0 {
+				continue
+			}
+			if unacked.Load() >= maxUnackedBatch {
+				// Hold for acks — but a client that never sends them must
+				// not leave the session holding chunks forever.
+				if time.Since(time.Unix(0, lastAck.Load())) < batchAckDeadline {
+					continue
+				}
+				unacked.Store(0)
+			}
+			budget := int(math.Ceil(float64(math.Float32frombits(desired.Load()))))
+			if budget < 1 {
+				budget = 1
+			}
+			if budget > maxChunksTick {
+				budget = maxChunksTick
+			}
+			if err := cc.send(playClientChunkBatchStart, nil); err != nil {
+				errs <- err
+				return
+			}
+			var n int32
+		drain:
+			for int(n) < budget {
+				select {
+				case payload := <-chunkQ:
+					h, body, err := attach.DecodeChunk(payload)
+					if err != nil {
+						errs <- err
+						return
+					}
+					if h.Dim != curDim.Load() {
+						continue // stale chunk from before a dimension switch
+					}
+					if err := cc.send(playClientChunkData, chunkPacket(h, body)); err != nil {
+						errs <- err
+						return
+					}
+					if h.CX == spawnCX && h.CZ == spawnCZ {
+						spawnSync() // ground under the player's feet exists now
+					}
+					n++
+				default:
+					break drain
+				}
+			}
+			if err := cc.send(playClientChunkBatchFinish, protocol.AppendVarInt(nil, n)); err != nil {
+				errs <- err
+				return
+			}
+			unacked.Add(1)
+		}
+	}()
 
 	// World → client.
 	go func() {
@@ -338,20 +453,12 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 			}
 			switch typ {
 			case attach.MsgChunk:
-				h, body, err := attach.DecodeChunk(payload)
-				if err != nil {
-					errs <- err
+				// Hand the raw frame to the pacer (decode happens there);
+				// blocking on a full queue is the backpressure path.
+				select {
+				case chunkQ <- payload:
+				case <-stop:
 					return
-				}
-				if h.Dim != curDim.Load() {
-					continue // stale chunk from before a dimension switch
-				}
-				if err := cc.send(playClientChunkData, chunkPacket(h, body)); err != nil {
-					errs <- err
-					return
-				}
-				if h.CX == ccx && h.CZ == ccz {
-					spawnSync() // ground under the player's feet exists now
 				}
 			case attach.MsgPlayerInfo:
 				var e attach.PlayerInfo
@@ -718,6 +825,17 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 			}
 			pkt.ID, pkt.Data = sbID, sbData
 			switch pkt.ID {
+			case render770.SIDChunkBatchReceived:
+				// Gateway-local flow control: adopt the client's desired
+				// chunks-per-tick and release one in-flight batch. Never
+				// forwarded to the world.
+				if v, ok := render770.ParseChunkBatchReceived(pkt.Data); ok {
+					desired.Store(math.Float32bits(v))
+					if unacked.Load() > 0 {
+						unacked.Add(-1)
+					}
+					lastAck.Store(time.Now().UnixNano())
+				}
 			case playServerBlockDig:
 				r := pkt.Body()
 				status, _ := protocol.ReadVarInt(r)
@@ -815,7 +933,7 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 				// Mid-game video-settings change: honor the new render distance
 				// (vanilla re-scales the chunk window immediately).
 				if v, ok := clientViewDist(pkt.Data); ok {
-					if nv := effectiveView(v); nv != viewDist.Load() {
+					if nv := effectiveView(v, cfg.viewCap()); nv != viewDist.Load() {
 						viewDist.Store(nv)
 						b.Write(attach.MsgWant, attach.Want{CX: ccx, CZ: ccz, Radius: nv, Dim: curDim.Load()})
 					}

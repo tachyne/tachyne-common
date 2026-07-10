@@ -61,6 +61,7 @@ type Server struct {
 	Proto       int32  // pinned protocol: config-phase composition + status advertisement
 	MinProto    int32  // accepted client protocol range (a single-version gateway sets Min == Max)
 	MaxProto    int32
+	ViewCap     int32 // max honored render distance in chunks (0 = default; capped at the attach limit 32)
 }
 
 // sessionConfig parameterizes the shared session pipeline with this gateway's
@@ -70,6 +71,7 @@ func (s *Server) sessionConfig() Config {
 		Name: s.Name, Proto: s.Proto,
 		Backend: s.Backend, WorldPattern: s.WorldPattern,
 		AttachToken: s.AttachToken, SID: s.SID,
+		ViewCap: s.ViewCap,
 	}
 }
 

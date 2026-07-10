@@ -55,3 +55,23 @@ func TestParseSmallActions(t *testing.T) {
 		t.Fatal("client-stats action must not respawn")
 	}
 }
+
+// TestParseChunkBatchReceived: the body is one big-endian float32 (desired
+// chunks per tick). Oracle bytes: 25.0f = 0x41C80000.
+func TestParseChunkBatchReceived(t *testing.T) {
+	if v, ok := ParseChunkBatchReceived([]byte{0x41, 0xC8, 0x00, 0x00}); !ok || v != 25.0 {
+		t.Fatalf("25.0f: got %v ok=%v", v, ok)
+	}
+	if v, ok := ParseChunkBatchReceived([]byte{0x00, 0x00, 0x00, 0x00}); !ok || v != 0 {
+		t.Fatalf("0f: got %v ok=%v", v, ok)
+	}
+	if _, ok := ParseChunkBatchReceived([]byte{0x41, 0xC8}); ok {
+		t.Fatal("short body must not parse")
+	}
+	if _, ok := ParseChunkBatchReceived([]byte{0x7F, 0xC0, 0x00, 0x00}); ok {
+		t.Fatal("NaN must not parse")
+	}
+	if _, ok := ParseChunkBatchReceived([]byte{0xC1, 0xC8, 0x00, 0x00}); ok {
+		t.Fatal("negative rate must not parse")
+	}
+}
