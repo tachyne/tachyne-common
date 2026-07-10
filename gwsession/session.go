@@ -122,9 +122,17 @@ const (
 // Canonical entity-type ids whose metadata needs version-specific surgery (see
 // the MsgEntityMeta case): cube mobs get the 26.2 SIZE index shift, the copper
 // golem gets its WEATHERING_COPPER_STATE serializer restored.
+//
+// The id space is canonical 1.21.11 (proto 774) — the values MUST match the
+// engine's generated registry (tachyne-world internal/server/entityids_gen.go).
+// These once carried 1.21.5-era ids (slime 111, magma_cube 77) after the
+// canonical retarget shifted the registry: 111 is a SHEEP in 1.21.11 (its
+// meta was silently mis-shifted on 26.2) and 77 a lightning bolt, while real
+// magma cubes reached 26.2 clients unshifted — a type-mismatch disconnect the
+// moment one spawned in the nether.
 const (
-	typeSlime       = 111
-	typeMagmaCube   = 77
+	typeSlime       = 117
+	typeMagmaCube   = 80
 	typeCopperGolem = 28
 )
 
