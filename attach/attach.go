@@ -60,8 +60,9 @@ const (
 	MsgBye     = 0x09 // either: JSON Bye
 )
 
-// Sharding frames (0x50 block; the 0x0a–0x43 catalog is in entities.go, and
-// 0x44–0x4f are left for ordinary event growth).
+// Sharding frames (the 0x50–0x5f block; the 0x0a–0x4f catalog is in
+// entities.go — 0x44–0x4f filled up, so ordinary event growth continues at
+// 0x60, also in entities.go).
 const (
 	MsgRehome = 0x50 // w→gw JSON Rehome: this player is now owned by another pod
 )

@@ -18,6 +18,7 @@ const (
 	nbtFloat    = 5
 	nbtDouble   = 6
 	nbtString   = 8
+	nbtList     = 9
 	nbtCompound = 10
 )
 
@@ -66,6 +67,19 @@ func NBTString(b []byte, name, v string) []byte {
 	b = nbtName(b, name)
 	b = AppendU16(b, uint16(len(v)))
 	return append(b, v...)
+}
+
+// NBTStringList writes a named list of strings (element type TAG_String).
+func NBTStringList(b []byte, name string, vals []string) []byte {
+	b = append(b, nbtList)
+	b = nbtName(b, name)
+	b = append(b, nbtString)
+	b = AppendI32(b, int32(len(vals)))
+	for _, v := range vals {
+		b = AppendU16(b, uint16(len(v)))
+		b = append(b, v...)
+	}
+	return b
 }
 
 // NBTCompound opens a named child compound; close it with its own NBTEnd.

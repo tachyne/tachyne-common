@@ -720,3 +720,56 @@ type Team struct {
 	Collision    int32    `json:"coll,omitempty"` // 0 always, 1 never, 2/3 push rules
 	Players      []string `json:"players,omitempty"`
 }
+
+// Sign frames, mirroring the vanilla SignBlockEntity model: two SignText
+// sides (4 message lines, a dye color, a glow flag) plus is_waxed. The
+// editing lock (vanilla playerWhoMayEdit) is transient engine state and
+// never crosses the protocol; the engine enforces it on SignUpdate.
+// (0x4f is the last free byte of the 0x44–0x4f event range and 0x50–0x5f is
+// the sharding block — ordinary event growth continues at 0x60.)
+const (
+	MsgSignText   = 0x60 // w→gw: a sign's full text state (block_entity_data)
+	MsgSignEditor = 0x61 // w→gw: open the sign edit GUI (open_sign_editor)
+	MsgSignUpdate = 0x62 // gw→w: player submitted 4 raw lines for one side
+)
+
+// SignSide mirrors vanilla SignText: four plain-text message lines, the
+// applied dye color (name; "" = black, the default) and the glow-ink flag.
+type SignSide struct {
+	Lines [4]string `json:"lines"`
+	Color string    `json:"color,omitempty"`
+	Glow  bool      `json:"glow,omitempty"`
+}
+
+// SignText is a sign block entity's full client-visible state at a position
+// in the receiving player's dimension. Hanging selects the hanging_sign
+// block-entity type for rendering.
+type SignText struct {
+	X       int32    `json:"x"`
+	Y       int32    `json:"y"`
+	Z       int32    `json:"z"`
+	Front   SignSide `json:"front"`
+	Back    SignSide `json:"back"`
+	Waxed   bool     `json:"waxed,omitempty"`
+	Hanging bool     `json:"hanging,omitempty"`
+}
+
+// SignEditor opens the sign editing GUI on one side of a sign the engine has
+// granted this player permission to edit.
+type SignEditor struct {
+	X     int32 `json:"x"`
+	Y     int32 `json:"y"`
+	Z     int32 `json:"z"`
+	Front bool  `json:"front"`
+}
+
+// SignUpdate is the serverbound edit result: the four raw lines the player
+// typed for one side. The engine strips legacy §-format codes, applies the
+// edit-permission and waxed checks, and rebroadcasts SignText.
+type SignUpdate struct {
+	X     int32     `json:"x"`
+	Y     int32     `json:"y"`
+	Z     int32     `json:"z"`
+	Front bool      `json:"front"`
+	Lines [4]string `json:"lines"`
+}

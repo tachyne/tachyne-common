@@ -32,6 +32,7 @@ const (
 	SIDNameItem       = 0x2e
 	SIDSelTrade       = 0x31
 	SIDCreativeSlot   = 0x36
+	SIDSignUpdate     = 0x3a // update_sign (sign edit GUI result)
 	SIDUseItem        = 0x3f
 )
 
@@ -277,6 +278,30 @@ func ParseRecipeSeen(data []byte) (attach.RecipeSeen, bool) {
 		return attach.RecipeSeen{}, false
 	}
 	return attach.RecipeSeen{ID: id}, true
+}
+
+// ParseSignUpdate decodes update_sign: position, which side, and the four raw
+// lines the player typed (wire cap 384 chars/line, vanilla's
+// ServerboundSignUpdatePacket.MAX_STRING_LENGTH).
+func ParseSignUpdate(data []byte) (attach.SignUpdate, bool) {
+	if len(data) < 8 {
+		return attach.SignUpdate{}, false
+	}
+	x, y, z := protocol.ReadPosition(data[:8])
+	br := bytes.NewReader(data[8:])
+	front, err := br.ReadByte()
+	if err != nil {
+		return attach.SignUpdate{}, false
+	}
+	e := attach.SignUpdate{X: int32(x), Y: int32(y), Z: int32(z), Front: front != 0}
+	for i := range e.Lines {
+		line, err := protocol.ReadString(br)
+		if err != nil || len(line) > 384 {
+			return attach.SignUpdate{}, false
+		}
+		e.Lines[i] = line
+	}
+	return e, true
 }
 
 // ParseCreativeSlot decodes set_creative_mode_slot: slot + a FULL Slot, of

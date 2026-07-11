@@ -900,6 +900,18 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 					p := render770.RecipeBookSettings(e)
 					cc.send(p.ID, p.Body)
 				}
+			case attach.MsgSignText:
+				var e attach.SignText
+				if json.Unmarshal(payload, &e) == nil {
+					p := render770.SignData(e)
+					cc.send(p.ID, p.Body)
+				}
+			case attach.MsgSignEditor:
+				var e attach.SignEditor
+				if json.Unmarshal(payload, &e) == nil {
+					p := render770.SignEditor(e)
+					cc.send(p.ID, p.Body)
+				}
 			case attach.MsgRecipeBook:
 				var e attach.RecipeBook
 				if json.Unmarshal(payload, &e) == nil {
@@ -1070,6 +1082,10 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 			case render770.SIDRecipeSeen:
 				if e, ok := render770.ParseRecipeSeen(pkt.Data); ok {
 					b.Write(attach.MsgRecipeSeen, e)
+				}
+			case render770.SIDSignUpdate:
+				if e, ok := render770.ParseSignUpdate(pkt.Data); ok {
+					b.Write(attach.MsgSignUpdate, e)
 				}
 			case render770.SIDCreativeSlot:
 				if e, ok := render770.ParseCreativeSlot(pkt.Data); ok {
