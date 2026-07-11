@@ -5,12 +5,12 @@ package protocol
 // IDSpace identifiers for multi-version ID translation.
 const (
 	RegBlockState IDSpace = 0
-	RegEntity IDSpace = 1
-	RegItem IDSpace = 2
-	RegBiome IDSpace = 3
-	RegBlock IDSpace = 4
+	RegEntity     IDSpace = 1
+	RegItem       IDSpace = 2
+	RegBiome      IDSpace = 3
+	RegBlock      IDSpace = 4
 	RegCustomStat IDSpace = 5
-	numRegistries = 6
+	numRegistries         = 6
 )
 
 // translationTables[registry][clientProtocol] = forward ID-shift ranges (canonical
@@ -38,8 +38,7 @@ var translationTables = map[IDSpace]map[int32][]idRange{
 		775: {{230, 1504, 1}},
 		776: {{26, 91, 27}, {92, 94, 34}, {95, 97, 24}, {98, 101, 31}, {102, 105, 35}, {106, 109, 39}, {110, 113, 43}, {114, 117, 8}, {118, 121, 15}, {122, 125, 19}, {126, 129, 23}, {130, 229, 27}, {230, 1023, 28}, {1024, 1165, 29}, {1166, 1311, 30}, {1312, 1419, 31}, {1420, 1504, 32}},
 	},
-	RegBiome: {
-	},
+	RegBiome: {},
 	RegBlock: {
 		770: {{191, 290, -12}, {293, 340, -14}, {358, 744, -30}, {746, 848, -31}, {857, 1078, -39}, {1095, 1095, -55}, {1103, 1165, -62}},
 		771: {{191, 290, -12}, {293, 340, -14}, {358, 848, -30}, {857, 1078, -38}, {1095, 1095, -54}, {1103, 1165, -61}},
