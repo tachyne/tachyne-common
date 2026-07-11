@@ -521,3 +521,54 @@ type BossBar struct {
 	Title  string   `json:"title,omitempty"`
 	Health float32  `json:"health,omitempty"` // 0..1 fill fraction
 }
+
+// Advancement frames (w→gw). The engine owns the tree (canonical 1.21.11
+// data), criteria evaluation, and per-player grant state; the gateway renders
+// update_advancements per client version. MsgAdvTree crosses once per join —
+// the tree is static per engine build; MsgAdvProgress follows with the
+// player's full snapshot (Reset) and then streams single-grant increments.
+const (
+	MsgAdvTree     = 0x44 // w→gw: the advancement tree (join-time, static)
+	MsgAdvProgress = 0x45 // w→gw: per-player criteria progress
+)
+
+// AdvNode is one advancement as the client sees it. Requirements is the
+// wire's OR-of-ANDs of criterion names (the union of names is also the
+// criteria set — the wire never carries criteria separately). Display fields
+// are zero for invisible helper nodes (HasDisplay false).
+type AdvNode struct {
+	ID     string     `json:"id"`
+	Parent string     `json:"parent,omitempty"`
+	Reqs   [][]string `json:"reqs"`
+
+	HasDisplay bool      `json:"has_display,omitempty"`
+	Title      string    `json:"title,omitempty"` // translate key (vanilla) or literal
+	Desc       string    `json:"desc,omitempty"`
+	Icon       ItemStack `json:"icon,omitempty"`  // same id space as every other ItemStack
+	Frame      int32     `json:"frame,omitempty"` // 0 task, 1 challenge, 2 goal
+	Background string    `json:"bg,omitempty"`    // root tabs only (texture id, no namespace)
+	ShowToast  bool      `json:"toast,omitempty"`
+	Announce   bool      `json:"announce,omitempty"`
+	Hidden     bool      `json:"hidden,omitempty"`
+	X          float32   `json:"x,omitempty"` // vanilla tidy-tree layout (depth)
+	Y          float32   `json:"y,omitempty"` // (row)
+}
+
+type AdvTree struct {
+	Nodes []AdvNode `json:"nodes"`
+}
+
+// AdvProgressEntry is one advancement's obtained criteria → unix millis.
+// Criteria required but absent from Done are rendered as not-yet-obtained.
+type AdvProgressEntry struct {
+	ID   string           `json:"id"`
+	Done map[string]int64 `json:"done"`
+}
+
+// AdvProgress carries progress for one player. Reset marks the join-time
+// full snapshot (the renderer pairs it with the tree in one reset packet);
+// increments follow with just the newly-obtained criteria.
+type AdvProgress struct {
+	Reset   bool               `json:"reset,omitempty"`
+	Entries []AdvProgressEntry `json:"entries"`
+}

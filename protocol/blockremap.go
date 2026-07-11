@@ -15,21 +15,22 @@ import (
 
 // Canonical (770) play packet IDs that carry version-specific registry IDs.
 const (
-	canonChunkData       = 0x27 // clientbound Chunk Data (block-state IDs)
-	canonBlockUpdate     = 0x08 // clientbound Block Update (one block-state ID)
-	canonSpawnEntity     = 0x01 // clientbound Spawn Entity (entity-type ID)
-	canonSetSlot         = 0x14 // clientbound Set Slot (item ID in a Slot)
-	canonWindowItems     = 0x12 // clientbound Set Container Content (many Slots)
-	canonEntityMetadata  = 0x5c // clientbound Set Entity Metadata (item-entity Slot)
-	canonSetCreativeSlot = 0x36 // serverbound Set Creative Mode Slot (item ID)
-	canonWindowClick     = 0x10 // serverbound Click Container (HashedSlot item IDs)
-	canonSetCursorItem   = 0x59 // clientbound Set Cursor Item (one Slot)
-	canonEntityVelocity  = 0x5e // clientbound Set Entity Velocity/Motion
-	canonSetEquipment    = 0x5f // clientbound Set Equipment (worn armor/held item)
-	canonJoinGame        = 0x2b // clientbound Login / Join Game
-	canonUpdateTime      = 0x6a // clientbound Update Time / set_time
-	canonWorldEvent      = 0x28 // clientbound World Event (2001 carries a block-state ID)
-	canonWorldParticles  = 0x29 // clientbound Level Particles (particle-type ID)
+	canonChunkData          = 0x27 // clientbound Chunk Data (block-state IDs)
+	canonBlockUpdate        = 0x08 // clientbound Block Update (one block-state ID)
+	canonSpawnEntity        = 0x01 // clientbound Spawn Entity (entity-type ID)
+	canonSetSlot            = 0x14 // clientbound Set Slot (item ID in a Slot)
+	canonWindowItems        = 0x12 // clientbound Set Container Content (many Slots)
+	canonEntityMetadata     = 0x5c // clientbound Set Entity Metadata (item-entity Slot)
+	canonSetCreativeSlot    = 0x36 // serverbound Set Creative Mode Slot (item ID)
+	canonWindowClick        = 0x10 // serverbound Click Container (HashedSlot item IDs)
+	canonSetCursorItem      = 0x59 // clientbound Set Cursor Item (one Slot)
+	canonEntityVelocity     = 0x5e // clientbound Set Entity Velocity/Motion
+	canonSetEquipment       = 0x5f // clientbound Set Equipment (worn armor/held item)
+	canonJoinGame           = 0x2b // clientbound Login / Join Game
+	canonUpdateTime         = 0x6a // clientbound Update Time / set_time
+	canonWorldEvent         = 0x28 // clientbound World Event (2001 carries a block-state ID)
+	canonWorldParticles     = 0x29 // clientbound Level Particles (particle-type ID)
+	canonUpdateAdvancements = 0x7b // clientbound Update Advancements (icon Slots)
 
 	metaIndexItemStack = 8 // entity-metadata index of an item entity's stack
 	metaTypeSlot       = 7 // entity-metadata value type: Slot
@@ -102,6 +103,10 @@ func remapClientboundIDs(version, id int32, body []byte) []byte {
 	case canonWorldParticles:
 		if version > 770 {
 			return remapWorldParticles(version, body)
+		}
+	case canonUpdateAdvancements:
+		if HasRemap(RegItem, version) {
+			return remapAdvancementIcons(version, body)
 		}
 	}
 	return body

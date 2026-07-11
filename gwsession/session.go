@@ -501,6 +501,11 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 
 	// World → client.
 	go func() {
+		// Advancements are stateful: the tree frame (join-time, static) is
+		// held until the progress snapshot pairs with it in one reset packet;
+		// its requirement index then serves every incremental grant.
+		var advTree *attach.AdvTree
+		var advReqs map[string][]string
 		for {
 			typ, payload, err := attach.ReadFrame(b.Get())
 			if err != nil {
@@ -573,6 +578,23 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 				if json.Unmarshal(payload, &e) == nil {
 					p := render770.Chat(e)
 					cc.send(p.ID, p.Body)
+				}
+			case attach.MsgAdvTree:
+				var e attach.AdvTree
+				if json.Unmarshal(payload, &e) == nil {
+					advTree = &e
+					advReqs = render770.ReqIndex(e)
+				}
+			case attach.MsgAdvProgress:
+				var e attach.AdvProgress
+				if json.Unmarshal(payload, &e) == nil {
+					if e.Reset && advTree != nil {
+						p := render770.AdvancementsInit(*advTree, e)
+						cc.send(p.ID, p.Body)
+					} else if advReqs != nil {
+						p := render770.AdvancementsUpdate(advReqs, e)
+						cc.send(p.ID, p.Body)
+					}
 				}
 			case attach.MsgBossBar:
 				var e attach.BossBar

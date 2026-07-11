@@ -171,6 +171,10 @@ func init() {
 	stepBody[775] = bodyRewriters{
 		cbUp: map[State]map[int32]bodyFn{
 			StateConfiguration: {cfgKnownPacksID: rewriteKnownPacksVersion("26.1")},
+			// 26.1 changed the advancement DisplayInfo icon from a full Slot to
+			// an ItemStackTemplate (field reorder) — see advremap.go. Keyed by
+			// the packet's 774-space id (renumbered at the 773 step).
+			StatePlay: {advancementsID774: rewriteAdvIconTemplate},
 		},
 	}
 	stepBody[776] = bodyRewriters{
