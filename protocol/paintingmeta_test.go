@@ -31,10 +31,11 @@ func TestFixPaintingMeta(t *testing.T) {
 	if got := FixPaintingMeta(770, body); !bytes.Equal(got, body) {
 		t.Fatal("770 body changed")
 	}
-	// 776: serializer renumbered 30 -> 34, everything else intact
+	// 776: index 8 -> 9 (26.x HangingEntity gained a synched DIRECTION at 8)
+	// and serializer 30 -> 34; the holder value is untouched
 	got := FixPaintingMeta(776, body)
 	want := AppendVarInt(nil, 1234)
-	want = append(want, 8)
+	want = append(want, 9)
 	want = AppendVarInt(want, 34)
 	want = AppendVarInt(want, 7)
 	want = append(want, 0xff)

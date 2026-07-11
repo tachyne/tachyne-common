@@ -15,9 +15,18 @@ import "bytes"
 // entity-metadata serializer id the engine composes.
 const PaintingVariantSerializer770 = 30
 
-// paintingVariantSerializer maps a client protocol version to its
-// PAINTING_VARIANT serializer id when it differs from canonical.
-var paintingVariantSerializer = map[int32]int32{776: 34}
+// paintingMeta776 is the 26.x shape of the variant entry: 26.x added a
+// synched DIRECTION field on HangingEntity (index 8), pushing the painting
+// variant to index 9, and its serializer renumbered to 34 (COMPOUND_TAG
+// removed, sound-variant serializers added). The client's direction field
+// is populated from the spawn packet's data, so only the variant entry
+// needs rewriting.
+type paintingMetaShape struct {
+	index      byte
+	serializer int32
+}
+
+var paintingVariantShape = map[int32]paintingMetaShape{776: {9, 34}}
 
 // PaintingVariantIndex returns a variant's holder id: its index in the
 // synced painting_variant registry (-1 if unknown). The 26.x-appended
@@ -48,7 +57,7 @@ func PaintingVariantIndex(name string) int32 {
 // version-stable. The engine sends paintings a single metadata entry
 // (index 8, the variant); anything unexpected returns the body untouched.
 func FixPaintingMeta(version int32, body []byte) []byte {
-	serID, ok := paintingVariantSerializer[version]
+	shape, ok := paintingVariantShape[version]
 	if !ok {
 		return body
 	}
@@ -70,9 +79,10 @@ func FixPaintingMeta(version int32, body []byte) []byte {
 	if err != nil || end != 0xff || r.Len() != 0 {
 		return body
 	}
+	_ = idx
 	out := AppendVarInt(nil, eid)
-	out = append(out, idx)
-	out = AppendVarInt(out, serID)
+	out = append(out, shape.index)
+	out = AppendVarInt(out, shape.serializer)
 	out = AppendVarInt(out, holder)
 	return append(out, 0xff)
 }
