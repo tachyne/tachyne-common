@@ -351,6 +351,13 @@ func creativePaintingVariant(br *bytes.Reader, clientProto int32) string {
 	if err != nil || typ != compID {
 		return "" // a different component leads — unknown payload, stop
 	}
+	// The untrusted slot codec (all serverbound creative slots) wraps each
+	// component value in a byte-length prefix (vanilla
+	// DataComponentPatch.DELIMITED_STREAM_CODEC).
+	vlen, err := protocol.ReadVarInt(br)
+	if err != nil || vlen < 1 || vlen > 5 {
+		return ""
+	}
 	holder, err := protocol.ReadVarInt(br)
 	if err != nil || holder <= 0 {
 		return "" // 0 would be an inline definition — not a menu preset

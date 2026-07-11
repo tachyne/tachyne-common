@@ -86,13 +86,15 @@ func TestCreativeSlotPaintingVariant(t *testing.T) {
 		t.Fatal("no kebab in the synced registry")
 	}
 	compose := func(compID int32) []byte {
-		b := []byte{0, 36}                    // slot 36
-		b = protocol.AppendVarInt(b, 1)       // count
-		b = protocol.AppendVarInt(b, 1213)    // item id (painting)
-		b = protocol.AppendVarInt(b, 1)       // components added
-		b = protocol.AppendVarInt(b, 0)       // components removed
-		b = protocol.AppendVarInt(b, compID)  // painting/variant component
-		b = protocol.AppendVarInt(b, kebab+1) // Holder: registry id + 1
+		b := []byte{0, 36}                   // slot 36
+		b = protocol.AppendVarInt(b, 1)      // count
+		b = protocol.AppendVarInt(b, 1213)   // item id (painting)
+		b = protocol.AppendVarInt(b, 1)      // components added
+		b = protocol.AppendVarInt(b, 0)      // components removed
+		b = protocol.AppendVarInt(b, compID) // painting/variant component
+		holder := protocol.AppendVarInt(nil, kebab+1)
+		b = protocol.AppendVarInt(b, int32(len(holder))) // untrusted codec: length-prefixed value
+		b = append(b, holder...)
 		return b
 	}
 	e, ok := ParseCreativeSlot(compose(89), 770)

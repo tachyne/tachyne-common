@@ -1094,12 +1094,6 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 					b.Write(attach.MsgSignUpdate, e)
 				}
 			case render770.SIDCreativeSlot:
-				if n := len(pkt.Data); n > 0 { // TEMP: live preset debugging
-					if n > 64 {
-						n = 64
-					}
-					log.Printf("creative slot raw (proto %d): % x", clientProto, pkt.Data[:n])
-				}
 				if e, ok := render770.ParseCreativeSlot(pkt.Data, clientProto); ok {
 					b.Write(attach.MsgCreativeSlot, e)
 				}
