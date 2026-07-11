@@ -344,6 +344,9 @@ func creativePaintingVariant(br *bytes.Reader, clientProto int32) string {
 	if err != nil || nAdd < 1 {
 		return ""
 	}
+	if _, err := protocol.ReadVarInt(br); err != nil { // remove-count precedes the entries
+		return ""
+	}
 	typ, err := protocol.ReadVarInt(br)
 	if err != nil || typ != compID {
 		return "" // a different component leads — unknown payload, stop

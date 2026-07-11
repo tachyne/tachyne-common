@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	attach "github.com/tachyne/tachyne-common/attach"
+	"github.com/tachyne/tachyne-common/protocol"
 )
 
 // Ported from the gomc server's crafting_test.go when the TCP parse moved
@@ -73,5 +74,47 @@ func TestParseChunkBatchReceived(t *testing.T) {
 	}
 	if _, ok := ParseChunkBatchReceived([]byte{0xC1, 0xC8, 0x00, 0x00}); ok {
 		t.Fatal("negative rate must not parse")
+	}
+}
+
+// TestCreativeSlotPaintingVariant: a creative-menu painting preset's
+// painting/variant component is extracted (per-version component ids), and
+// non-preset slots degrade to "" (random fit).
+func TestCreativeSlotPaintingVariant(t *testing.T) {
+	kebab := protocol.PaintingVariantIndex("kebab")
+	if kebab < 0 {
+		t.Fatal("no kebab in the synced registry")
+	}
+	compose := func(compID int32) []byte {
+		b := []byte{0, 36}                    // slot 36
+		b = protocol.AppendVarInt(b, 1)       // count
+		b = protocol.AppendVarInt(b, 1213)    // item id (painting)
+		b = protocol.AppendVarInt(b, 1)       // components added
+		b = protocol.AppendVarInt(b, 0)       // components removed
+		b = protocol.AppendVarInt(b, compID)  // painting/variant component
+		b = protocol.AppendVarInt(b, kebab+1) // Holder: registry id + 1
+		return b
+	}
+	e, ok := ParseCreativeSlot(compose(89), 770)
+	if !ok || e.PaintingVariant != "minecraft:kebab" && e.PaintingVariant != "kebab" {
+		t.Fatalf("770 preset: ok=%v variant=%q", ok, e.PaintingVariant)
+	}
+	e, ok = ParseCreativeSlot(compose(103), 776)
+	if !ok || e.PaintingVariant == "" {
+		t.Fatalf("776 preset: ok=%v variant=%q", ok, e.PaintingVariant)
+	}
+	// the wrong component id for the version → no preset, but still a valid slot
+	e, ok = ParseCreativeSlot(compose(89), 776)
+	if !ok || e.PaintingVariant != "" {
+		t.Fatalf("mismatched component id must degrade: ok=%v variant=%q", ok, e.PaintingVariant)
+	}
+	// a componentless painting → no preset
+	plain := []byte{0, 36}
+	plain = protocol.AppendVarInt(plain, 1)
+	plain = protocol.AppendVarInt(plain, 1213)
+	plain = protocol.AppendVarInt(plain, 0)
+	plain = protocol.AppendVarInt(plain, 0)
+	if e, ok := ParseCreativeSlot(plain, 776); !ok || e.PaintingVariant != "" {
+		t.Fatalf("plain painting: ok=%v variant=%q", ok, e.PaintingVariant)
 	}
 }
