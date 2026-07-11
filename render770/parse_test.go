@@ -96,7 +96,7 @@ func TestCreativeSlotPaintingVariant(t *testing.T) {
 		return b
 	}
 	e, ok := ParseCreativeSlot(compose(89), 770)
-	if !ok || e.PaintingVariant != "minecraft:kebab" && e.PaintingVariant != "kebab" {
+	if !ok || e.PaintingVariant != "kebab" { // SHORT name — the engine table is unprefixed
 		t.Fatalf("770 preset: ok=%v variant=%q", ok, e.PaintingVariant)
 	}
 	e, ok = ParseCreativeSlot(compose(103), 776)

@@ -9,7 +9,10 @@ package protocol
 // landing PAINTING_VARIANT on 34 (both from the vanilla
 // EntityDataSerializers registration order).
 
-import "bytes"
+import (
+	"bytes"
+	"strings"
+)
 
 // PaintingVariantSerializer770 is the canonical (1.21.5) PAINTING_VARIANT
 // entity-metadata serializer id the engine composes.
@@ -55,19 +58,18 @@ func PaintingVariantIndex(name string) int32 {
 // PaintingVariantName is the inverse of PaintingVariantIndex ("" if out of
 // range).
 func PaintingVariantName(idx int32) string {
+	name := ""
 	for _, reg := range SyncedRegistries {
 		if reg.ID != "minecraft:painting_variant" {
 			continue
 		}
 		if int(idx) < len(reg.Entries) {
-			return reg.Entries[idx]
-		}
-		extra := extra26xEntries["minecraft:painting_variant"]
-		if i := int(idx) - len(reg.Entries); i < len(extra) {
-			return extra[i]
+			name = reg.Entries[idx]
+		} else if extra := extra26xEntries["minecraft:painting_variant"]; int(idx)-len(reg.Entries) < len(extra) {
+			name = extra[int(idx)-len(reg.Entries)]
 		}
 	}
-	return ""
+	return strings.TrimPrefix(name, "minecraft:")
 }
 
 // PaintingComponentID is the minecraft:painting/variant item-component type
