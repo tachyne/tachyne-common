@@ -108,6 +108,10 @@ func remapClientboundIDs(version, id int32, body []byte) []byte {
 		if HasRemap(RegItem, version) {
 			return remapAdvancementIcons(version, body)
 		}
+	case canonAwardStats:
+		// Four registries ride this packet; RemapID self-no-ops per registry
+		// when a version needs no shift, so no HasRemap gate here.
+		return remapAwardStats(version, body)
 	}
 	return body
 }

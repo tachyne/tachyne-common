@@ -579,6 +579,12 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 					p := render770.Chat(e)
 					cc.send(p.ID, p.Body)
 				}
+			case attach.MsgStats:
+				var e attach.Stats
+				if json.Unmarshal(payload, &e) == nil {
+					p := render770.AwardStats(e)
+					cc.send(p.ID, p.Body)
+				}
 			case attach.MsgAdvTree:
 				var e attach.AdvTree
 				if json.Unmarshal(payload, &e) == nil {
@@ -1022,6 +1028,8 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 			case render770.SIDClientCommand:
 				if e, ok := render770.ParseRespawnReq(pkt.Data); ok {
 					b.Write(attach.MsgRespawnReq, e)
+				} else if e, ok := render770.ParseStatsReq(pkt.Data); ok {
+					b.Write(attach.MsgStatsReq, e)
 				}
 			case render770.SIDCreativeSlot:
 				if e, ok := render770.ParseCreativeSlot(pkt.Data); ok {

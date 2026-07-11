@@ -18,7 +18,7 @@ import (
 const (
 	SIDChunkBatchReceived = 0x09 // chunk-batch ack + desired chunks-per-tick
 
-	SIDClientCommand = 0x0a // respawn request
+	SIDClientCommand = 0x0a // respawn (action 0) / stats request (action 1)
 	SIDEnchantItem   = 0x0f
 	SIDWindowClick   = 0x10
 	SIDCloseWindow   = 0x11
@@ -244,6 +244,12 @@ func ParsePlayerAction(data []byte) (attach.PlayerAction, bool) {
 // ParseRespawnReq decodes client_command; ok only for actionId 0 (respawn).
 func ParseRespawnReq(data []byte) (attach.RespawnReq, bool) {
 	return attach.RespawnReq{}, len(data) > 0 && data[0] == 0
+}
+
+// ParseStatsReq decodes client_command; ok only for actionId 1 (the client
+// opened the Statistics screen and wants the snapshot).
+func ParseStatsReq(data []byte) (attach.StatsReq, bool) {
+	return attach.StatsReq{}, len(data) > 0 && data[0] == 1
 }
 
 // ParseCreativeSlot decodes set_creative_mode_slot: slot + a FULL Slot, of

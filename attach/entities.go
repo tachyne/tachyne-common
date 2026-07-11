@@ -572,3 +572,40 @@ type AdvProgress struct {
 	Reset   bool               `json:"reset,omitempty"`
 	Entries []AdvProgressEntry `json:"entries"`
 }
+
+// Statistics frames. The client's Statistics screen is request-driven
+// (client_command action 1): the gateway forwards the request and the world
+// replies with the player's full snapshot. Entries are (stat type, key,
+// value) in canonical 774 ids — key registry depends on the type (mined:
+// block registry; crafted/used/broken/picked_up/dropped: items; killed/
+// killed_by: entities; custom: the custom_stat registry).
+const (
+	MsgStats    = 0x46 // w→gw: full statistics snapshot
+	MsgStatsReq = 0x47 // gw→w: the client opened the Statistics screen
+)
+
+// Stat type ids (the vanilla stat_type registry order — identical on every
+// version the chain serves).
+const (
+	StatMined    = 0
+	StatCrafted  = 1
+	StatUsed     = 2
+	StatBroken   = 3
+	StatPickedUp = 4
+	StatDropped  = 5
+	StatKilled   = 6
+	StatKilledBy = 7
+	StatCustom   = 8
+)
+
+type StatEntry struct {
+	T int32 `json:"t"` // stat type (Stat* consts)
+	K int32 `json:"k"` // key id in the type's registry (canonical 774)
+	V int32 `json:"v"`
+}
+
+type Stats struct {
+	Entries []StatEntry `json:"entries"`
+}
+
+type StatsReq struct{}
