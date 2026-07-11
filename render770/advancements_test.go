@@ -250,3 +250,46 @@ func TestAdvancementsChainTo776(t *testing.T) {
 		t.Fatal("progress corrupted by the chain")
 	}
 }
+
+// TestAdvancementsAddReparse strictly consumes an added-nodes packet (reveal
+// after join): no reset, no removed, no progress.
+func TestAdvancementsAddReparse(t *testing.T) {
+	tree := testTree()
+	tree.Nodes = tree.Nodes[1:2] // one revealed node
+	pkt := AdvancementsAdd(tree)
+	r := bytes.NewReader(pkt.Body)
+	if rdBool(t, r) {
+		t.Fatal("reveal packet must not reset")
+	}
+	if n := rdVarInt(t, r); n != 1 {
+		t.Fatalf("added = %d", n)
+	}
+	id := rdString(t, r)
+	if rdBool(t, r) {
+		rdString(t, r)
+	}
+	if !rdBool(t, r) {
+		t.Fatalf("%s lost its display", id)
+	}
+	d := rdDisplay(t, r, false)
+	if d.item != 913 {
+		t.Fatalf("icon %d", d.item)
+	}
+	ng := rdVarInt(t, r)
+	for g := int32(0); g < ng; g++ {
+		nc := rdVarInt(t, r)
+		for c := int32(0); c < nc; c++ {
+			rdString(t, r)
+		}
+	}
+	rdBool(t, r)             // telemetry
+	if rdVarInt(t, r) != 0 { // removed
+		t.Fatal("removed set on a reveal")
+	}
+	if rdVarInt(t, r) != 0 { // progress
+		t.Fatal("progress on a reveal")
+	}
+	if !rdBool(t, r) || r.Len() != 0 {
+		t.Fatalf("trailer wrong (%d left)", r.Len())
+	}
+}

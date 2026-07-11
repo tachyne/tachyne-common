@@ -582,8 +582,22 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 			case attach.MsgAdvTree:
 				var e attach.AdvTree
 				if json.Unmarshal(payload, &e) == nil {
-					advTree = &e
-					advReqs = render770.ReqIndex(e)
+					if advReqs == nil {
+						// join: hold the visible tree for the reset packet
+						advTree = &e
+						advReqs = render770.ReqIndex(e)
+					} else {
+						// the world revealed more nodes: extend the session
+						// index and ship them (no reset)
+						advTree.Nodes = append(advTree.Nodes, e.Nodes...)
+						for id, crits := range render770.ReqIndex(e) {
+							advReqs[id] = crits
+						}
+						if len(e.Nodes) > 0 {
+							p := render770.AdvancementsAdd(e)
+							cc.send(p.ID, p.Body)
+						}
+					}
 				}
 			case attach.MsgAdvProgress:
 				var e attach.AdvProgress
