@@ -868,6 +868,32 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 					p := render770.Swing(e)
 					cc.send(p.ID, p.Body)
 				}
+			case attach.MsgObjective:
+				var e attach.Objective
+				if json.Unmarshal(payload, &e) == nil {
+					p := render770.Objective(e)
+					cc.send(p.ID, p.Body)
+				}
+			case attach.MsgDisplaySlot:
+				var e attach.DisplaySlot
+				if json.Unmarshal(payload, &e) == nil {
+					p := render770.DisplaySlot(e)
+					cc.send(p.ID, p.Body)
+				}
+			case attach.MsgScore:
+				var e attach.Score
+				if json.Unmarshal(payload, &e) == nil {
+					p := render770.Score(e)
+					cc.send(p.ID, p.Body)
+				}
+			case attach.MsgTeam:
+				var e attach.Team
+				if json.Unmarshal(payload, &e) == nil {
+					// Composed at the client's real version: 26.2 reordered the
+					// team parameters (see render770.PlayerTeam).
+					p := render770.PlayerTeam(e, clientProto)
+					cc.send(p.ID, p.Body)
+				}
 			case attach.MsgRecipeSettings:
 				var e attach.RecipeSettings
 				if json.Unmarshal(payload, &e) == nil {

@@ -655,3 +655,68 @@ type RecipeSettingChange struct {
 type RecipeSeen struct {
 	ID int32 `json:"id"`
 }
+
+// Scoreboard frames (w→gw), mirroring the vanilla ServerScoreboard model:
+// objectives (with display text + render type), the three display slots,
+// per-owner scores, and teams (display/prefix/suffix, color, flags,
+// membership). The engine owns all state and the /scoreboard + /team
+// commands; gateways render the five vanilla packets per client version.
+const (
+	MsgObjective   = 0x4b // objective add / remove / update
+	MsgDisplaySlot = 0x4c // bind an objective to list/sidebar/below_name
+	MsgScore       = 0x4d // one owner's score in one objective (or its reset)
+	MsgTeam        = 0x4e // team add / remove / update / membership change
+)
+
+// Objective methods and team methods use the vanilla packet method ids.
+const (
+	ObjAdd    = 0
+	ObjRemove = 1
+	ObjUpdate = 2
+
+	TeamAdd           = 0
+	TeamRemove        = 1
+	TeamUpdate        = 2
+	TeamAddPlayers    = 3
+	TeamRemovePlayers = 4
+)
+
+// Display slots (vanilla ids).
+const (
+	SlotList      = 0
+	SlotSidebar   = 1
+	SlotBelowName = 2
+)
+
+type Objective struct {
+	Name   string `json:"name"`
+	Method int32  `json:"method"`
+	Title  string `json:"title,omitempty"`  // literal display text
+	Hearts bool   `json:"hearts,omitempty"` // render type: hearts vs integer
+}
+
+type DisplaySlot struct {
+	Slot      int32  `json:"slot"`
+	Objective string `json:"objective,omitempty"` // "" clears the slot
+}
+
+type Score struct {
+	Owner     string `json:"owner"`
+	Objective string `json:"objective"`
+	Value     int32  `json:"value,omitempty"`
+	Reset     bool   `json:"reset,omitempty"` // true = reset_score instead
+}
+
+type Team struct {
+	Name         string   `json:"name"`
+	Method       int32    `json:"method"`
+	Title        string   `json:"title,omitempty"`
+	Prefix       string   `json:"prefix,omitempty"`
+	Suffix       string   `json:"suffix,omitempty"`
+	Color        int32    `json:"color"` // ChatFormatting color ordinal 0-15; -1 = none
+	FriendlyFire bool     `json:"ff,omitempty"`
+	SeeInvisible bool     `json:"seeinvis,omitempty"`
+	Visibility   int32    `json:"vis,omitempty"`  // nametag: 0 always … 3 hideForOwnTeam
+	Collision    int32    `json:"coll,omitempty"` // 0 always, 1 never, 2/3 push rules
+	Players      []string `json:"players,omitempty"`
+}
