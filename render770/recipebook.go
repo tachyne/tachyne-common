@@ -47,8 +47,8 @@ func RecipeBook(rb attach.RecipeBook, version int32) Packet {
 	b := protocol.AppendVarInt(nil, int32(n))
 	for i := range rb.Shaped {
 		r := &rb.Shaped[i]
-		b = protocol.AppendVarInt(b, int32(i)) // displayId
-		b = protocol.AppendVarInt(b, 1)        // RecipeDisplay: crafting_shaped
+		b = protocol.AppendVarInt(b, r.ID) // displayId (engine-assigned, stable)
+		b = protocol.AppendVarInt(b, 1)    // RecipeDisplay: crafting_shaped
 		b = protocol.AppendVarInt(b, r.W)
 		b = protocol.AppendVarInt(b, r.H)
 		b = protocol.AppendVarInt(b, int32(len(r.Cells)))
@@ -57,22 +57,37 @@ func RecipeBook(rb attach.RecipeBook, version int32) Packet {
 		}
 		b = appendSlotDisplay(b, sd, rid(r.Result), int(r.Count)) // result (with count)
 		b = appendSlotDisplay(b, sd, rid(itemCraftingTable), 1)   // crafting station
-		b = appendBookEntryTail(b, ingredientInstances(r.Cells), rid, r.Result)
+		b = appendBookEntryTail(b, ingredientInstances(r.Cells), rid, r.Result, r.Notify, r.Highlight)
 	}
 	for i := range rb.Shapeless {
 		r := &rb.Shapeless[i]
-		b = protocol.AppendVarInt(b, int32(len(rb.Shaped)+i)) // displayId
-		b = protocol.AppendVarInt(b, 0)                       // crafting_shapeless
+		b = protocol.AppendVarInt(b, r.ID) // displayId
+		b = protocol.AppendVarInt(b, 0)    // crafting_shapeless
 		b = protocol.AppendVarInt(b, int32(len(r.Ingredients)))
 		for _, c := range r.Ingredients {
 			b = appendSlotDisplay(b, sd, rid(c), 1)
 		}
 		b = appendSlotDisplay(b, sd, rid(r.Result), int(r.Count))
 		b = appendSlotDisplay(b, sd, rid(itemCraftingTable), 1)
-		b = appendBookEntryTail(b, ingredientInstances(r.Ingredients), rid, r.Result)
+		b = appendBookEntryTail(b, ingredientInstances(r.Ingredients), rid, r.Result, r.Notify, r.Highlight)
 	}
-	b = protocol.AppendBool(b, true) // replace the client's whole book
+	b = protocol.AppendBool(b, rb.Replace)
 	return Packet{IDRecipeBook, b}
+}
+
+// IDRecipeBookSettings is the canonical-770 clientbound recipe_book_settings
+// id. Wire = the four book types' (open, filtering) bool pairs in enum order
+// (crafting, furnace, blast furnace, smoker) — the vanilla RecipeBookSettings
+// codec, identical on every served version.
+const IDRecipeBookSettings = 0x45
+
+func RecipeBookSettings(e attach.RecipeSettings) Packet {
+	var b []byte
+	for i := 0; i < 4; i++ {
+		b = protocol.AppendBool(b, e.Open[i])
+		b = protocol.AppendBool(b, e.Filter[i])
+	}
+	return Packet{IDRecipeBookSettings, b}
 }
 
 // slotDisplayIDs carries the version-dependent SlotDisplay encoding: the type
@@ -116,7 +131,7 @@ func appendSlotDisplay(b []byte, sd slotDisplayIDs, item int32, count int) []byt
 // (stick from oak/spruce/… planks) into a single stick entry. The group id is
 // opaque to the client; the canonical result item id is a stable, unique
 // choice. optvarint: 0 = none, else id+1.
-func appendBookEntryTail(b []byte, ingredients []int32, rid func(int32) int32, group int32) []byte {
+func appendBookEntryTail(b []byte, ingredients []int32, rid func(int32) int32, group int32, notify, highlight bool) []byte {
 	b = protocol.AppendVarInt(b, group+1)            // group (optvarint, by result)
 	b = protocol.AppendVarInt(b, recipeCategoryMisc) // book tab
 	b = protocol.AppendBool(b, true)                 // craftingRequirements present
@@ -126,7 +141,14 @@ func appendBookEntryTail(b []byte, ingredients []int32, rid func(int32) int32, g
 		b = protocol.AppendVarInt(b, 2)
 		b = protocol.AppendVarInt(b, rid(id))
 	}
-	return append(b, 0) // flags: no notification/highlight
+	var flags byte // vanilla entry flags: 1 = notification toast, 2 = highlight
+	if notify {
+		flags |= 1
+	}
+	if highlight {
+		flags |= 2
+	}
+	return append(b, flags)
 }
 
 // ingredientInstances lists every non-empty cell/ingredient, duplicates

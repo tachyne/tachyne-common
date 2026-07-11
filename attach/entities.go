@@ -477,24 +477,35 @@ const MsgRecipeBook = 0x42
 // = index: shaped entries first (0..len(Shaped)-1), then shapeless — the same
 // ids the client echoes back in craft_recipe_request.
 type RecipeBook struct {
+	// Replace true = the player's whole known book (join); false = newly
+	// unlocked entries appended (vanilla ServerRecipeBook.addRecipes).
+	Replace   bool              `json:"replace,omitempty"`
 	Shaped    []ShapedRecipe    `json:"shaped,omitempty"`
 	Shapeless []ShapelessRecipe `json:"shapeless,omitempty"`
 }
 
 // ShapedRecipe is a WxH row-major pattern (Cells has W*H entries, 0 = empty).
+// ID is the engine-assigned display id (stable across increments); Notify and
+// Highlight mirror the vanilla add-packet entry flags (toast / book badge).
 type ShapedRecipe struct {
-	W      int32   `json:"w"`
-	H      int32   `json:"h"`
-	Cells  []int32 `json:"cells"`
-	Result int32   `json:"result"`
-	Count  int32   `json:"count"`
+	ID        int32   `json:"id"`
+	W         int32   `json:"w"`
+	H         int32   `json:"h"`
+	Cells     []int32 `json:"cells"`
+	Result    int32   `json:"result"`
+	Count     int32   `json:"count"`
+	Notify    bool    `json:"notify,omitempty"`
+	Highlight bool    `json:"hl,omitempty"`
 }
 
 // ShapelessRecipe is an unordered ingredient list → result.
 type ShapelessRecipe struct {
+	ID          int32   `json:"id"`
 	Ingredients []int32 `json:"ing"`
 	Result      int32   `json:"result"`
 	Count       int32   `json:"count"`
+	Notify      bool    `json:"notify,omitempty"`
+	Highlight   bool    `json:"hl,omitempty"`
 }
 
 // MsgResync (w→gw): re-request the current chunk window with Force set — the
@@ -609,3 +620,38 @@ type Stats struct {
 }
 
 type StatsReq struct{}
+
+// Recipe-book progression frames, mirroring the vanilla ServerRecipeBook
+// model: a per-player KNOWN set (sent filtered at join, grown by unlock
+// increments riding MsgRecipeBook), a HIGHLIGHT set (the "new" badge,
+// cleared by MsgRecipeSeen), and the per-book-type open/filter settings.
+const (
+	MsgRecipeSettings      = 0x48 // w→gw: the player's book settings (join)
+	MsgRecipeSettingChange = 0x49 // gw→w: the client toggled open/filter
+	MsgRecipeSeen          = 0x4a // gw→w: a highlighted recipe was viewed
+)
+
+// Recipe book types, in the vanilla enum/wire order.
+const (
+	RecipeBookCrafting     = 0
+	RecipeBookFurnace      = 1
+	RecipeBookBlastFurnace = 2
+	RecipeBookSmoker       = 3
+)
+
+// RecipeSettings carries all four book types' (open, filtering) pairs,
+// indexed by the RecipeBook* constants.
+type RecipeSettings struct {
+	Open   [4]bool `json:"open"`
+	Filter [4]bool `json:"filter"`
+}
+
+type RecipeSettingChange struct {
+	Book   int32 `json:"book"`
+	Open   bool  `json:"open"`
+	Filter bool  `json:"filter"`
+}
+
+type RecipeSeen struct {
+	ID int32 `json:"id"`
+}

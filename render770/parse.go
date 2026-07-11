@@ -18,19 +18,21 @@ import (
 const (
 	SIDChunkBatchReceived = 0x09 // chunk-batch ack + desired chunks-per-tick
 
-	SIDClientCommand = 0x0a // respawn (action 0) / stats request (action 1)
-	SIDEnchantItem   = 0x0f
-	SIDWindowClick   = 0x10
-	SIDCloseWindow   = 0x11
-	SIDUseEntity     = 0x18
-	SIDVehicleMove   = 0x20
-	SIDCraftRequest  = 0x25
-	SIDEntityAction  = 0x28
-	SIDPlayerInput   = 0x29
-	SIDNameItem      = 0x2e
-	SIDSelTrade      = 0x31
-	SIDCreativeSlot  = 0x36
-	SIDUseItem       = 0x3f
+	SIDClientCommand  = 0x0a // respawn (action 0) / stats request (action 1)
+	SIDEnchantItem    = 0x0f
+	SIDWindowClick    = 0x10
+	SIDCloseWindow    = 0x11
+	SIDUseEntity      = 0x18
+	SIDVehicleMove    = 0x20
+	SIDCraftRequest   = 0x25
+	SIDEntityAction   = 0x28
+	SIDPlayerInput    = 0x29
+	SIDRecipeSettings = 0x2c // recipe_book_change_settings
+	SIDRecipeSeen     = 0x2d // recipe_book_seen_recipe
+	SIDNameItem       = 0x2e
+	SIDSelTrade       = 0x31
+	SIDCreativeSlot   = 0x36
+	SIDUseItem        = 0x3f
 )
 
 const inputSneakBit = 0x20 // player_input flags: sneak
@@ -250,6 +252,31 @@ func ParseRespawnReq(data []byte) (attach.RespawnReq, bool) {
 // opened the Statistics screen and wants the snapshot).
 func ParseStatsReq(data []byte) (attach.StatsReq, bool) {
 	return attach.StatsReq{}, len(data) > 0 && data[0] == 1
+}
+
+// ParseRecipeSettingChange decodes recipe_book_change_settings: book type
+// enum + open + filtering.
+func ParseRecipeSettingChange(data []byte) (attach.RecipeSettingChange, bool) {
+	br := bytes.NewReader(data)
+	book, err := protocol.ReadVarInt(br)
+	if err != nil || book < 0 || book > 3 {
+		return attach.RecipeSettingChange{}, false
+	}
+	open, e1 := br.ReadByte()
+	filter, e2 := br.ReadByte()
+	if e1 != nil || e2 != nil {
+		return attach.RecipeSettingChange{}, false
+	}
+	return attach.RecipeSettingChange{Book: book, Open: open != 0, Filter: filter != 0}, true
+}
+
+// ParseRecipeSeen decodes recipe_book_seen_recipe: one display id.
+func ParseRecipeSeen(data []byte) (attach.RecipeSeen, bool) {
+	id, err := protocol.ReadVarInt(bytes.NewReader(data))
+	if err != nil {
+		return attach.RecipeSeen{}, false
+	}
+	return attach.RecipeSeen{ID: id}, true
 }
 
 // ParseCreativeSlot decodes set_creative_mode_slot: slot + a FULL Slot, of
