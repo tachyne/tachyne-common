@@ -52,6 +52,37 @@ func PaintingVariantIndex(name string) int32 {
 	return -1
 }
 
+// PaintingVariantName is the inverse of PaintingVariantIndex ("" if out of
+// range).
+func PaintingVariantName(idx int32) string {
+	for _, reg := range SyncedRegistries {
+		if reg.ID != "minecraft:painting_variant" {
+			continue
+		}
+		if int(idx) < len(reg.Entries) {
+			return reg.Entries[idx]
+		}
+		extra := extra26xEntries["minecraft:painting_variant"]
+		if i := int(idx) - len(reg.Entries); i < len(extra) {
+			return extra[i]
+		}
+	}
+	return ""
+}
+
+// PaintingComponentID is the minecraft:painting/variant item-component type
+// id in a client version's registry (-1 when unknown) — the creative menu's
+// painting presets carry the variant in this component.
+func PaintingComponentID(version int32) int32 {
+	switch {
+	case version >= 770 && version <= 772:
+		return 89
+	case version == 776:
+		return 103
+	}
+	return -1
+}
+
 // FixPaintingMeta rewrites a painting's metadata for the client's version:
 // the PAINTING_VARIANT serializer id is renumbered, the holder value is
 // version-stable. The engine sends paintings a single metadata entry

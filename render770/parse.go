@@ -306,7 +306,7 @@ func ParseSignUpdate(data []byte) (attach.SignUpdate, bool) {
 
 // ParseCreativeSlot decodes set_creative_mode_slot: slot + a FULL Slot, of
 // which id+count are kept (components not needed world-side).
-func ParseCreativeSlot(data []byte) (attach.CreativeSlot, bool) {
+func ParseCreativeSlot(data []byte, clientProto int32) (attach.CreativeSlot, bool) {
 	br := bytes.NewReader(data)
 	slot, ok := readI16(br)
 	if !ok {
@@ -323,6 +323,34 @@ func ParseCreativeSlot(data []byte) (attach.CreativeSlot, bool) {
 			return attach.CreativeSlot{}, false
 		}
 		e.Item = attach.ItemStack{ID: item, Count: count}
+		e.PaintingVariant = creativePaintingVariant(br, clientProto)
 	}
 	return e, true
+}
+
+// creativePaintingVariant extracts the painting/variant component from a
+// creative slot's component list, if it is the first added component — the
+// creative menu's painting presets carry exactly that one. Components are
+// still in the CLIENT's id space (the back-translation renumbers only the
+// item id), so the component-type id is looked up per version. Anything
+// unexpected yields "" (the engine falls back to vanilla's random largest
+// fit).
+func creativePaintingVariant(br *bytes.Reader, clientProto int32) string {
+	compID := protocol.PaintingComponentID(clientProto)
+	if compID < 0 {
+		return ""
+	}
+	nAdd, err := protocol.ReadVarInt(br)
+	if err != nil || nAdd < 1 {
+		return ""
+	}
+	typ, err := protocol.ReadVarInt(br)
+	if err != nil || typ != compID {
+		return "" // a different component leads — unknown payload, stop
+	}
+	holder, err := protocol.ReadVarInt(br)
+	if err != nil || holder <= 0 {
+		return "" // 0 would be an inline definition — not a menu preset
+	}
+	return protocol.PaintingVariantName(holder - 1)
 }

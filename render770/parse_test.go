@@ -45,7 +45,7 @@ func TestParseSmallActions(t *testing.T) {
 	if _, ok := ParseUseEntity([]byte{5, 2}); ok {
 		t.Fatal("interact_at should not parse to an action")
 	}
-	if e, ok := ParseCreativeSlot(append([]byte{0, 44}, 2, 99)); !ok || e.Slot != 44 || e.Item.ID != 99 || e.Item.Count != 2 {
+	if e, ok := ParseCreativeSlot(append([]byte{0, 44}, 2, 99), 770); !ok || e.Slot != 44 || e.Item.ID != 99 || e.Item.Count != 2 {
 		t.Fatalf("creative slot: %+v %v", e, ok)
 	}
 	if e, ok := ParseRespawnReq([]byte{0}); !ok || e != (attach.RespawnReq{}) {

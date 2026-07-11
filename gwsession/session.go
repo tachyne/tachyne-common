@@ -1094,7 +1094,7 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 					b.Write(attach.MsgSignUpdate, e)
 				}
 			case render770.SIDCreativeSlot:
-				if e, ok := render770.ParseCreativeSlot(pkt.Data); ok {
+				if e, ok := render770.ParseCreativeSlot(pkt.Data, clientProto); ok {
 					b.Write(attach.MsgCreativeSlot, e)
 				}
 			case playServerClientInfo:

@@ -216,7 +216,11 @@ type RespawnReq struct{}
 
 type CreativeSlot struct {
 	Slot int32     `json:"slot"`
-	Item ItemStack `json:"item"` // id+count (components not needed world-side)
+	Item ItemStack `json:"item"` // id+count (most components not needed world-side)
+	// PaintingVariant is the painting/variant item component when the slot
+	// holds a creative-menu painting preset — vanilla places exactly that
+	// variant instead of the random largest-fit selection.
+	PaintingVariant string `json:"painting_variant,omitempty"`
 }
 
 // Survival-state frames (stage 3 of the domain-events refactor) — all
