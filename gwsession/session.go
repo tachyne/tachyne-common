@@ -134,6 +134,7 @@ const (
 	typeSlime       = 117
 	typeMagmaCube   = 80
 	typeCopperGolem = 28
+	typePainting    = 93
 )
 
 // clientConn serializes writes to the Minecraft client. tr is the per-
@@ -685,6 +686,11 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 					// clients that have the serializer (774+), else it type-mismatches.
 					if etype == typeCopperGolem {
 						p.Body = protocol.FixCopperGolemMeta(clientProto, p.Body)
+					}
+					// The painting variant's serializer id renumbered in 26.x
+					// (COMPOUND_TAG removed, sound-variant serializers added).
+					if etype == typePainting {
+						p.Body = protocol.FixPaintingMeta(clientProto, p.Body)
 					}
 					cc.send(p.ID, p.Body)
 				}

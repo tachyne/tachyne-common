@@ -1,0 +1,78 @@
+package protocol
+
+// paintingmeta.go — the painting's variant rides entity metadata as a
+// registry Holder (VarInt id+1; 0 would mean an inline definition). The
+// registry is the synced minecraft:painting_variant list, whose order WE
+// control and only ever append to — so a variant's holder id is identical on
+// every client version. Only the SERIALIZER id shifts: canonical 770 says
+// 30; 26.x dropped COMPOUND_TAG and inserted the sound-variant serializers,
+// landing PAINTING_VARIANT on 34 (both from the vanilla
+// EntityDataSerializers registration order).
+
+import "bytes"
+
+// PaintingVariantSerializer770 is the canonical (1.21.5) PAINTING_VARIANT
+// entity-metadata serializer id the engine composes.
+const PaintingVariantSerializer770 = 30
+
+// paintingVariantSerializer maps a client protocol version to its
+// PAINTING_VARIANT serializer id when it differs from canonical.
+var paintingVariantSerializer = map[int32]int32{776: 34}
+
+// PaintingVariantIndex returns a variant's holder id: its index in the
+// synced painting_variant registry (-1 if unknown). The 26.x-appended
+// entries follow the base list — appended-only, so base ids are identical
+// on every version (an appended variant is only valid on 26.x clients; the
+// engine's canonical-1.21.11 placeable set never selects one).
+func PaintingVariantIndex(name string) int32 {
+	for _, reg := range SyncedRegistries {
+		if reg.ID != "minecraft:painting_variant" {
+			continue
+		}
+		for i, e := range reg.Entries {
+			if e == name || e == "minecraft:"+name {
+				return int32(i)
+			}
+		}
+		for i, e := range extra26xEntries["minecraft:painting_variant"] {
+			if e == name || e == "minecraft:"+name {
+				return int32(len(reg.Entries) + i)
+			}
+		}
+	}
+	return -1
+}
+
+// FixPaintingMeta rewrites a painting's metadata for the client's version:
+// the PAINTING_VARIANT serializer id is renumbered, the holder value is
+// version-stable. The engine sends paintings a single metadata entry
+// (index 8, the variant); anything unexpected returns the body untouched.
+func FixPaintingMeta(version int32, body []byte) []byte {
+	serID, ok := paintingVariantSerializer[version]
+	if !ok {
+		return body
+	}
+	r := bytes.NewReader(body)
+	eid, err := ReadVarInt(r)
+	if err != nil {
+		return body
+	}
+	idx, err1 := r.ReadByte()
+	typ, err2 := ReadVarInt(r)
+	if err1 != nil || err2 != nil || typ != PaintingVariantSerializer770 {
+		return body
+	}
+	holder, err := ReadVarInt(r)
+	if err != nil {
+		return body
+	}
+	end, err := r.ReadByte()
+	if err != nil || end != 0xff || r.Len() != 0 {
+		return body
+	}
+	out := AppendVarInt(nil, eid)
+	out = append(out, idx)
+	out = AppendVarInt(out, serID)
+	out = AppendVarInt(out, holder)
+	return append(out, 0xff)
+}
