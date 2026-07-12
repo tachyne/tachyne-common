@@ -11,7 +11,7 @@ const invSlots = 36
 // §5 for the field-selection rules.
 //
 // v1 losses (documented, "at most as lossy as a relog"): item name/potion are
-// not carried (the [4]int32 pack drops them, as relog does today); fine-grained
+// not carried (the row pack drops them, as relog does today); fine-grained
 // tick cooldowns (attack/bow/shield/grace) reset on the destination pod's clock;
 // anti-cheat counters reset. Effects and fire are carried because they store
 // remaining time directly, not an absolute per-pod tick.
@@ -47,9 +47,9 @@ type PlayerState struct {
 	Effects []EffectState `json:"effects"`
 
 	// Inventory — the engine's [item,count,dmg,ench] pack, savedInv-compatible.
-	Slots   [invSlots][4]int32 `json:"slots"`
-	Armor   [4][4]int32        `json:"armor"`
-	Offhand [4]int32           `json:"offhand"`
+	Slots   [invSlots][5]int32 `json:"slots"`
+	Armor   [4][5]int32        `json:"armor"`
+	Offhand [5]int32           `json:"offhand"`
 
 	BedSpawn *[3]int32 `json:"bed_spawn,omitempty"` // nil = no bed spawn set
 }
