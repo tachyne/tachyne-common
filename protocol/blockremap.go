@@ -179,6 +179,15 @@ func remapParticleID(version, id int32) int32 {
 		case version >= 773:
 			return 23
 		}
+	case 55: // minecraft:note
+		switch {
+		case version >= 776:
+			return 65
+		case version >= 775:
+			return 58
+		case version >= 773:
+			return 56
+		}
 	case 56: // minecraft:poof
 		switch {
 		case version >= 776:
