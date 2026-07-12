@@ -865,6 +865,7 @@ const (
 	componentCustomName      = 5  // minecraft:custom_name (NBT text), canonical
 	componentLore            = 8  // minecraft:lore (list of NBT texts), canonical
 	componentStoredEnch      = 34 // minecraft:stored_enchantments (books), canonical
+	componentMapID           = 37 // minecraft:map_id (varint), canonical
 )
 
 // enchCompID is the minecraft:enchantments component id at a client version.
@@ -903,6 +904,18 @@ func loreCompID(version int32) int32 {
 	return componentLore
 }
 
+// mapIDCompID: 37 through 1.21.9 (770-773), 44 at 1.21.11 (774-775), 46 at
+// 26.2 (776) — pinned against the per-version datagen registry reports.
+func mapIDCompID(version int32) int32 {
+	switch {
+	case version >= 776:
+		return 46
+	case version >= 774:
+		return 44
+	}
+	return componentMapID
+}
+
 // copyFullSlot reads a complete Slot and writes it with the item ID remapped.
 // Components are supported ONLY for the whitelisted ids above (all our encoder
 // ever sends); anything richer returns false so the caller leaves the packet
@@ -916,11 +929,13 @@ func copyFullSlot(r *bytes.Reader, out *[]byte, remap func(int32) int32, version
 	storedIn, storedOut := int32(componentStoredEnch), storedEnchCompID(version)
 	nameIn, nameOut := int32(componentCustomName), customNameCompID(version)
 	loreIn, loreOut := int32(componentLore), loreCompID(version)
+	mapIn, mapOut := int32(componentMapID), mapIDCompID(version)
 	if serverbound {
 		enchIn, enchOut = enchOut, enchIn
 		storedIn, storedOut = storedOut, storedIn
 		nameIn, nameOut = nameOut, nameIn
 		loreIn, loreOut = loreOut, loreIn
+		mapIn, mapOut = mapOut, mapIn
 	}
 	count, err := ReadVarInt(r)
 	if err != nil {
@@ -948,6 +963,15 @@ func copyFullSlot(r *bytes.Reader, out *[]byte, remap func(int32) int32, version
 			return false
 		}
 		switch cid {
+		case mapIn:
+			// map_id: a single varint. Same shape as damage, but the
+			// component id itself renumbers across versions.
+			val, err := ReadVarInt(r)
+			if err != nil {
+				return false
+			}
+			*out = AppendVarInt(*out, mapOut)
+			*out = AppendVarInt(*out, val)
 		case componentDamage, componentMaxDamage:
 			val, err := ReadVarInt(r)
 			if err != nil {

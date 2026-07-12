@@ -737,6 +737,42 @@ const (
 	MsgSignUpdate = 0x62 // gw→w: player submitted 4 raw lines for one side
 )
 
+// MsgMapData mirrors the vanilla map update flow (map_item_data): per-map
+// color patches (the dirty rectangle a holder's tracker accumulated) plus
+// the live decoration set (player markers, frames, banners). The engine
+// owns MapItemSavedData-shaped state and per-holder dirty tracking; the
+// frame is one holder's update.
+const MsgMapData = 0x63 // w→gw: map color patch + decorations for one viewer
+
+// MapDecoration is one marker on a map. Type is the map_decoration_type
+// registry id (player=0, frame=1, the 16 banner colors, …); X/Z are map
+// pixel coords ×2 (-128..127, vanilla's packed form); Rot is 0-15.
+type MapDecoration struct {
+	Type int32  `json:"type"`
+	X    int8   `json:"x"`
+	Z    int8   `json:"z"`
+	Rot  uint8  `json:"rot"`
+	Name string `json:"name,omitempty"`
+}
+
+// MapData updates one map for one viewer. When Width is 0 there is no color
+// patch (decorations-only update); Colors is the patch rectangle row-major
+// (Width×Height packed color bytes, vanilla id<<2|brightness). Decorations
+// nil means "no decoration change"; an empty non-nil slice clears them.
+type MapData struct {
+	EID      int32           `json:"eid"` // the viewing player
+	MapID    int32           `json:"map_id"`
+	Scale    int8            `json:"scale"`
+	Locked   bool            `json:"locked,omitempty"`
+	Decor    []MapDecoration `json:"decor,omitempty"`
+	HasDecor bool            `json:"has_decor,omitempty"`
+	X        uint8           `json:"x,omitempty"`
+	Y        uint8           `json:"y,omitempty"`
+	Width    uint8           `json:"width,omitempty"`
+	Height   uint8           `json:"height,omitempty"`
+	Colors   []byte          `json:"colors,omitempty"`
+}
+
 // SignSide mirrors vanilla SignText: four plain-text message lines, the
 // applied dye color (name; "" = black, the default) and the glow-ink flag.
 type SignSide struct {

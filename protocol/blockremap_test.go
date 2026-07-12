@@ -690,3 +690,48 @@ func TestLoreRenumbered(t *testing.T) {
 	check(775, 6, 11)
 	check(776, 6, 11)
 }
+
+// map_id renumbers 37 (770-773) → 44 (1.21.11/774+) → 46 (26.2/776); the
+// varint payload rides through unchanged. Pinned against the per-version
+// datagen registry reports like the rest of the component ids.
+func TestMapIDRenumbered(t *testing.T) {
+	slot := AppendVarInt(nil, 1)    // count
+	slot = AppendVarInt(slot, 1104) // canonical filled_map
+	slot = AppendVarInt(slot, 1)    // one component
+	slot = AppendVarInt(slot, 0)
+	slot = AppendVarInt(slot, 37) // map_id, canonical
+	slot = AppendVarInt(slot, 9)  // the map number
+	body := AppendVarInt(nil, 1)
+	body = AppendVarInt(body, 7)
+	body = append(body, 0x00, 0x05)
+	body = append(body, slot...)
+
+	check := func(version, wantID int32) {
+		out := remapSetSlot(version, body)
+		r := bytes.NewReader(out)
+		ReadVarInt(r)
+		ReadVarInt(r)
+		var s2 [2]byte
+		io.ReadFull(r, s2[:])
+		ReadVarInt(r)           // count
+		ReadVarInt(r)           // item (remapped)
+		ReadVarInt(r)           // addC
+		ReadVarInt(r)           // remC
+		cid, _ := ReadVarInt(r) // map_id component id
+		if cid != wantID {
+			t.Fatalf("v%d map_id component = %d, want %d", version, cid, wantID)
+		}
+		val, _ := ReadVarInt(r)
+		if val != 9 {
+			t.Fatalf("v%d map number = %d, want 9", version, val)
+		}
+		if r.Len() != 0 {
+			t.Fatalf("v%d: %d trailing bytes", version, r.Len())
+		}
+	}
+	check(771, 37)
+	check(773, 37)
+	check(774, 44)
+	check(775, 44)
+	check(776, 46)
+}

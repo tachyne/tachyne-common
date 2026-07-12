@@ -912,6 +912,12 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 					p := render770.SignData(e)
 					cc.send(p.ID, p.Body)
 				}
+			case attach.MsgMapData:
+				var e attach.MapData
+				if json.Unmarshal(payload, &e) == nil {
+					p := render770.MapItemData(e)
+					cc.send(p.ID, p.Body)
+				}
 			case attach.MsgSignEditor:
 				var e attach.SignEditor
 				if json.Unmarshal(payload, &e) == nil {
