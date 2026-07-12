@@ -135,6 +135,8 @@ const (
 	typeMagmaCube   = 80
 	typeCopperGolem = 28
 	typePainting    = 93
+	typeItemFrame   = 73
+	typeGlowFrame   = 60
 )
 
 // clientConn serializes writes to the Minecraft client. tr is the per-
@@ -691,6 +693,11 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 					// (COMPOUND_TAG removed, sound-variant serializers added).
 					if etype == typePainting {
 						p.Body = protocol.FixPaintingMeta(clientProto, p.Body)
+					}
+					// Item frames: 26.x's inserted DIRECTION shifts the
+					// item/rotation entry indices by one.
+					if etype == typeItemFrame || etype == typeGlowFrame {
+						p.Body = protocol.FixItemFrameMeta(clientProto, p.Body)
 					}
 					cc.send(p.ID, p.Body)
 				}
