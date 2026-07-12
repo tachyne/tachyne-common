@@ -630,3 +630,63 @@ func TestStoredEnchAndNameRenumbered(t *testing.T) {
 	check(775, 41, 6)
 	check(776, 42, 6)
 }
+
+// TestLoreRenumbered pins the minecraft:lore component id per client version
+// (datagen registry reports: 8 through 1.21.9, 11 from 1.21.11) and the
+// name+lore multi-component slot shape the plugin UI emits.
+func TestLoreRenumbered(t *testing.T) {
+	slot := AppendVarInt(nil, 1)   // count
+	slot = AppendVarInt(slot, 967) // canonical item id
+	slot = AppendVarInt(slot, 2)   // two components
+	slot = AppendVarInt(slot, 0)
+	slot = AppendVarInt(slot, 5) // custom_name: TAG_String "Hi"
+	slot = append(slot, 0x08, 0x00, 0x02, 'H', 'i')
+	slot = AppendVarInt(slot, 8) // lore: two TAG_String lines
+	slot = AppendVarInt(slot, 2)
+	slot = append(slot, 0x08, 0x00, 0x02, 'l', '1')
+	slot = append(slot, 0x08, 0x00, 0x03, 'l', 'n', '2')
+	body := AppendVarInt(nil, 1)
+	body = AppendVarInt(body, 7)
+	body = append(body, 0x00, 0x05)
+	body = append(body, slot...)
+
+	check := func(version, wantName, wantLore int32) {
+		out := remapSetSlot(version, body)
+		r := bytes.NewReader(out)
+		ReadVarInt(r)
+		ReadVarInt(r)
+		var s2 [2]byte
+		io.ReadFull(r, s2[:])
+		ReadVarInt(r)           // count
+		ReadVarInt(r)           // item (remapped)
+		ReadVarInt(r)           // addC
+		ReadVarInt(r)           // remC
+		nid, _ := ReadVarInt(r) // custom_name id
+		if nid != wantName {
+			t.Fatalf("v%d custom_name = %d, want %d", version, nid, wantName)
+		}
+		var tagLen [3]byte // TAG_String "Hi"
+		io.ReadFull(r, tagLen[:])
+		var hi [2]byte
+		io.ReadFull(r, hi[:])
+		lid, _ := ReadVarInt(r)
+		if lid != wantLore {
+			t.Fatalf("v%d lore = %d, want %d", version, lid, wantLore)
+		}
+		n, _ := ReadVarInt(r)
+		if n != 2 {
+			t.Fatalf("v%d lore count = %d, want 2", version, n)
+		}
+		// First line survives byte-exact.
+		var l1 [5]byte
+		io.ReadFull(r, l1[:])
+		if string(l1[3:]) != "l1" {
+			t.Fatalf("v%d lore line 1 = %q", version, l1)
+		}
+	}
+	check(771, 5, 8)
+	check(773, 5, 8)
+	check(774, 6, 11)
+	check(775, 6, 11)
+	check(776, 6, 11)
+}

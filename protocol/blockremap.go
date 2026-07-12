@@ -863,6 +863,7 @@ const (
 	componentEnchantments    = 10 // minecraft:enchantments, canonical (770-773)
 	componentEnchantments774 = 13 // …at 1.21.11 / 26.1 / 26.2 (774+)
 	componentCustomName      = 5  // minecraft:custom_name (NBT text), canonical
+	componentLore            = 8  // minecraft:lore (list of NBT texts), canonical
 	componentStoredEnch      = 34 // minecraft:stored_enchantments (books), canonical
 )
 
@@ -893,6 +894,15 @@ func customNameCompID(version int32) int32 {
 	return componentCustomName
 }
 
+// loreCompID: 8 through 1.21.9 (770-773), 11 from 1.21.11 (774+) — pinned
+// against the per-version datagen registry reports, same source as the rest.
+func loreCompID(version int32) int32 {
+	if version >= 774 {
+		return 11
+	}
+	return componentLore
+}
+
 // copyFullSlot reads a complete Slot and writes it with the item ID remapped.
 // Components are supported ONLY for the whitelisted ids above (all our encoder
 // ever sends); anything richer returns false so the caller leaves the packet
@@ -905,10 +915,12 @@ func copyFullSlot(r *bytes.Reader, out *[]byte, remap func(int32) int32, version
 	enchIn, enchOut := int32(componentEnchantments), enchCompID(version)
 	storedIn, storedOut := int32(componentStoredEnch), storedEnchCompID(version)
 	nameIn, nameOut := int32(componentCustomName), customNameCompID(version)
+	loreIn, loreOut := int32(componentLore), loreCompID(version)
 	if serverbound {
 		enchIn, enchOut = enchOut, enchIn
 		storedIn, storedOut = storedOut, storedIn
 		nameIn, nameOut = nameOut, nameIn
+		loreIn, loreOut = loreOut, loreIn
 	}
 	count, err := ReadVarInt(r)
 	if err != nil {
@@ -925,7 +937,7 @@ func copyFullSlot(r *bytes.Reader, out *[]byte, remap func(int32) int32, version
 	*out = AppendVarInt(*out, remap(item))
 	addC, e1 := ReadVarInt(r)
 	remC, e2 := ReadVarInt(r)
-	if e1 != nil || e2 != nil || addC < 0 || addC > 3 || remC != 0 {
+	if e1 != nil || e2 != nil || addC < 0 || addC > 6 || remC != 0 {
 		return false // richer components than we ever send — don't guess
 	}
 	*out = AppendVarInt(*out, addC)
@@ -968,26 +980,50 @@ func copyFullSlot(r *bytes.Reader, out *[]byte, remap func(int32) int32, version
 		case nameIn:
 			// custom_name: an NBT text component. We only ever emit a nameless
 			// TAG_String (0x08, u16 length, bytes) — anything else bails.
-			tag, err := r.ReadByte()
-			if err != nil || tag != 0x08 {
-				return false
-			}
-			var ln [2]byte
-			if _, err := io.ReadFull(r, ln[:]); err != nil {
-				return false
-			}
-			strLen := int(ln[0])<<8 | int(ln[1])
-			str := make([]byte, strLen)
-			if _, err := io.ReadFull(r, str); err != nil {
-				return false
-			}
 			*out = AppendVarInt(*out, nameOut)
-			*out = append(*out, 0x08, ln[0], ln[1])
-			*out = append(*out, str...)
+			if !copyNBTString(r, out) {
+				return false
+			}
+		case loreIn:
+			// lore: a varint-counted list of NBT text components, each emitted
+			// by us as a nameless TAG_String — same element shape as custom_name.
+			n, err := ReadVarInt(r)
+			if err != nil || n < 0 || n > 32 {
+				return false
+			}
+			*out = AppendVarInt(*out, loreOut)
+			*out = AppendVarInt(*out, n)
+			for j := int32(0); j < n; j++ {
+				if !copyNBTString(r, out) {
+					return false
+				}
+			}
 		default:
 			return false
 		}
 	}
+	return true
+}
+
+// copyNBTString copies one nameless TAG_String (0x08, u16 length, bytes) —
+// the shape of every text component our encoder emits (custom_name, lore
+// elements). Anything else bails so the caller leaves the packet untouched.
+func copyNBTString(r *bytes.Reader, out *[]byte) bool {
+	tag, err := r.ReadByte()
+	if err != nil || tag != 0x08 {
+		return false
+	}
+	var ln [2]byte
+	if _, err := io.ReadFull(r, ln[:]); err != nil {
+		return false
+	}
+	strLen := int(ln[0])<<8 | int(ln[1])
+	str := make([]byte, strLen)
+	if _, err := io.ReadFull(r, str); err != nil {
+		return false
+	}
+	*out = append(*out, 0x08, ln[0], ln[1])
+	*out = append(*out, str...)
 	return true
 }
 
