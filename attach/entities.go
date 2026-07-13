@@ -773,6 +773,17 @@ type MapData struct {
 	Colors   []byte          `json:"colors,omitempty"`
 }
 
+// MsgSetBeacon is the beacon menu's confirm click (serverbound
+// set_beacon_effect): the chosen powers, encoded like the beacon menu's
+// container properties — mob_effect registry id + 1, 0 = none.
+const MsgSetBeacon = 0x64 // gw→w: beacon effect choice
+
+// SetBeacon carries the player's beacon power selection.
+type SetBeacon struct {
+	Primary   int32 `json:"primary"`             // mob_effect id + 1; 0 = none
+	Secondary int32 `json:"secondary,omitempty"` // mob_effect id + 1; 0 = none
+}
+
 // SignSide mirrors vanilla SignText: four plain-text message lines, the
 // applied dye color (name; "" = black, the default) and the glow-ink flag.
 type SignSide struct {

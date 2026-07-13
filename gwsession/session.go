@@ -1084,6 +1084,10 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 				if e, ok := render770.ParseEnchant(pkt.Data); ok {
 					b.Write(attach.MsgEnchant, e)
 				}
+			case render770.SIDSetBeacon:
+				if e, ok := render770.ParseSetBeacon(pkt.Data); ok {
+					b.Write(attach.MsgSetBeacon, e)
+				}
 			case render770.SIDEntityAction:
 				if e, ok := render770.ParsePlayerAction(pkt.Data); ok {
 					b.Write(attach.MsgPlayerAction, e)

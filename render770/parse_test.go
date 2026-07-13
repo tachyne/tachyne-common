@@ -57,6 +57,26 @@ func TestParseSmallActions(t *testing.T) {
 	}
 }
 
+// TestParseSetBeacon: two Optional<Holder<MobEffect>> — presence bool +
+// mob_effect registry id VarInt. The frame carries id+1 (0 = none).
+func TestParseSetBeacon(t *testing.T) {
+	// primary speed (id 0), secondary regeneration (id 9)
+	if e, ok := ParseSetBeacon([]byte{1, 0, 1, 9}); !ok || e.Primary != 1 || e.Secondary != 10 {
+		t.Fatalf("both: %+v %v", e, ok)
+	}
+	// primary haste (id 2), no secondary
+	if e, ok := ParseSetBeacon([]byte{1, 2, 0}); !ok || e.Primary != 3 || e.Secondary != 0 {
+		t.Fatalf("primary only: %+v %v", e, ok)
+	}
+	// neither (clearing the selection)
+	if e, ok := ParseSetBeacon([]byte{0, 0}); !ok || e != (attach.SetBeacon{}) {
+		t.Fatalf("none: %+v %v", e, ok)
+	}
+	if _, ok := ParseSetBeacon([]byte{1}); ok {
+		t.Fatal("truncated body must not parse")
+	}
+}
+
 // TestParseChunkBatchReceived: the body is one big-endian float32 (desired
 // chunks per tick). Oracle bytes: 25.0f = 0x41C80000.
 func TestParseChunkBatchReceived(t *testing.T) {

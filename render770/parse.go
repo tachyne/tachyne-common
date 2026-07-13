@@ -31,6 +31,7 @@ const (
 	SIDRecipeSeen     = 0x2d // recipe_book_seen_recipe
 	SIDNameItem       = 0x2e
 	SIDSelTrade       = 0x31
+	SIDSetBeacon      = 0x32 // set_beacon_effect (the menu's confirm click)
 	SIDCreativeSlot   = 0x36
 	SIDSignUpdate     = 0x3a // update_sign (sign edit GUI result)
 	SIDUseItem        = 0x3f
@@ -229,6 +230,28 @@ func ParseEnchant(data []byte) (attach.Enchant, bool) {
 		return attach.Enchant{}, false
 	}
 	return attach.Enchant{Button: btn}, true
+}
+
+// ParseSetBeacon decodes set_beacon_effect: two Optional<Holder<MobEffect>>
+// (presence bool + mob_effect registry id each). The attach frame carries
+// them in the beacon menu's property encoding: id + 1, 0 = none.
+func ParseSetBeacon(data []byte) (attach.SetBeacon, bool) {
+	br := bytes.NewReader(data)
+	var out attach.SetBeacon
+	for _, dst := range []*int32{&out.Primary, &out.Secondary} {
+		has, err := br.ReadByte()
+		if err != nil {
+			return attach.SetBeacon{}, false
+		}
+		if has != 0 {
+			id, err := protocol.ReadVarInt(br)
+			if err != nil {
+				return attach.SetBeacon{}, false
+			}
+			*dst = id + 1
+		}
+	}
+	return out, true
 }
 
 // ParsePlayerAction decodes player_command (entityId + action).
