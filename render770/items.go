@@ -40,15 +40,31 @@ func AppendItemStack(b []byte, st attach.ItemStack) []byte {
 // that's what clears a piece the viewer previously saw.
 func Equipment(e attach.Equipment) Packet {
 	b := protocol.AppendVarInt(nil, e.EID)
-	for slot, st := range e.Slots {
+	last := 6 // players never carry the saddle slot
+	if e.SendSaddle {
+		last = 7
+	}
+	for slot := 0; slot <= last; slot++ {
 		marker := byte(slot)
-		if slot < len(e.Slots)-1 {
+		if slot < last {
 			marker |= 0x80 // top bit: another entry follows
 		}
 		b = append(b, marker)
-		b = AppendItemStack(b, st)
+		b = AppendItemStack(b, e.Slots[slot])
 	}
 	return Packet{IDSetEquipment, b}
+}
+
+// IDOpenHorseWindow is the canonical-770 clientbound open_horse_window id.
+const IDOpenHorseWindow = 0x23
+
+// HorseScreen renders open_horse_window: BYTE window id (unlike open_screen's
+// varint), varint chest columns, i32 mount entity id.
+func HorseScreen(e attach.HorseScreen) Packet {
+	b := []byte{byte(e.ID)}
+	b = protocol.AppendVarInt(b, e.Columns)
+	b = protocol.AppendI32(b, e.EID)
+	return Packet{IDOpenHorseWindow, b}
 }
 
 // EntityMeta renders set_entity_metadata from the opaque canonical list.

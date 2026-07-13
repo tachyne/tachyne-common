@@ -295,11 +295,15 @@ const (
 	EquipChest    = 4
 	EquipHead     = 5
 	EquipBody     = 6 // 1.20.5+ body slot: wolf/horse armor, happy-ghast harness
+	EquipSaddle   = 7 // 1.21.5+ saddle slot (mounts; replaced the old flag bit)
 )
 
 type Equipment struct {
 	EID   int32        `json:"eid"`
-	Slots [7]ItemStack `json:"slots"` // indexed by the Equip* constants (incl. body)
+	Slots [8]ItemStack `json:"slots"` // indexed by the Equip* constants (incl. body/saddle)
+	// SendSaddle includes slot 7 on the wire even when empty (mount
+	// broadcasts need it to CLEAR a removed saddle; player loadouts omit it).
+	SendSaddle bool `json:"send_saddle,omitempty"`
 }
 
 // EntityMeta carries an entity's appearance metadata (poses, fire, baby,
@@ -309,6 +313,19 @@ type Equipment struct {
 type EntityMeta struct {
 	EID  int32  `json:"eid"`
 	Meta []byte `json:"meta"` // canonical entity-metadata list, terminator included
+}
+
+// MsgHorseScreen opens a mount's inventory screen (vanilla
+// horse_screen_open): its own packet, not open_screen — the client lays the
+// window out from the chest-column count and the mount's entity.
+const MsgHorseScreen = 0x67 // w→gw
+
+// HorseScreen opens the mount inventory window. Columns is the chest grid
+// width (0 = no chest; llama strength or 5 for donkeys/mules).
+type HorseScreen struct {
+	ID      int32 `json:"id"` // window id (byte-ranged)
+	Columns int32 `json:"columns"`
+	EID     int32 `json:"eid"`
 }
 
 type WindowOpen struct {
