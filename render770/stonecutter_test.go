@@ -16,8 +16,24 @@ func TestUpdateRecipesReparse(t *testing.T) {
 			t.Fatalf("id 0x%x", pkt.ID)
 		}
 		br := bytes.NewReader(pkt.Body)
-		if n, _ := protocol.ReadVarInt(br); n != 0 {
-			t.Fatalf("v%d: itemSets %d, want 0", version, n)
+		nsets, _ := protocol.ReadVarInt(br)
+		if nsets != 3 {
+			t.Fatalf("v%d: itemSets %d, want 3 (smithing)", version, nsets)
+		}
+		for i := int32(0); i < nsets; i++ {
+			key, err := protocol.ReadString(br)
+			if err != nil || key[:19] != "minecraft:smithing_" {
+				t.Fatalf("v%d: set key %q (%v)", version, key, err)
+			}
+			cnt, _ := protocol.ReadVarInt(br)
+			if cnt <= 0 {
+				t.Fatalf("v%d: set %q empty", version, key)
+			}
+			for j := int32(0); j < cnt; j++ {
+				if _, err := protocol.ReadVarInt(br); err != nil {
+					t.Fatalf("v%d: set %q item %d: %v", version, key, j, err)
+				}
+			}
 		}
 		n, _ := protocol.ReadVarInt(br)
 		if int(n) != len(protocol.StonecuttingRecipes) {

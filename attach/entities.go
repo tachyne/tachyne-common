@@ -797,6 +797,25 @@ type CampfireItems struct {
 	Items [4]string `json:"items"`
 }
 
+// MsgBannerPatterns syncs a placed banner's pattern layers to viewers (the
+// vanilla update tag; base color is the block's own).
+const MsgBannerPatterns = 0x66 // w→gw
+
+// BannerLayer is one pattern layer: registry name + dye color name.
+type BannerLayer struct {
+	Pattern string `json:"pattern"`
+	Color   string `json:"color"`
+}
+
+// BannerPatterns is one placed banner's layers in the receiving player's
+// dimension (≤6; empty clears).
+type BannerPatterns struct {
+	X      int32         `json:"x"`
+	Y      int32         `json:"y"`
+	Z      int32         `json:"z"`
+	Layers []BannerLayer `json:"layers,omitempty"`
+}
+
 // SignSide mirrors vanilla SignText: four plain-text message lines, the
 // applied dye color (name; "" = black, the default) and the glow-ink flag.
 type SignSide struct {

@@ -188,24 +188,34 @@ var (
 // contents. Presence is what the enchantment registry's freeze validates;
 // clients ignore tag names they don't know, so the union is safe. Registries
 // 1.21.5 clients don't have (timeline, sound variants, …) are never declared.
+// legacyContentRegistries are the registries whose LEGACY (770-774) tags
+// carry real memberships: client-side mechanics read them. The loom computes
+// its selectable pattern list from the banner_pattern tags. Ids resolve
+// against the declared dynamic-registry order (SyncedRegistries), which is
+// identical on every version we serve.
+var legacyContentRegistries = map[string]bool{"minecraft:banner_pattern": true}
+
 func tagsLegacy() []byte {
 	tagsLegacyOnce.Do(func() {
 		names := map[string][]string{}
+		contents := map[string]map[string][]string{}
 		var order []string
 		seen := map[string]map[string]bool{}
-		add := func(registry, name string) {
+		add := func(registry, name string, entries []string) {
 			if seen[registry] == nil {
 				seen[registry] = map[string]bool{}
+				contents[registry] = map[string][]string{}
 				order = append(order, registry)
 			}
 			if !seen[registry][name] {
 				seen[registry][name] = true
 				names[registry] = append(names[registry], name)
+				contents[registry][name] = entries
 			}
 		}
 		for _, reg := range tags1215Data {
 			for _, t := range reg.tags {
-				add(reg.registry, t.name)
+				add(reg.registry, t.name, t.entries)
 			}
 		}
 		for _, reg := range tags26xData {
@@ -213,16 +223,24 @@ func tagsLegacy() []byte {
 				continue // registry a 1.21.5-era client can't resolve — skip
 			}
 			for _, t := range reg.tags {
-				add(reg.registry, t.name)
+				add(reg.registry, t.name, nil)
 			}
 		}
+		dyn := dynamic26xIndex()
 		b := AppendVarInt(nil, int32(len(order)))
 		for _, registry := range order {
 			b = AppendString(b, registry)
 			b = AppendVarInt(b, int32(len(names[registry])))
 			for _, n := range names[registry] {
 				b = AppendString(b, n)
-				ids := legacyFluidTag(registry, n) // fluids carry real ids; all else empty
+				ids := legacyFluidTag(registry, n) // fluids carry real ids
+				if ids == nil && legacyContentRegistries[registry] {
+					for _, e := range contents[registry][n] {
+						if id, ok := dyn[registry][e]; ok {
+							ids = append(ids, id) // unknown names dropped, never guessed
+						}
+					}
+				}
 				b = AppendVarInt(b, int32(len(ids)))
 				for _, id := range ids {
 					b = AppendVarInt(b, id)

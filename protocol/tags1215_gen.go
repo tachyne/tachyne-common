@@ -3,20 +3,21 @@
 package protocol
 
 // tags1215Data is every vanilla 1.21.5 tag NAME by registry (contents
-// intentionally empty — presence is what registry freeze validates).
+// intentionally empty — presence is what registry freeze validates —
+// except CONTENT_REGISTRIES, whose real memberships clients consume).
 var tags1215Data = []tagReg26x{
 	{registry: "minecraft:banner_pattern", tags: []tag26x{
-		{name: "minecraft:no_item_required"},
-		{name: "minecraft:pattern_item/bordure_indented"},
-		{name: "minecraft:pattern_item/creeper"},
-		{name: "minecraft:pattern_item/field_masoned"},
-		{name: "minecraft:pattern_item/flow"},
-		{name: "minecraft:pattern_item/flower"},
-		{name: "minecraft:pattern_item/globe"},
-		{name: "minecraft:pattern_item/guster"},
-		{name: "minecraft:pattern_item/mojang"},
-		{name: "minecraft:pattern_item/piglin"},
-		{name: "minecraft:pattern_item/skull"},
+		{name: "minecraft:no_item_required", entries: []string{"minecraft:square_bottom_left", "minecraft:square_bottom_right", "minecraft:square_top_left", "minecraft:square_top_right", "minecraft:stripe_bottom", "minecraft:stripe_top", "minecraft:stripe_left", "minecraft:stripe_right", "minecraft:stripe_center", "minecraft:stripe_middle", "minecraft:stripe_downright", "minecraft:stripe_downleft", "minecraft:small_stripes", "minecraft:cross", "minecraft:straight_cross", "minecraft:triangle_bottom", "minecraft:triangle_top", "minecraft:triangles_bottom", "minecraft:triangles_top", "minecraft:diagonal_left", "minecraft:diagonal_up_right", "minecraft:diagonal_up_left", "minecraft:diagonal_right", "minecraft:circle", "minecraft:rhombus", "minecraft:half_vertical", "minecraft:half_horizontal", "minecraft:half_vertical_right", "minecraft:half_horizontal_bottom", "minecraft:border", "minecraft:gradient", "minecraft:gradient_up"}},
+		{name: "minecraft:pattern_item/bordure_indented", entries: []string{"minecraft:curly_border"}},
+		{name: "minecraft:pattern_item/creeper", entries: []string{"minecraft:creeper"}},
+		{name: "minecraft:pattern_item/field_masoned", entries: []string{"minecraft:bricks"}},
+		{name: "minecraft:pattern_item/flow", entries: []string{"minecraft:flow"}},
+		{name: "minecraft:pattern_item/flower", entries: []string{"minecraft:flower"}},
+		{name: "minecraft:pattern_item/globe", entries: []string{"minecraft:globe"}},
+		{name: "minecraft:pattern_item/guster", entries: []string{"minecraft:guster"}},
+		{name: "minecraft:pattern_item/mojang", entries: []string{"minecraft:mojang"}},
+		{name: "minecraft:pattern_item/piglin", entries: []string{"minecraft:piglin"}},
+		{name: "minecraft:pattern_item/skull", entries: []string{"minecraft:skull"}},
 	}},
 	{registry: "minecraft:block", tags: []tag26x{
 		{name: "minecraft:acacia_logs"},

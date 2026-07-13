@@ -46,10 +46,12 @@ type PlayerState struct {
 
 	Effects []EffectState `json:"effects"`
 
-	// Inventory — the engine's [item,count,dmg,ench] pack, savedInv-compatible.
-	Slots   [invSlots][5]int32 `json:"slots"`
-	Armor   [4][5]int32        `json:"armor"`
-	Offhand [5]int32           `json:"offhand"`
+	// Inventory — the engine's stack pack, savedInv-compatible:
+	// [item, count, dmg, enchPack, mapID, 6×bannerLayer, trimPack].
+	// Old shorter rows zero-fill on decode (JSON arrays).
+	Slots   [invSlots][12]int32 `json:"slots"`
+	Armor   [4][12]int32        `json:"armor"`
+	Offhand [12]int32           `json:"offhand"`
 
 	BedSpawn *[3]int32 `json:"bed_spawn,omitempty"` // nil = no bed spawn set
 }

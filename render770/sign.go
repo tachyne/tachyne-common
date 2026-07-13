@@ -23,6 +23,7 @@ const (
 const (
 	beTypeSign        = 7
 	beTypeHangingSign = 8
+	beTypeBanner      = 20
 	beTypeCampfire    = 33
 )
 
@@ -49,6 +50,18 @@ func CampfireData(e attach.CampfireItems) Packet {
 	b := protocol.AppendPosition(nil, int(e.X), int(e.Y), int(e.Z))
 	b = protocol.AppendVarInt(b, beTypeCampfire)
 	b = protocol.AppendCampfireNBT(b, e.Items)
+	return Packet{IDBlockEntityData, b}
+}
+
+// BannerData composes block_entity_data for a placed banner's patterns.
+func BannerData(e attach.BannerPatterns) Packet {
+	b := protocol.AppendPosition(nil, int(e.X), int(e.Y), int(e.Z))
+	b = protocol.AppendVarInt(b, beTypeBanner)
+	layers := make([]protocol.BannerLayerNBT, len(e.Layers))
+	for i, l := range e.Layers {
+		layers[i] = protocol.BannerLayerNBT{Pattern: l.Pattern, Color: l.Color}
+	}
+	b = protocol.AppendBannerNBT(b, layers)
 	return Packet{IDBlockEntityData, b}
 }
 

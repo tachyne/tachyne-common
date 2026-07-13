@@ -875,6 +875,8 @@ const (
 	componentLore            = 8  // minecraft:lore (list of NBT texts), canonical
 	componentStoredEnch      = 34 // minecraft:stored_enchantments (books), canonical
 	componentMapID           = 37 // minecraft:map_id (varint), canonical
+	componentTrim            = 47 // minecraft:trim (2 holder varints), canonical
+	componentBannerPatterns  = 63 // minecraft:banner_patterns (layer list), canonical
 )
 
 // enchCompID is the minecraft:enchantments component id at a client version.
@@ -925,6 +927,28 @@ func mapIDCompID(version int32) int32 {
 	return componentMapID
 }
 
+// trimCompID / bannerPatternsCompID: per-version ids, pinned against the
+// per-version datagen registry reports like the rest.
+func trimCompID(version int32) int32 {
+	switch {
+	case version >= 776:
+		return 56
+	case version >= 774:
+		return 54
+	}
+	return componentTrim
+}
+
+func bannerPatternsCompID(version int32) int32 {
+	switch {
+	case version >= 776:
+		return 72
+	case version >= 774:
+		return 70
+	}
+	return componentBannerPatterns
+}
+
 // copyFullSlot reads a complete Slot and writes it with the item ID remapped.
 // Components are supported ONLY for the whitelisted ids above (all our encoder
 // ever sends); anything richer returns false so the caller leaves the packet
@@ -939,12 +963,16 @@ func copyFullSlot(r *bytes.Reader, out *[]byte, remap func(int32) int32, version
 	nameIn, nameOut := int32(componentCustomName), customNameCompID(version)
 	loreIn, loreOut := int32(componentLore), loreCompID(version)
 	mapIn, mapOut := int32(componentMapID), mapIDCompID(version)
+	trimIn, trimOut := int32(componentTrim), trimCompID(version)
+	bannerIn, bannerOut := int32(componentBannerPatterns), bannerPatternsCompID(version)
 	if serverbound {
 		enchIn, enchOut = enchOut, enchIn
 		storedIn, storedOut = storedOut, storedIn
 		nameIn, nameOut = nameOut, nameIn
 		loreIn, loreOut = loreOut, loreIn
 		mapIn, mapOut = mapOut, mapIn
+		trimIn, trimOut = trimOut, trimIn
+		bannerIn, bannerOut = bannerOut, bannerIn
 	}
 	count, err := ReadVarInt(r)
 	if err != nil {
@@ -961,7 +989,7 @@ func copyFullSlot(r *bytes.Reader, out *[]byte, remap func(int32) int32, version
 	*out = AppendVarInt(*out, remap(item))
 	addC, e1 := ReadVarInt(r)
 	remC, e2 := ReadVarInt(r)
-	if e1 != nil || e2 != nil || addC < 0 || addC > 6 || remC != 0 {
+	if e1 != nil || e2 != nil || addC < 0 || addC > 8 || remC != 0 {
 		return false // richer components than we ever send — don't guess
 	}
 	*out = AppendVarInt(*out, addC)
@@ -981,6 +1009,37 @@ func copyFullSlot(r *bytes.Reader, out *[]byte, remap func(int32) int32, version
 			}
 			*out = AppendVarInt(*out, mapOut)
 			*out = AppendVarInt(*out, val)
+		case trimIn:
+			// trim: two holder varints (material ref, pattern ref) — our own
+			// declared registry orders, identical on every version; only the
+			// component id renumbers.
+			mat, e1 := ReadVarInt(r)
+			pat, e2 := ReadVarInt(r)
+			if e1 != nil || e2 != nil {
+				return false
+			}
+			*out = AppendVarInt(*out, trimOut)
+			*out = AppendVarInt(*out, mat)
+			*out = AppendVarInt(*out, pat)
+		case bannerIn:
+			// banner_patterns: varint layer count + (pattern holder, dye)
+			// varint pairs — pattern ids are our declared order, dye is the
+			// stable enum; only the component id renumbers.
+			n, err := ReadVarInt(r)
+			if err != nil || n < 0 || n > 6 {
+				return false
+			}
+			*out = AppendVarInt(*out, bannerOut)
+			*out = AppendVarInt(*out, n)
+			for j := int32(0); j < n; j++ {
+				patt, e1 := ReadVarInt(r)
+				dye, e2 := ReadVarInt(r)
+				if e1 != nil || e2 != nil {
+					return false
+				}
+				*out = AppendVarInt(*out, patt)
+				*out = AppendVarInt(*out, dye)
+			}
 		case componentDamage, componentMaxDamage:
 			val, err := ReadVarInt(r)
 			if err != nil {

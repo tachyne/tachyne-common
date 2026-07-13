@@ -735,3 +735,65 @@ func TestMapIDRenumbered(t *testing.T) {
 	check(775, 44)
 	check(776, 46)
 }
+
+// TestTrimBannerRenumbered pins the trim + banner_patterns component-id
+// renumbering across the 774/776 boundaries; values pass through verbatim.
+func TestTrimBannerRenumbered(t *testing.T) {
+	slot := AppendVarInt(nil, 1)   // count
+	slot = AppendVarInt(slot, 941) // an armor item, canonical
+	slot = AppendVarInt(slot, 2)   // two components
+	slot = AppendVarInt(slot, 0)
+	slot = AppendVarInt(slot, 47) // trim, canonical
+	slot = AppendVarInt(slot, 6)  // material holder (iron+1)
+	slot = AppendVarInt(slot, 9)  // pattern holder (sentry+1)
+	slot = AppendVarInt(slot, 63) // banner_patterns, canonical
+	slot = AppendVarInt(slot, 2)  // two layers
+	slot = AppendVarInt(slot, 5)  // pattern id+1
+	slot = AppendVarInt(slot, 14) // red
+	slot = AppendVarInt(slot, 27) // pattern id+1
+	slot = AppendVarInt(slot, 0)  // white
+	body := AppendVarInt(nil, 1)
+	body = AppendVarInt(body, 7)
+	body = append(body, 0x00, 0x05)
+	body = append(body, slot...)
+
+	check := func(version, wantTrim, wantBanner int32) {
+		out := remapSetSlot(version, body)
+		r := bytes.NewReader(out)
+		ReadVarInt(r)
+		ReadVarInt(r)
+		var s2 [2]byte
+		io.ReadFull(r, s2[:])
+		ReadVarInt(r) // count
+		ReadVarInt(r) // item
+		ReadVarInt(r) // addC
+		ReadVarInt(r) // remC
+		cid, _ := ReadVarInt(r)
+		if cid != wantTrim {
+			t.Fatalf("v%d trim component = %d, want %d", version, cid, wantTrim)
+		}
+		if m, _ := ReadVarInt(r); m != 6 {
+			t.Fatalf("v%d material %d", version, m)
+		}
+		if pt, _ := ReadVarInt(r); pt != 9 {
+			t.Fatalf("v%d pattern %d", version, pt)
+		}
+		cid2, _ := ReadVarInt(r)
+		if cid2 != wantBanner {
+			t.Fatalf("v%d banner component = %d, want %d", version, cid2, wantBanner)
+		}
+		vals := make([]int32, 5)
+		for i := range vals {
+			vals[i], _ = ReadVarInt(r)
+		}
+		if vals[0] != 2 || vals[1] != 5 || vals[2] != 14 || vals[3] != 27 || vals[4] != 0 {
+			t.Fatalf("v%d layers %v", version, vals)
+		}
+		if r.Len() != 0 {
+			t.Fatalf("v%d: %d trailing bytes", version, r.Len())
+		}
+	}
+	check(771, 47, 63)
+	check(774, 54, 70)
+	check(776, 56, 72)
+}

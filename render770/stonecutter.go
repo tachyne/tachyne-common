@@ -15,15 +15,45 @@ import "github.com/tachyne/tachyne-common/protocol"
 const IDUpdateRecipes = 0x7e
 
 // UpdateRecipes composes the packet for the given client protocol version.
-// The item-set map is sent empty — the client defaults each set, matching
-// its state when the packet is never sent at all.
+// The item-set map carries the three SMITHING sets — the smithing menu's
+// client-side slot predicates come from them, so empty sets would refuse
+// every placement. The cooker menus use plain slots and need none.
 func UpdateRecipes(version int32) Packet {
 	rid := func(id int32) int32 { return protocol.RemapID(protocol.RegItem, version, id) }
 	sd := slotDisplayIDs{item: 2, itemStack: 3}
 	if version >= 775 {
 		sd = slotDisplayIDs{item: 4, itemStack: 5, templateForm: true}
 	}
-	b := protocol.AppendVarInt(nil, 0) // itemSets: none
+	templates := make([]int32, 0, len(protocol.SmithingTrimTemplate)+1)
+	templates = append(templates, protocol.SmithingUpgradeTemplate)
+	for it := range protocol.SmithingTrimTemplate {
+		templates = append(templates, it)
+	}
+	bases := make([]int32, 0, len(protocol.SmithingTrimmable)+len(protocol.SmithingTransform))
+	bases = append(bases, protocol.SmithingTrimmable...)
+	for it := range protocol.SmithingTransform {
+		bases = append(bases, it)
+	}
+	additions := make([]int32, 0, len(protocol.SmithingTrimMaterial))
+	for it := range protocol.SmithingTrimMaterial {
+		additions = append(additions, it)
+	}
+	sets := []struct {
+		key   string
+		items []int32
+	}{
+		{"minecraft:smithing_template", templates},
+		{"minecraft:smithing_base", bases},
+		{"minecraft:smithing_addition", additions},
+	}
+	b := protocol.AppendVarInt(nil, int32(len(sets)))
+	for _, s := range sets {
+		b = protocol.AppendString(b, s.key)
+		b = protocol.AppendVarInt(b, int32(len(s.items)))
+		for _, it := range s.items {
+			b = protocol.AppendVarInt(b, rid(it))
+		}
+	}
 	b = protocol.AppendVarInt(b, int32(len(protocol.StonecuttingRecipes)))
 	for _, r := range protocol.StonecuttingRecipes {
 		// Ingredient: a holder set in explicit-list form (count+1, then ids).
