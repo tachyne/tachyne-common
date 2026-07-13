@@ -36,10 +36,10 @@ func samplePlayer() PlayerState {
 		BedSpawn: &[3]int32{-40, 64, 8},
 	}
 	// A couple of non-empty inventory rows [item,count,dmg,ench].
-	p.Slots[0] = [12]int32{278, 1, 12, 0x03040000} // a diamond pickaxe w/ enchant pack
-	p.Slots[9] = [12]int32{1, 64}                  // a stack of stone
-	p.Armor[3] = [12]int32{310, 1, 40}             // a helmet
-	p.Offhand = [12]int32{289, 16}                 // shield-ish
+	p.Slots[0] = [13]int32{278, 1, 12, 0x03040000} // a diamond pickaxe w/ enchant pack
+	p.Slots[9] = [13]int32{1, 64}                  // a stack of stone
+	p.Armor[3] = [13]int32{310, 1, 40}             // a helmet
+	p.Offhand = [13]int32{289, 16}                 // shield-ish
 	return p
 }
 
