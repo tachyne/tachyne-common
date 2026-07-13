@@ -328,6 +328,25 @@ type HorseScreen struct {
 	EID     int32 `json:"eid"`
 }
 
+// MsgWaypoint drives the locator-bar HUD (26.2+ clientbound tracked_waypoint,
+// a packet with NO canonical-770 form): players broadcast their position so
+// others see a direction marker. Gateways below 776 drop it (older clients
+// lack the feature). Op 0 track, 1 untrack, 2 update; only VEC3I positions
+// in v1 (the client renders direction + distance from the block pos).
+const MsgWaypoint = 0x6a // w→gw
+
+// Waypoint is one transmitter's marker for the receiving player.
+type Waypoint struct {
+	Op       int8     `json:"op"`
+	UUID     [16]byte `json:"uuid"`
+	Style    string   `json:"style,omitempty"` // waypoint_style asset ("" = minecraft:default)
+	Color    int32    `json:"color,omitempty"` // RGB; 0 = team/default color
+	HasColor bool     `json:"has_color,omitempty"`
+	X        int32    `json:"x"`
+	Y        int32    `json:"y"`
+	Z        int32    `json:"z"`
+}
+
 // MsgEditBook / MsgOpenBook: book editing + reading. The engine owns book
 // contents (a store keyed by book id, like maps); the component bytes on
 // the item stack carry the pages to clients.

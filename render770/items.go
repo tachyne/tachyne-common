@@ -55,6 +55,38 @@ func Equipment(e attach.Equipment) Packet {
 	return Packet{IDSetEquipment, b}
 }
 
+// IDWaypoint776 is the clientbound tracked_waypoint id at protocol 776
+// (26.2). Derived from the 26.2 GameProtocols clientbound registration
+// order — validated by reproducing every known 1.21.5 id with the same
+// count. New in 1.21.6, so no 770 equivalent exists.
+const IDWaypoint776 = 0x8a
+
+// WaypointBody composes the tracked_waypoint packet body (version-independent
+// — UUID/identifier/varints/RGB need no id remap). The caller sends it raw at
+// the 776 packet id for 26.2 clients and drops it for older ones.
+func WaypointBody(e attach.Waypoint) []byte {
+	b := protocol.AppendVarInt(nil, int32(e.Op)) // operation ordinal
+	b = append(b, 1)                             // Either.left: a UUID identifier
+	b = append(b, e.UUID[:]...)
+	style := e.Style
+	if style == "" {
+		style = "minecraft:default"
+	}
+	b = protocol.AppendString(b, style) // icon style asset id
+	if e.HasColor {
+		b = append(b, 1, byte(e.Color>>16), byte(e.Color>>8), byte(e.Color)) // optional RGB
+	} else {
+		b = append(b, 0)
+	}
+	if e.Op == 1 { // UNTRACK: empty waypoint (type 0, no contents)
+		return append(b, 0)
+	}
+	b = append(b, 1) // type VEC3I
+	b = protocol.AppendVarInt(b, e.X)
+	b = protocol.AppendVarInt(b, e.Y)
+	return protocol.AppendVarInt(b, e.Z)
+}
+
 // IDOpenBook is the canonical-770 clientbound open_book id.
 const IDOpenBook = 0x33
 

@@ -163,6 +163,15 @@ func (cc *clientConn) send(id int32, data []byte) error {
 	return protocol.WriteCompressed(cc.c, id, data, compressThreshold)
 }
 
+// sendRaw writes a packet at an explicit id WITHOUT the translation chain —
+// for packets that exist only at the client's own version (no canonical-770
+// form), like the 26.2 locator-bar waypoint. The caller owns version gating.
+func (cc *clientConn) sendRaw(id int32, data []byte) error {
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
+	return protocol.WriteCompressed(cc.c, id, data, compressThreshold)
+}
+
 // Run bridges one authorized client to the world over the attach protocol.
 // clientProto is the client's negotiated version; the world is always rendered
 // as canonical 770 and translated to it per connection.
@@ -928,6 +937,13 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 				if json.Unmarshal(payload, &e) == nil {
 					p := render770.CampfireData(e)
 					cc.send(p.ID, p.Body)
+				}
+			case attach.MsgWaypoint:
+				if clientProto >= 776 { // 26.2+ only; older clients lack the HUD
+					var e attach.Waypoint
+					if json.Unmarshal(payload, &e) == nil {
+						cc.sendRaw(render770.IDWaypoint776, render770.WaypointBody(e))
+					}
 				}
 			case attach.MsgOpenBook:
 				var e attach.OpenBook
