@@ -216,3 +216,79 @@ func TestSignChainTo776(t *testing.T) {
 		t.Fatal("back-translated update_sign no longer parses")
 	}
 }
+
+// TestCampfireDataReparse re-parses the campfire update tag structurally:
+// position, type, then the Items list (empties omitted, Slot preserved).
+func TestCampfireDataReparse(t *testing.T) {
+	pkt := CampfireData(attach.CampfireItems{X: 10, Y: 64, Z: -3,
+		Items: [4]string{"minecraft:cod", "", "minecraft:beef", ""}})
+	if pkt.ID != IDBlockEntityData {
+		t.Fatalf("id 0x%x", pkt.ID)
+	}
+	x, y, z := protocol.ReadPosition(pkt.Body[:8])
+	if x != 10 || y != 64 || z != -3 {
+		t.Fatalf("pos %d,%d,%d", x, y, z)
+	}
+	br := bytes.NewReader(pkt.Body[8:])
+	if typ, err := protocol.ReadVarInt(br); err != nil || typ != beTypeCampfire {
+		t.Fatalf("be type %d (%v)", typ, err)
+	}
+	// Root compound → list "Items" (compound elems).
+	mustByte := func(want byte, what string) {
+		b, _ := br.ReadByte()
+		if b != want {
+			t.Fatalf("%s: 0x%02x want 0x%02x", what, b, want)
+		}
+	}
+	readStr := func() string {
+		var n [2]byte
+		br.Read(n[:])
+		buf := make([]byte, int(n[0])<<8|int(n[1]))
+		br.Read(buf)
+		return string(buf)
+	}
+	mustByte(0x0a, "root compound")
+	mustByte(0x09, "list tag")
+	if name := readStr(); name != "Items" {
+		t.Fatalf("list name %q", name)
+	}
+	mustByte(0x0a, "list elem type")
+	var cnt [4]byte
+	br.Read(cnt[:])
+	if n := int(cnt[3]); n != 2 {
+		t.Fatalf("count %d, want 2 (empties omitted)", n)
+	}
+	wantSlots := []int8{0, 2}
+	wantIDs := []string{"minecraft:cod", "minecraft:beef"}
+	for i := 0; i < 2; i++ {
+		mustByte(0x01, "Slot tag")
+		if readStr() != "Slot" {
+			t.Fatal("Slot name")
+		}
+		s, _ := br.ReadByte()
+		if int8(s) != wantSlots[i] {
+			t.Fatalf("slot %d want %d", s, wantSlots[i])
+		}
+		mustByte(0x08, "id tag")
+		if readStr() != "id" {
+			t.Fatal("id name")
+		}
+		if got := readStr(); got != wantIDs[i] {
+			t.Fatalf("id %q want %q", got, wantIDs[i])
+		}
+		mustByte(0x03, "count tag")
+		if readStr() != "count" {
+			t.Fatal("count name")
+		}
+		var c [4]byte
+		br.Read(c[:])
+		if c[3] != 1 {
+			t.Fatalf("count %d", c[3])
+		}
+		mustByte(0x00, "entry end")
+	}
+	mustByte(0x00, "root end")
+	if br.Len() != 0 {
+		t.Fatalf("%d trailing bytes", br.Len())
+	}
+}

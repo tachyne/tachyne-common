@@ -23,6 +23,7 @@ const (
 const (
 	beTypeSign        = 7
 	beTypeHangingSign = 8
+	beTypeCampfire    = 33
 )
 
 func signSideNBT(s attach.SignSide) protocol.SignSideNBT {
@@ -39,6 +40,15 @@ func SignData(e attach.SignText) Packet {
 	}
 	b = protocol.AppendVarInt(b, typ)
 	b = protocol.AppendSignNBT(b, signSideNBT(e.Front), signSideNBT(e.Back), e.Waxed)
+	return Packet{IDBlockEntityData, b}
+}
+
+// CampfireData composes block_entity_data for a campfire: position, type,
+// and the Items update tag (the client renders the food on the fire).
+func CampfireData(e attach.CampfireItems) Packet {
+	b := protocol.AppendPosition(nil, int(e.X), int(e.Y), int(e.Z))
+	b = protocol.AppendVarInt(b, beTypeCampfire)
+	b = protocol.AppendCampfireNBT(b, e.Items)
 	return Packet{IDBlockEntityData, b}
 }
 

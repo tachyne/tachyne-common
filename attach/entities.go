@@ -784,6 +784,19 @@ type SetBeacon struct {
 	Secondary int32 `json:"secondary,omitempty"` // mob_effect id + 1; 0 = none
 }
 
+// MsgCampfireItems syncs a campfire's four cook slots to viewers (vanilla's
+// update tag carries only Items) — the client renders the food on the fire.
+const MsgCampfireItems = 0x65 // w→gw
+
+// CampfireItems is one campfire's visible contents in the receiving
+// player's dimension. Items are item registry names ("" = empty slot).
+type CampfireItems struct {
+	X     int32     `json:"x"`
+	Y     int32     `json:"y"`
+	Z     int32     `json:"z"`
+	Items [4]string `json:"items"`
+}
+
 // SignSide mirrors vanilla SignText: four plain-text message lines, the
 // applied dye color (name; "" = black, the default) and the glow-ink flag.
 type SignSide struct {
