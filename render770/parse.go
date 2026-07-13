@@ -31,6 +31,7 @@ const (
 	SIDRecipeSeen     = 0x2d // recipe_book_seen_recipe
 	SIDNameItem       = 0x2e
 	SIDSelTrade       = 0x31
+	SIDEditBook       = 0x16 // edit_book (writable-book save / sign)
 	SIDSetBeacon      = 0x32 // set_beacon_effect (the menu's confirm click)
 	SIDCreativeSlot   = 0x36
 	SIDSignUpdate     = 0x3a // update_sign (sign edit GUI result)
@@ -250,6 +251,40 @@ func ParseSetBeacon(data []byte) (attach.SetBeacon, bool) {
 			}
 			*dst = id + 1
 		}
+	}
+	return out, true
+}
+
+// ParseEditBook decodes edit_book: slot VarInt, page strings (≤100 of
+// ≤1024), optional title (≤32).
+func ParseEditBook(data []byte) (attach.EditBook, bool) {
+	br := bytes.NewReader(data)
+	slot, err := protocol.ReadVarInt(br)
+	if err != nil {
+		return attach.EditBook{}, false
+	}
+	n, err := protocol.ReadVarInt(br)
+	if err != nil || n < 0 || n > 100 {
+		return attach.EditBook{}, false
+	}
+	out := attach.EditBook{Slot: slot}
+	for i := int32(0); i < n; i++ {
+		s, err := protocol.ReadString(br)
+		if err != nil || len(s) > 1024 {
+			return attach.EditBook{}, false
+		}
+		out.Pages = append(out.Pages, s)
+	}
+	has, err := br.ReadByte()
+	if err != nil {
+		return attach.EditBook{}, false
+	}
+	if has != 0 {
+		title, err := protocol.ReadString(br)
+		if err != nil || len(title) > 32 {
+			return attach.EditBook{}, false
+		}
+		out.Title, out.HasTitle = title, true
 	}
 	return out, true
 }

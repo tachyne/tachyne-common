@@ -328,6 +328,28 @@ type HorseScreen struct {
 	EID     int32 `json:"eid"`
 }
 
+// MsgEditBook / MsgOpenBook: book editing + reading. The engine owns book
+// contents (a store keyed by book id, like maps); the component bytes on
+// the item stack carry the pages to clients.
+const (
+	MsgEditBook = 0x68 // gw→w: writable-book page save / signing
+	MsgOpenBook = 0x69 // w→gw: open the held written book's reader UI
+)
+
+// EditBook is the vanilla edit_book intent: pages replace the held writable
+// book's contents; a title signs it into a written book.
+type EditBook struct {
+	Slot     int32    `json:"slot"` // hotbar 0-8 or 40 = offhand
+	Pages    []string `json:"pages,omitempty"`
+	Title    string   `json:"title,omitempty"`
+	HasTitle bool     `json:"has_title,omitempty"`
+}
+
+// OpenBook opens the reader for the book in a hand (0 main, 1 off).
+type OpenBook struct {
+	Hand int32 `json:"hand"`
+}
+
 type WindowOpen struct {
 	ID    int32  `json:"id"`
 	Menu  int32  `json:"menu"` // canonical minecraft:menu registry id

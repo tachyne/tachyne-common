@@ -877,7 +877,30 @@ const (
 	componentMapID           = 37 // minecraft:map_id (varint), canonical
 	componentTrim            = 47 // minecraft:trim (2 holder varints), canonical
 	componentBannerPatterns  = 63 // minecraft:banner_patterns (layer list), canonical
+	componentWritableBook    = 45 // minecraft:writable_book_content, canonical
+	componentWrittenBook     = 46 // minecraft:written_book_content, canonical
 )
+
+// writableBookCompID / writtenBookCompID: per-version ids (datagen reports).
+func writableBookCompID(version int32) int32 {
+	switch {
+	case version >= 776:
+		return 54
+	case version >= 774:
+		return 52
+	}
+	return componentWritableBook
+}
+
+func writtenBookCompID(version int32) int32 {
+	switch {
+	case version >= 776:
+		return 55
+	case version >= 774:
+		return 53
+	}
+	return componentWrittenBook
+}
 
 // enchCompID is the minecraft:enchantments component id at a client version.
 func enchCompID(version int32) int32 {
@@ -949,6 +972,63 @@ func bannerPatternsCompID(version int32) int32 {
 	return componentBannerPatterns
 }
 
+// copyFilterableString copies a Filterable<String>: raw + optional filtered.
+func copyFilterableString(r *bytes.Reader, out *[]byte) bool {
+	s, err := ReadString(r)
+	if err != nil {
+		return false
+	}
+	*out = AppendString(*out, s)
+	has, err := r.ReadByte()
+	if err != nil {
+		return false
+	}
+	*out = append(*out, has)
+	if has != 0 {
+		f, err := ReadString(r)
+		if err != nil {
+			return false
+		}
+		*out = AppendString(*out, f)
+	}
+	return true
+}
+
+// copyFilterableNBT copies a Filterable<Component> (network-NBT payloads).
+func copyFilterableNBT(r *bytes.Reader, out *[]byte) bool {
+	if !copyNBTValue(r, out) {
+		return false
+	}
+	has, err := r.ReadByte()
+	if err != nil {
+		return false
+	}
+	*out = append(*out, has)
+	if has != 0 && !copyNBTValue(r, out) {
+		return false
+	}
+	return true
+}
+
+// copyNBTValue copies one network-NBT value verbatim using the skipper.
+func copyNBTValue(r *bytes.Reader, out *[]byte) bool {
+	remaining := r.Len()
+	all := make([]byte, remaining)
+	if remaining > 0 {
+		if _, err := r.ReadAt(all, r.Size()-int64(remaining)); err != nil {
+			return false
+		}
+	}
+	tmp := bytes.NewReader(all)
+	if err := SkipNetworkNBT(tmp); err != nil {
+		return false
+	}
+	used := remaining - tmp.Len()
+	*out = append(*out, all[:used]...)
+	r.Seek(int64(used), 1)
+	return true
+}
+
 // copyFullSlot reads a complete Slot and writes it with the item ID remapped.
 // Components are supported ONLY for the whitelisted ids above (all our encoder
 // ever sends); anything richer returns false so the caller leaves the packet
@@ -965,6 +1045,8 @@ func copyFullSlot(r *bytes.Reader, out *[]byte, remap func(int32) int32, version
 	mapIn, mapOut := int32(componentMapID), mapIDCompID(version)
 	trimIn, trimOut := int32(componentTrim), trimCompID(version)
 	bannerIn, bannerOut := int32(componentBannerPatterns), bannerPatternsCompID(version)
+	wbIn, wbOut := int32(componentWritableBook), writableBookCompID(version)
+	wrIn, wrOut := int32(componentWrittenBook), writtenBookCompID(version)
 	if serverbound {
 		enchIn, enchOut = enchOut, enchIn
 		storedIn, storedOut = storedOut, storedIn
@@ -973,6 +1055,8 @@ func copyFullSlot(r *bytes.Reader, out *[]byte, remap func(int32) int32, version
 		mapIn, mapOut = mapOut, mapIn
 		trimIn, trimOut = trimOut, trimIn
 		bannerIn, bannerOut = bannerOut, bannerIn
+		wbIn, wbOut = wbOut, wbIn
+		wrIn, wrOut = wrOut, wrIn
 	}
 	count, err := ReadVarInt(r)
 	if err != nil {
@@ -1040,6 +1124,52 @@ func copyFullSlot(r *bytes.Reader, out *[]byte, remap func(int32) int32, version
 				*out = AppendVarInt(*out, patt)
 				*out = AppendVarInt(*out, dye)
 			}
+		case wbIn:
+			// writable_book_content: pages = list of (string + optional
+			// string); values pass through, only the id renumbers.
+			n, err := ReadVarInt(r)
+			if err != nil || n < 0 || n > 100 {
+				return false
+			}
+			*out = AppendVarInt(*out, wbOut)
+			*out = AppendVarInt(*out, n)
+			for j := int32(0); j < n; j++ {
+				if !copyFilterableString(r, out) {
+					return false
+				}
+			}
+		case wrIn:
+			// written_book_content: filterable title, author, generation,
+			// pages = list of (NBT component + optional NBT), resolved bool.
+			*out = AppendVarInt(*out, wrOut)
+			if !copyFilterableString(r, out) {
+				return false
+			}
+			author, err := ReadString(r)
+			if err != nil {
+				return false
+			}
+			*out = AppendString(*out, author)
+			gen, err := ReadVarInt(r)
+			if err != nil {
+				return false
+			}
+			*out = AppendVarInt(*out, gen)
+			n, err := ReadVarInt(r)
+			if err != nil || n < 0 || n > 100 {
+				return false
+			}
+			*out = AppendVarInt(*out, n)
+			for j := int32(0); j < n; j++ {
+				if !copyFilterableNBT(r, out) {
+					return false
+				}
+			}
+			res, err := r.ReadByte()
+			if err != nil {
+				return false
+			}
+			*out = append(*out, res)
 		case componentDamage, componentMaxDamage:
 			val, err := ReadVarInt(r)
 			if err != nil {

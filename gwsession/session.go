@@ -929,6 +929,12 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 					p := render770.CampfireData(e)
 					cc.send(p.ID, p.Body)
 				}
+			case attach.MsgOpenBook:
+				var e attach.OpenBook
+				if json.Unmarshal(payload, &e) == nil {
+					p := render770.OpenBook(e)
+					cc.send(p.ID, p.Body)
+				}
 			case attach.MsgHorseScreen:
 				var e attach.HorseScreen
 				if json.Unmarshal(payload, &e) == nil {
@@ -1105,6 +1111,10 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 			case render770.SIDEnchantItem:
 				if e, ok := render770.ParseEnchant(pkt.Data); ok {
 					b.Write(attach.MsgEnchant, e)
+				}
+			case render770.SIDEditBook:
+				if e, ok := render770.ParseEditBook(pkt.Data); ok {
+					b.Write(attach.MsgEditBook, e)
 				}
 			case render770.SIDSetBeacon:
 				if e, ok := render770.ParseSetBeacon(pkt.Data); ok {

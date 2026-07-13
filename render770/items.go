@@ -55,6 +55,14 @@ func Equipment(e attach.Equipment) Packet {
 	return Packet{IDSetEquipment, b}
 }
 
+// IDOpenBook is the canonical-770 clientbound open_book id.
+const IDOpenBook = 0x33
+
+// OpenBook renders open_book: the hand enum alone.
+func OpenBook(e attach.OpenBook) Packet {
+	return Packet{IDOpenBook, protocol.AppendVarInt(nil, e.Hand)}
+}
+
 // IDOpenHorseWindow is the canonical-770 clientbound open_horse_window id.
 const IDOpenHorseWindow = 0x23
 
