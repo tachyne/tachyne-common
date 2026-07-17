@@ -204,6 +204,22 @@ func remapParticleID(version, id int32) int32 {
 		case version >= 773:
 			return 6
 		}
+	case 30: // minecraft:fishing (the bobber wake)
+		switch {
+		case version >= 776:
+			return 38
+		case version >= 773:
+			return 31
+		}
+	case 67: // minecraft:splash
+		switch {
+		case version >= 776:
+			return 77
+		case version >= 775:
+			return 70
+		case version >= 773:
+			return 68
+		}
 	}
 	return id
 }

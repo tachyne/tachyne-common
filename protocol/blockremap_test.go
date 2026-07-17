@@ -797,3 +797,28 @@ func TestTrimBannerRenumbered(t *testing.T) {
 	check(774, 54, 70)
 	check(776, 56, 72)
 }
+
+// TestRemapParticleID pins the per-version ids of every payload-free particle
+// the engine emits, verified against the vanilla registry reports (particle_type
+// protocol_id at 1.21.5 / 1.21.9 / 26.1 / 26.2).
+func TestRemapParticleID(t *testing.T) {
+	cases := []struct {
+		id                     int32
+		v770, v773, v775, v776 int32
+	}{
+		{3, 3, 3, 3, 3},      // bubble: stable everywhere
+		{5, 5, 6, 6, 13},     // crit
+		{21, 21, 22, 22, 29}, // explosion_emitter
+		{30, 30, 31, 31, 38}, // fishing
+		{55, 55, 56, 58, 65}, // note
+		{56, 56, 57, 59, 66}, // poof
+		{67, 67, 68, 70, 77}, // splash
+	}
+	for _, c := range cases {
+		for _, vv := range [][2]int32{{770, c.v770}, {773, c.v773}, {775, c.v775}, {776, c.v776}} {
+			if got := remapParticleID(vv[0], c.id); got != vv[1] {
+				t.Errorf("remapParticleID(%d, %d) = %d, want %d", vv[0], c.id, got, vv[1])
+			}
+		}
+	}
+}
