@@ -44,6 +44,57 @@ func TestChatMatchesOracle(t *testing.T) {
 		IDSystemChat, oracleSystemChat("N 12 64 -3", true))
 }
 
+// oracleProfilelessChat builds the expected profileless_chat body: message nbt,
+// ChatTypesHolder registry ref (minecraft:chat index 0 → varint 1), sender name
+// nbt, absent target.
+func oracleProfilelessChat(text, sender string) []byte {
+	b := oracleChatNBT(text)
+	b = protocol.AppendVarInt(b, 1) // index 0 + 1
+	b = append(b, oracleChatNBT(sender)...)
+	return protocol.AppendBool(b, false) // target absent
+}
+
+func TestChatSenderIsProfileless(t *testing.T) {
+	// A Sender routes to profileless_chat (player-chat decoration "<sender> text"),
+	// NOT system_chat.
+	eq(t, "player chat", Chat(attach.Chat{Text: "hello world", Sender: "LegionZA"}),
+		IDProfilelessChat, oracleProfilelessChat("hello world", "LegionZA"))
+
+	// Re-parse round trip: message, holder=1, name, target-absent.
+	got := Chat(attach.Chat{Text: "hi", Sender: "EdgeZA"})
+	if got.ID != IDProfilelessChat {
+		t.Fatalf("id = 0x%x, want profileless_chat 0x%x", got.ID, IDProfilelessChat)
+	}
+	body := got.Body
+	msg, n := parseNBTString(t, body)
+	body = body[n:]
+	holder := body[0] // single-byte varint (1 = registry index 0 + 1)
+	body = body[1:]
+	name, nn := parseNBTString(t, body)
+	body = body[nn:]
+	if len(body) != 1 || body[0] != 0 {
+		t.Fatalf("target not an absent optional: %x", body)
+	}
+	if msg != "hi" || name != "EdgeZA" || holder != 1 {
+		t.Fatalf("round trip: msg=%q holder=%d name=%q", msg, holder, name)
+	}
+
+	// ActionBar overrides Sender — HUD stays a system message.
+	if got := Chat(attach.Chat{Text: "N 1 2 3", Sender: "x", ActionBar: true}); got.ID != IDSystemChat {
+		t.Fatalf("action-bar+sender id = 0x%x, want system_chat", got.ID)
+	}
+}
+
+// parseNBTString reads a nameless-root TAG_String (0x08 + u16 len + bytes).
+func parseNBTString(t *testing.T, b []byte) (string, int) {
+	t.Helper()
+	if len(b) < 3 || b[0] != 0x08 {
+		t.Fatalf("not a TAG_String: %x", b)
+	}
+	l := int(b[1])<<8 | int(b[2])
+	return string(b[3 : 3+l]), 3 + l
+}
+
 func TestChatSanitizes(t *testing.T) {
 	// NUL and astral runes become '?', length caps at 256.
 	got := Chat(attach.Chat{Text: "a\x00b\U0001F600c"})

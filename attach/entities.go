@@ -74,6 +74,13 @@ type Chat struct {
 	// ActionBar renders the text as the above-hotbar overlay instead of a
 	// chat line (the engine's HUD uses it).
 	ActionBar bool `json:"action_bar,omitempty"`
+	// Sender, when non-empty, marks this as PLAYER chat: the renderer emits a
+	// profileless_chat packet the client decorates as "<Sender> Text" via its
+	// built-in minecraft:chat type, instead of a bare system message. This is the
+	// offline-server relay path — it sidesteps the secure-chat heuristic some
+	// clients apply to SYSTEM messages matching the "<name> message" pattern
+	// (hiding other players' unsigned lines). Ignored when ActionBar is set.
+	Sender string `json:"sender,omitempty"`
 }
 
 // Interaction frames (attach v2.1): block breaking/placing from gateway
