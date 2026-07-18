@@ -373,12 +373,16 @@ func readI16(r *bytes.Reader) (int16, error) {
 }
 
 func TestJoinBoolean776(t *testing.T) {
+	// The 770 body ends with enforcesSecureChat (here byte 3). 26.2 inserts
+	// onlineMode before it, so 776 must become [..., onlineMode=false(0),
+	// enforcesSecureChat=true(1)] — offline clients send unsigned chat but trust
+	// our system-chat relays (no "messages can't be verified", no hiding).
 	body := []byte{1, 2, 3}
 	out := remapClientboundIDs(776, canonJoinGame, body)
-	if len(out) != 4 || out[3] != 0x00 {
-		t.Errorf("776 join should append a false boolean, got %v", out)
+	if len(out) != 4 || out[0] != 1 || out[1] != 2 || out[2] != 0x00 || out[3] != 0x01 {
+		t.Errorf("776 join tail wrong: got %v, want [1 2 0 1]", out)
 	}
-	// 775 client gets no extra boolean.
+	// 775 and below have no onlineMode field — unchanged.
 	if out2 := remapClientboundIDs(775, canonJoinGame, body); len(out2) != 3 {
 		t.Errorf("775 join should be unchanged, got %v", out2)
 	}

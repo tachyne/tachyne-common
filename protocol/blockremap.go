@@ -85,11 +85,23 @@ func remapClientboundIDs(version, id int32, body []byte) []byte {
 			return rewriteEntityVelocity773(body)
 		}
 	case canonJoinGame:
-		// 26.2 (proto 776) appended a trailing boolean to Join (online/secure-chat
-		// flag); we are offline, so write false. The field is appended at the end,
-		// so no parsing is needed.
+		// 26.2 (proto 776) INSERTED onlineMode(bool) before the trailing
+		// enforcesSecureChat(bool) in Join. We write onlineMode=false (offline →
+		// the client sends UNSIGNED chat, which it can, and we accept) but
+		// enforcesSecureChat=TRUE, so the client TRUSTS our system-chat relays:
+		// no "messages can't be verified" toast, and clients with "Only Show
+		// Secure Chat" enabled no longer hide other players' messages. This is
+		// the standard offline-server/proxy trick — we can't sign chat (no Mojang
+		// session keys), so we make the client not demand verification. (Kept to
+		// 776+ only: 770-772 have no onlineMode field, and claiming enforcement
+		// to a client with no way to signal offline could break their sending.)
 		if version >= 776 {
-			return append(append([]byte(nil), body...), 0x00)
+			n := len(body)
+			out := make([]byte, 0, n+1)
+			out = append(out, body[:n-1]...) // everything before the 770 enforcesSecureChat byte
+			out = append(out, 0x00)          // onlineMode = false (offline; send unsigned)
+			out = append(out, 0x01)          // enforcesSecureChat = true (trust our relays)
+			return out
 		}
 	case canonUpdateTime:
 		// 26.1 (proto 775+) reworked Update Time into the clock-based form.
