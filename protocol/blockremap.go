@@ -99,8 +99,13 @@ func remapClientboundIDs(version, id int32, body []byte) []byte {
 			n := len(body)
 			out := make([]byte, 0, n+1)
 			out = append(out, body[:n-1]...) // everything before the 770 enforcesSecureChat byte
-			out = append(out, 0x00)          // onlineMode = false (offline; send unsigned)
-			out = append(out, 0x01)          // enforcesSecureChat = true (trust our relays)
+			out = append(out, 0x00)          // onlineMode = false (offline; client sends unsigned)
+			out = append(out, 0x00)          // enforcesSecureChat = false — the STANDARD offline value.
+			// NB: we tried enforcesSecureChat=true to hide the "can't be verified"
+			// toast, but that made clients STRICTLY hide other players' unsigned
+			// "<name>" messages regardless of the "Only Show Secure Chat" toggle.
+			// false restores the vanilla offline behaviour (toast shown, but chat
+			// visible when the client's Only-Show-Secure-Chat is off).
 			return out
 		}
 	case canonUpdateTime:

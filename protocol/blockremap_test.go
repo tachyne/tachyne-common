@@ -379,8 +379,8 @@ func TestJoinBoolean776(t *testing.T) {
 	// our system-chat relays (no "messages can't be verified", no hiding).
 	body := []byte{1, 2, 3}
 	out := remapClientboundIDs(776, canonJoinGame, body)
-	if len(out) != 4 || out[0] != 1 || out[1] != 2 || out[2] != 0x00 || out[3] != 0x01 {
-		t.Errorf("776 join tail wrong: got %v, want [1 2 0 1]", out)
+	if len(out) != 4 || out[0] != 1 || out[1] != 2 || out[2] != 0x00 || out[3] != 0x00 {
+		t.Errorf("776 join tail wrong: got %v, want [1 2 0 0] (onlineMode=false, enforcesSecureChat=false)", out)
 	}
 	// 775 and below have no onlineMode field — unchanged.
 	if out2 := remapClientboundIDs(775, canonJoinGame, body); len(out2) != 3 {
