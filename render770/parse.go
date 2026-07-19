@@ -22,6 +22,7 @@ const (
 	SIDEnchantItem    = 0x0f
 	SIDWindowClick    = 0x10
 	SIDCloseWindow    = 0x11
+	SIDSetSlotState   = 0x12 // container_slot_state_changed (crafter disable toggle)
 	SIDUseEntity      = 0x18
 	SIDVehicleMove    = 0x20
 	SIDCraftRequest   = 0x25
@@ -89,6 +90,26 @@ func ParseVehicleMove(data []byte) (attach.VehicleMove, bool) {
 	}
 	yaw := math.Float32frombits(binary.BigEndian.Uint32(data[24:]))
 	return attach.VehicleMove{X: f64(0), Y: f64(8), Z: f64(16), Yaw: yaw}, true
+}
+
+// ParseSetSlotState decodes container_slot_state_changed (the crafter grid
+// disable toggle): VarInt slotId, VarInt containerId, Boolean newState. The
+// container id is dropped — the world resolves the crafter from the player's
+// currently-open window.
+func ParseSetSlotState(data []byte) (attach.SlotState, bool) {
+	br := bytes.NewReader(data)
+	slot, err := protocol.ReadVarInt(br)
+	if err != nil || slot < 0 || slot > 8 {
+		return attach.SlotState{}, false // only the nine grid slots toggle
+	}
+	if _, err := protocol.ReadVarInt(br); err != nil { // container id (resolved server-side)
+		return attach.SlotState{}, false
+	}
+	b, err := br.ReadByte()
+	if err != nil {
+		return attach.SlotState{}, false
+	}
+	return attach.SlotState{Slot: slot, State: b != 0}, true
 }
 
 // ParseSelTrade decodes select_trade.

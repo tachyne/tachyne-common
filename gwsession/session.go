@@ -1120,6 +1120,10 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 				}
 			case render770.SIDCloseWindow:
 				b.Write(attach.MsgWindowClose, attach.WindowClose{})
+			case render770.SIDSetSlotState:
+				if e, ok := render770.ParseSetSlotState(pkt.Data); ok {
+					b.Write(attach.MsgSlotState, e)
+				}
 			case render770.SIDNameItem:
 				if e, ok := render770.ParseNameItem(pkt.Data); ok {
 					b.Write(attach.MsgNameItem, e)

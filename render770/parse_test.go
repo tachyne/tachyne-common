@@ -77,6 +77,26 @@ func TestParseSetBeacon(t *testing.T) {
 	}
 }
 
+// TestParseSetSlotState: container_slot_state_changed = VarInt slotId,
+// VarInt containerId, Boolean newState. The container id is dropped.
+func TestParseSetSlotState(t *testing.T) {
+	// slot 4, container 7, newState true (enable).
+	if e, ok := ParseSetSlotState([]byte{4, 7, 1}); !ok || e.Slot != 4 || !e.State {
+		t.Fatalf("enable slot 4: %+v %v", e, ok)
+	}
+	// slot 0, container 3, newState false (disable).
+	if e, ok := ParseSetSlotState([]byte{0, 3, 0}); !ok || e.Slot != 0 || e.State {
+		t.Fatalf("disable slot 0: %+v %v", e, ok)
+	}
+	// out-of-range slot (result/preview or inventory) is rejected.
+	if _, ok := ParseSetSlotState([]byte{9, 7, 0}); ok {
+		t.Fatal("slot 9+ must not parse (only the 9 grid slots toggle)")
+	}
+	if _, ok := ParseSetSlotState([]byte{4, 7}); ok {
+		t.Fatal("truncated body (no newState) must not parse")
+	}
+}
+
 // TestParseChunkBatchReceived: the body is one big-endian float32 (desired
 // chunks per tick). Oracle bytes: 25.0f = 0x41C80000.
 func TestParseChunkBatchReceived(t *testing.T) {

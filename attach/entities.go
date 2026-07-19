@@ -362,6 +362,20 @@ const (
 	MsgOpenBook = 0x69 // w→gw: open the held written book's reader UI
 )
 
+// MsgSlotState is the crafter menu's per-slot enable/disable toggle
+// (serverbound set_slot_state / container_slot_state_changed): the client
+// clicks an empty crafter grid slot to disable it so hoppers skip it. The
+// disabled state itself flows back as the menu's container properties
+// (WindowData props 0-8, value 1 = disabled).
+const MsgSlotState = 0x6b // gw→w: crafter grid slot enable/disable
+
+// SlotState toggles one crafter grid slot. Slot is the menu slot index (0-8);
+// State is vanilla's newState — true = enable the slot, false = disable it.
+type SlotState struct {
+	Slot  int32 `json:"slot"`
+	State bool  `json:"state"`
+}
+
 // EditBook is the vanilla edit_book intent: pages replace the held writable
 // book's contents; a title signs it into a written book.
 type EditBook struct {
