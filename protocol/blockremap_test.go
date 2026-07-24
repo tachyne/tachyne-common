@@ -287,6 +287,45 @@ func TestRemapEntityMetaItemStack(t *testing.T) {
 	}
 }
 
+func TestRemapEntityMetaCarryState(t *testing.T) {
+	// Enderman carry-state metadata: eid, [idx 16, type 15 optional_block_state,
+	// VarInt state], 0xff. The state is a canonical-770 (1.21.11) block id that
+	// must be translated for older clients, exactly like a block_update body.
+	carry := func(state int32) []byte {
+		b := AppendVarInt(nil, 7)
+		b = append(b, 16)
+		b = AppendVarInt(b, 15)
+		b = AppendVarInt(b, state)
+		return append(b, 0xff)
+	}
+	readState := func(out []byte) int32 {
+		r := bytes.NewReader(out)
+		ReadVarInt(r)         // eid
+		r.ReadByte()          // index 16
+		ReadVarInt(r)         // type 15
+		v, _ := ReadVarInt(r) // state
+		if b, _ := r.ReadByte(); b != 0xff {
+			t.Fatal("terminator lost")
+		}
+		return v
+	}
+
+	// 770 (1.21.5): the carried block state remaps (lantern 20638 → 19529).
+	if got := readState(remapEntityMeta(770, carry(20638))); got != 19529 {
+		t.Fatalf("carried state for 770 = %d, want 19529", got)
+	}
+	// 774 (canonical): identity — the state is untouched.
+	if got := readState(remapEntityMeta(774, carry(20638))); got != 20638 {
+		t.Fatalf("carried state for 774 = %d, want 20638", got)
+	}
+	// Empty (not carrying) is 0 on every version — never run through the remap.
+	for _, v := range []int32{770, 774, 776} {
+		if got := readState(remapEntityMeta(v, carry(0))); got != 0 {
+			t.Fatalf("empty carry state for %d = %d, want 0", v, got)
+		}
+	}
+}
+
 func TestRemapEquipmentItems(t *testing.T) {
 	// set_equipment: eid + topBitSet-terminated (i8 slot, Slot) — a helmet in
 	// slot 5 and a mainhand diamond, both needing item-id remap on 773.

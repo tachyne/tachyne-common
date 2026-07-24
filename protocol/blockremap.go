@@ -679,13 +679,14 @@ func remapSetSlot(version int32, body []byte) []byte {
 // identical from 1.21.5 through 26.2; pose alone shifted 21→20 at 1.21.9 (773)
 // and stays 20 through 26.2.
 const (
-	metaTypeByte        = 0
-	metaTypeVarInt      = 1
-	metaTypeFloat       = 3
-	metaTypeBoolean     = 8
-	metaTypeBlockPos    = 10
-	metaTypeOptBlockPos = 11
-	metaTypePose        = 21 // → 20 for clients ≥773
+	metaTypeByte          = 0
+	metaTypeVarInt        = 1
+	metaTypeFloat         = 3
+	metaTypeBoolean       = 8
+	metaTypeBlockPos      = 10
+	metaTypeOptBlockPos   = 11
+	metaTypeOptBlockState = 15 // Optional<BlockState>: a single VarInt, 0 = empty
+	metaTypePose          = 21 // → 20 for clients ≥773
 )
 
 // remapEntityMeta rewrites set_entity_data for a translated client: item ids
@@ -770,6 +771,19 @@ func remapEntityMeta(version int32, body []byte) []byte {
 				}
 				out = append(out, p[:]...)
 			}
+		case metaTypeOptBlockState:
+			// Optional<BlockState>: a single VarInt block-state id (0 = empty).
+			// The value is a canonical-770 state id, so translate it for older
+			// clients just like a block_update body (else an enderman carries the
+			// wrong block on 26.x).
+			state, err := ReadVarInt(r)
+			if err != nil {
+				return body
+			}
+			if state != 0 {
+				state = RemapID(RegBlockState, version, state)
+			}
+			out = AppendVarInt(out, state)
 		default:
 			return body // a type we never emit — don't guess at its payload
 		}
