@@ -156,8 +156,8 @@ func TestChainServesThrough776(t *testing.T) {
 }
 
 // TestSetTime26xReparse strictly re-parses the 776-translated Update Time
-// exactly as the 26.2 client's codecs read it (decompiled ClientboundSetTime-
-// Packet: Long gameTime + map<VarInt holder id, (VarLong totalTicks, Float
+// exactly as the 26.2 client's codecs read it (ClientboundSetTimePacket:
+// Long gameTime + map<VarInt holder id, (VarLong totalTicks, Float
 // partialTick, Float rate)>), including the full-consumption check the client
 // enforces. Guards the day/night cycle on 26.x clients.
 func TestSetTime26xReparse(t *testing.T) {

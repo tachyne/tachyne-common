@@ -211,8 +211,8 @@ func chunkPacket(h attach.ChunkHeader, body *attach.ChunkBody) []byte {
 
 	// Light sections are TRIMMED in the overworld: sky arrays stop one section
 	// above the highest terrain — the client's SkyLightSectionStorage returns
-	// 15 for anything at/above its topmost stored section (decompiled-source
-	// fact), so open sky costs nothing on the wire or in client heap. Block
+	// 15 for anything at/above its topmost stored section, so open sky costs
+	// nothing on the wire or in client heap. Block
 	// light ships only sections that actually contain a lit cell (absent
 	// sections default to 0). This is what keeps a tall (108-section) world
 	// inside a stock client heap: untrimmed, light alone is ~450 KB/chunk ×

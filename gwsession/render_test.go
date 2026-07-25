@@ -188,8 +188,8 @@ func TestTallHeightmapAndMasks(t *testing.T) {
 }
 
 // TestTrimmedLightSections: overworld chunks ship sky-light arrays only up to
-// one section above the terrain (the client infers full-bright above — a
-// decompiled-source fact), and block-light arrays only where lit. This is
+// one section above the terrain (the client infers full-bright above), and
+// block-light arrays only where lit. This is
 // what keeps tall-world chunks inside a stock client heap.
 func TestTrimmedLightSections(t *testing.T) {
 	const sec = 108
