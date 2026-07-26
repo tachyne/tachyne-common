@@ -944,7 +944,7 @@ type SignUpdate struct {
 // nothing extra and a re-send is idempotent. The engine therefore emits this
 // one frame whenever any part of the border changes, and the renderer composes
 // the single packet.
-const MsgWorldBorder = 0x6a // w→gw
+const MsgWorldBorder = 0x6c // w→gw
 
 // WorldBorder is the border as the engine knows it. Size is the diameter now;
 // Target and LerpMs describe a border in motion (Target 0 means stationary).
