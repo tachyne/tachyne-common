@@ -935,3 +935,25 @@ type SignUpdate struct {
 	Front bool      `json:"front"`
 	Lines [4]string `json:"lines"`
 }
+
+// MsgWorldBorder is the whole border state in one frame.
+//
+// Vanilla has six border packets — one to initialize and five to nudge an
+// individual field — but initialize_world_border already carries every field
+// including the target size and the time to reach it, so a MOVING border needs
+// nothing extra and a re-send is idempotent. The engine therefore emits this
+// one frame whenever any part of the border changes, and the renderer composes
+// the single packet.
+const MsgWorldBorder = 0x6a // w→gw
+
+// WorldBorder is the border as the engine knows it. Size is the diameter now;
+// Target and LerpMs describe a border in motion (Target 0 means stationary).
+type WorldBorder struct {
+	CenterX    float64 `json:"cx"`
+	CenterZ    float64 `json:"cz"`
+	Size       float64 `json:"size"`             // current diameter
+	Target     float64 `json:"target,omitempty"` // diameter being moved to; 0 = not moving
+	LerpMs     int64   `json:"lerpMs,omitempty"` // ms to reach Target; 0 = instant/static
+	WarnBlocks int32   `json:"warnBlocks"`       // red-vignette distance
+	WarnTime   int32   `json:"warnTime"`         // seconds of warning for an incoming border
+}
