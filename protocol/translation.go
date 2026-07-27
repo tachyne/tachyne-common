@@ -80,3 +80,30 @@ func UnmapID(reg IDSpace, version, id int32) int32 {
 func HasRemap(reg IDSpace, version int32) bool {
 	return len(translationTables[reg][version]) > 0
 }
+
+// IDPresent reports whether a canonical ID exists at all on a client version.
+//
+// The shift tables can only move an ID, never say "this does not exist here".
+// A canonical entry with no counterpart gets no delta, so RemapID hands back
+// the unshifted ID — which on that client is a DIFFERENT registry entry. There
+// is no decode error to catch it; the client simply renders the wrong thing.
+// Senders must consult this and DROP such entries.
+func IDPresent(reg IDSpace, version, id int32) bool {
+	gone, ok := absentIDs[reg][version]
+	if !ok {
+		return true
+	}
+	lo, hi := 0, len(gone)-1
+	for lo <= hi {
+		mid := (lo + hi) / 2
+		switch {
+		case gone[mid] < id:
+			lo = mid + 1
+		case gone[mid] > id:
+			hi = mid - 1
+		default:
+			return false
+		}
+	}
+	return true
+}
