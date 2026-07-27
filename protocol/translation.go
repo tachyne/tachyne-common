@@ -66,8 +66,35 @@ func shift(ranges []idRange, id int32) int32 {
 	return id
 }
 
+// absentFallback is what a canonical entry becomes when the client version has
+// no such entry. Substituting is not a nicety: canonical IDs run HIGHER than an
+// older client's registry (items reach 1504 canonically against 1396 entries on
+// 770), so an unshifted absent ID can land past the end of the client's
+// registry entirely — which is a decode failure and a dropped connection, not
+// merely the wrong icon.
+//
+// Air is the honest stand-in for an item or a block: the client shows nothing
+// rather than something it was never meant to see. Entities have a richer
+// substitution table of their own (entity_substitute.go) and are left to it.
+var absentFallback = map[IDSpace]int32{
+	RegItem:       0, // air
+	RegBlock:      0, // air
+	RegBlockState: 0, // air
+}
+
 // RemapID translates a canonical 770 ID to the client version's ID (clientbound).
+//
+// An ID with no counterpart on that version resolves to the registry's
+// fallback rather than passing through unshifted, because passing it through
+// means sending an ID that either denotes something else or does not exist at
+// all. Callers wanting to handle the gap themselves — dropping the entry, or
+// substituting something cleverer — should test IDPresent first.
 func RemapID(reg IDSpace, version, id int32) int32 {
+	if !IDPresent(reg, version, id) {
+		if sub, ok := absentFallback[reg]; ok {
+			return sub
+		}
+	}
 	return shift(translationTables[reg][version], id)
 }
 
