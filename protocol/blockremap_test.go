@@ -856,6 +856,8 @@ func TestRemapParticleID(t *testing.T) {
 		{55, 55, 56, 58, 65}, // note
 		{56, 56, 57, 59, 66}, // poof
 		{67, 67, 68, 70, 77}, // splash
+		{42, 42, 43, 43, 50}, // happy_villager
+		{79, 79, 80, 82, 89}, // falling_nectar
 	}
 	for _, c := range cases {
 		for _, vv := range [][2]int32{{770, c.v770}, {773, c.v773}, {775, c.v775}, {776, c.v776}} {

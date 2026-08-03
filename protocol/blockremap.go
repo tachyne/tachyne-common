@@ -237,6 +237,22 @@ func remapParticleID(version, id int32) int32 {
 		case version >= 773:
 			return 68
 		}
+	case 42: // minecraft:happy_villager (bonemeal / bee crop-boost bursts)
+		switch {
+		case version >= 776:
+			return 50
+		case version >= 773:
+			return 43
+		}
+	case 79: // minecraft:falling_nectar (a pollen-laden bee's drip)
+		switch {
+		case version >= 776:
+			return 89
+		case version >= 775:
+			return 82
+		case version >= 773:
+			return 80
+		}
 	}
 	return id
 }
