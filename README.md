@@ -80,17 +80,28 @@ to terminate real clients.
 - **`proxyproto/`** — PROXY protocol v1 reader (ingress → gateway real
   client IPs).
 
+- **`gwsession/`** — **the entire shared Java gateway**: the front door
+  (listener, handshake, status ping, version gate, tachyne-access check) and
+  the session pipeline (login → configuration → play bridge, including the
+  silent backend swap when a player crosses a shard seam). Both Java gateway
+  repos are a `main.go` over this: version pinning plus environment wiring,
+  so a gateway bug is fixed HERE, once.
+
+- **`shard/` + `handover/`** — the multi-pod pieces: shard topology/ownership
+  and the serialized player state that crosses a seam.
+
 ## Consumers & workflow
 
-Consumers: `tachyne-world` (engine: attach types only), `tachyne-gw-java-770`
-(renders 770 for 1.21.5–1.21.8), `tachyne-gw-java-776` (render770 +
-`TranslatorFor(776)` for 26.2), `tachyne-gw-bedrock` (Bedrock render),
-`tachyne-ingress` (proxyproto). Fetch with `GOPRIVATE=<your-git-host>`
-(anonymous HTTPS read works on LAN).
+Consumers: `tachyne-world` (the engine — attach frames, render770 types,
+shard and handover), `tachyne-gw-java-770` and `tachyne-gw-java-776` (both
+build their gateway from `gwsession`, which composes render770 and translates
+per connection), `tachyne-gw-bedrock` (Bedrock render), `tachyne-ingress`
+(`protocol`). The module is public — `go get
+github.com/tachyne/tachyne-common@<sha>` resolves through the Go proxy with
+no credentials.
 
 Change protocol here → pin the new sha in every consumer
-(`GOFLAGS=-mod=mod go get
-tachyne-common@<sha>`), `go test -race` each,
+(`GOFLAGS=-mod=mod go get github.com/tachyne/tachyne-common@<sha>`), `go test -race` each,
 deploy world before gateways. New client-visible features enter as: typed
 attach frame here → renderer/parser in `render770/` (with oracle test) →
 engine emission → gateway wiring.
