@@ -819,6 +819,39 @@ func ShiftCubeMobMeta(version int32, body []byte) []byte {
 	if version < 776 {
 		return body
 	}
+	return rewriteMetaIndices(body, func(idx byte, typ int32) byte {
+		if idx == 16 && typ == metaTypeVarInt {
+			return 18
+		}
+		return idx
+	})
+}
+
+// ShiftAgeableMobMeta shifts an animal's type-specific metadata indices ≥17 up
+// by one for clients ≥776: 26.2 inserted AGE_LOCKED (Boolean) as AgeableMob's
+// second field, pushing every subclass's fields — sheep wool 17→18, tamable
+// flags 17→18, bee flags/anger 17/18→18/19 (a byte landing on the Boolean at
+// 17 is a type-mismatch DISCONNECT, seen live with a pollen-carrying bee).
+// Like the cube shift it is entity-type-specific: call it only for
+// AgeableMob-subclass species, never monsters (a creeper's 16/17 must stay).
+// Baby (16) predates the insertion and stays put.
+func ShiftAgeableMobMeta(version int32, body []byte) []byte {
+	if version < 776 {
+		return body
+	}
+	return rewriteMetaIndices(body, func(idx byte, typ int32) byte {
+		if idx >= 17 {
+			return idx + 1
+		}
+		return idx
+	})
+}
+
+// rewriteMetaIndices re-walks a canonical set_entity_data body (eid + entries)
+// applying mapIdx to each entry's index. Any parse trouble or a value type the
+// walker doesn't know returns the body untouched — the shared bail-don't-guess
+// rule of every rewriter here.
+func rewriteMetaIndices(body []byte, mapIdx func(idx byte, typ int32) byte) []byte {
 	r := bytes.NewReader(body)
 	eid, err := ReadVarInt(r)
 	if err != nil {
@@ -837,9 +870,7 @@ func ShiftCubeMobMeta(version int32, body []byte) []byte {
 		if err != nil {
 			return body
 		}
-		if idx == 16 && typ == metaTypeVarInt {
-			idx = 18
-		}
+		idx = mapIdx(idx, typ)
 		out = append(out, idx)
 		out = AppendVarInt(out, typ)
 		switch typ {
@@ -881,7 +912,7 @@ func ShiftCubeMobMeta(version int32, body []byte) []byte {
 				out = append(out, p[:]...)
 			}
 		default:
-			return body // cube mobs never carry a Slot — bail, leave the body untouched
+			return body // a value type we never emit here (e.g. a Slot) — bail
 		}
 	}
 }

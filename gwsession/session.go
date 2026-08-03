@@ -137,6 +137,14 @@ const (
 	typePainting    = 93
 	typeItemFrame   = 73
 	typeGlowFrame   = 60
+	// Ageable-mob species the engine sends type-specific metadata (index ≥17)
+	// for — enrolled in the 26.2 AGE_LOCKED index shift below.
+	typeSheep  = 111
+	typeWolf   = 148
+	typeCat    = 21
+	typeOcelot = 91
+	typeParrot = 98
+	typeBee    = 11
 )
 
 // clientConn serializes writes to the Minecraft client. tr is the per-
@@ -695,6 +703,15 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 					// type-specific and set_entity_data carries no type.
 					if etype == typeSlime || etype == typeMagmaCube {
 						p.Body = protocol.ShiftCubeMobMeta(clientProto, p.Body)
+					}
+					// Ageable mobs: 26.2 inserted AGE_LOCKED as AgeableMob's second
+					// field, pushing every subclass's indices up one (sheep wool,
+					// tamable flags, ocelot trust, bee flags/anger). Baby (16)
+					// predates the insertion and stays put. Seen live: a byte at a
+					// 26.2 bee's 17 (a Boolean there) is a type-mismatch disconnect.
+					if etype == typeSheep || etype == typeWolf || etype == typeCat ||
+						etype == typeOcelot || etype == typeParrot || etype == typeBee {
+						p.Body = protocol.ShiftAgeableMobMeta(clientProto, p.Body)
 					}
 					// The copper golem's index-16 oxidation state ships as an INT
 					// placeholder; restore its WEATHERING_COPPER_STATE value-type on
