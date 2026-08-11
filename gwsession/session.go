@@ -803,6 +803,12 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 					p := render770.Passengers(e)
 					cc.send(p.ID, p.Body)
 				}
+			case attach.MsgEntityLink:
+				var e attach.EntityLink
+				if json.Unmarshal(payload, &e) == nil {
+					p := render770.EntityLink(e)
+					cc.send(p.ID, p.Body)
+				}
 			case attach.MsgVehicleMove:
 				var e attach.VehicleMove
 				if json.Unmarshal(payload, &e) == nil {

@@ -957,3 +957,22 @@ type WorldBorder struct {
 	WarnBlocks int32   `json:"warnBlocks"`       // red-vignette distance
 	WarnTime   int32   `json:"warnTime"`         // seconds of warning for an incoming border
 }
+
+// MsgEntityLink is a leash: one entity is tied to another, or cut loose.
+//
+// Vanilla's model is Leashable.LeashData, held by the LEASHED entity and
+// naming its holder — a player, or the invisible leash_knot entity a lead
+// makes when it is tied to a fence. The frame is that relationship, in that
+// direction: Holder 0 means the leash is gone, exactly as vanilla's
+// set_entity_link sends destination 0 to cut one.
+//
+// Both leash ends are ordinary entities the gateway already tracks, so nothing
+// version-specific rides here — the knot is spawned through EntityAdd like any
+// other entity, and this frame only says what is tied to what.
+const MsgEntityLink = 0x6d // w→gw
+
+// EntityLink ties Leashed to Holder. Holder 0 unties it.
+type EntityLink struct {
+	Leashed int32 `json:"eid"`              // the mob on the end of the lead
+	Holder  int32 `json:"holder,omitempty"` // who holds it; 0 = untied
+}
