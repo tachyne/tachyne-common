@@ -16,6 +16,7 @@ import (
 
 // Canonical-770 serverbound play packet IDs for the actions parsed here.
 const (
+	SIDBundleSelect       = 0x02 // bundle_item_selected
 	SIDChunkBatchReceived = 0x09 // chunk-batch ack + desired chunks-per-tick
 
 	SIDClientCommand  = 0x0a // respawn (action 0) / stats request (action 1)
@@ -144,7 +145,8 @@ func ParseWindowClick(data []byte) (attach.WindowClick, bool) {
 	if !ok {
 		return attach.WindowClick{}, false
 	}
-	if _, err := br.ReadByte(); err != nil { // mouse button (mode disambiguates)
+	button, err := br.ReadByte()
+	if err != nil {
 		return attach.WindowClick{}, false
 	}
 	mode, err := protocol.ReadVarInt(br)
@@ -155,7 +157,7 @@ func ParseWindowClick(data []byte) (attach.WindowClick, bool) {
 	if err != nil || n < 0 || n > 128 {
 		return attach.WindowClick{}, false
 	}
-	e := attach.WindowClick{ID: win, Slot: int32(slot), Mode: mode}
+	e := attach.WindowClick{ID: win, Slot: int32(slot), Mode: mode, Button: int32(button)}
 	for i := 0; i < int(n); i++ {
 		s, ok := readI16(br)
 		if !ok {
@@ -442,4 +444,19 @@ func creativePaintingVariant(br *bytes.Reader, clientProto int32) string {
 		return "" // 0 would be an inline definition — not a menu preset
 	}
 	return protocol.PaintingVariantName(holder - 1)
+}
+
+// ParseBundleSelect decodes bundle_item_selected: the slot holding the bundle
+// and the index the player scrolled to.
+func ParseBundleSelect(data []byte) (attach.BundleSelect, bool) {
+	br := bytes.NewReader(data)
+	slot, err := protocol.ReadVarInt(br)
+	if err != nil {
+		return attach.BundleSelect{}, false
+	}
+	sel, err := protocol.ReadVarInt(br)
+	if err != nil {
+		return attach.BundleSelect{}, false
+	}
+	return attach.BundleSelect{Slot: slot, Selected: sel}, true
 }

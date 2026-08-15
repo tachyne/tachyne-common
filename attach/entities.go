@@ -191,9 +191,14 @@ type ClickChange struct {
 }
 
 type WindowClick struct {
-	ID      int32         `json:"id"`
-	Slot    int32         `json:"slot"`
-	Mode    int32         `json:"mode"`
+	ID   int32 `json:"id"`
+	Slot int32 `json:"slot"`
+	Mode int32 `json:"mode"`
+	// Button is the mouse button within the mode (0 left, 1 right). Mode alone
+	// disambiguates most clicks, which is why this went unread for a long time
+	// — but a bundle uses plain mode-0 clicks for two OPPOSITE actions: left
+	// puts the clicked stack in, right takes one out.
+	Button  int32         `json:"button,omitempty"`
 	Changed []ClickChange `json:"changed,omitempty"`
 	Cursor  ItemStack     `json:"cursor"`
 }
@@ -975,4 +980,18 @@ const MsgEntityLink = 0x6d // w→gw
 type EntityLink struct {
 	Leashed int32 `json:"eid"`              // the mob on the end of the lead
 	Holder  int32 `json:"holder,omitempty"` // who holds it; 0 = untied
+}
+
+// MsgBundleSelect is the client choosing which stack a bundle hands back next
+// (vanilla bundle_item_selected). The selection is client-driven and is never
+// sent the other way — BundleContents' stream codec carries only the items, so
+// the chosen index lives on each side independently.
+const MsgBundleSelect = 0x6e // gw→w
+
+// BundleSelect names the inventory slot holding the bundle and the index it
+// has selected. An index of -1 clears the selection, which puts the pouch back
+// to handing out whatever is at the front.
+type BundleSelect struct {
+	Slot     int32 `json:"slot"`
+	Selected int32 `json:"selected"`
 }

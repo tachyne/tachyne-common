@@ -1034,6 +1034,22 @@ func loreCompID(version int32) int32 {
 
 // mapIDCompID: 37 through 1.21.9 (770-773), 44 at 1.21.11 (774-775), 46 at
 // 26.2 (776) — pinned against the per-version datagen registry reports.
+// componentBundleContents is bundle_contents in CANONICAL (770) numbering, and
+// bundleContentsCompID is its id at a client's version. All three values come
+// from the per-version datagen registry reports (data_component_type), the same
+// source the rest of these are pinned against.
+const componentBundleContents = 41
+
+func bundleContentsCompID(version int32) int32 {
+	switch {
+	case version >= 776:
+		return 50
+	case version >= 774:
+		return 48
+	}
+	return componentBundleContents
+}
+
 func mapIDCompID(version int32) int32 {
 	switch {
 	case version >= 776:
@@ -1129,7 +1145,17 @@ func copyNBTValue(r *bytes.Reader, out *[]byte) bool {
 // untouched rather than corrupt it. enchIn is the enchantments component id to
 // expect on the way in, enchOut what to write out (they differ across the
 // 774 boundary, and swap roles between clientbound and serverbound slots).
+// maxBundleNesting bounds how deep bundle_contents may recurse. Vanilla lets a
+// bundle hold bundles (each nested one costs 1/16 of the capacity, so sixteen
+// is its own practical ceiling), but SERVERBOUND bytes are client-controlled
+// and unbounded recursion here would be a stack overflow on malformed input.
+const maxBundleNesting = 16
+
 func copyFullSlot(r *bytes.Reader, out *[]byte, remap func(int32) int32, version int32, serverbound bool) bool {
+	return copyFullSlotAt(r, out, remap, version, serverbound, 0)
+}
+
+func copyFullSlotAt(r *bytes.Reader, out *[]byte, remap func(int32) int32, version int32, serverbound bool, depth int) bool {
 	// Component-id translation pairs for this direction: canonical (770) ids on
 	// the server side, the client version's ids on the wire side.
 	enchIn, enchOut := int32(componentEnchantments), enchCompID(version)
@@ -1139,6 +1165,7 @@ func copyFullSlot(r *bytes.Reader, out *[]byte, remap func(int32) int32, version
 	mapIn, mapOut := int32(componentMapID), mapIDCompID(version)
 	trimIn, trimOut := int32(componentTrim), trimCompID(version)
 	bannerIn, bannerOut := int32(componentBannerPatterns), bannerPatternsCompID(version)
+	bundleIn, bundleOut := int32(componentBundleContents), bundleContentsCompID(version)
 	wbIn, wbOut := int32(componentWritableBook), writableBookCompID(version)
 	wrIn, wrOut := int32(componentWrittenBook), writtenBookCompID(version)
 	if serverbound {
@@ -1149,6 +1176,7 @@ func copyFullSlot(r *bytes.Reader, out *[]byte, remap func(int32) int32, version
 		mapIn, mapOut = mapOut, mapIn
 		trimIn, trimOut = trimOut, trimIn
 		bannerIn, bannerOut = bannerOut, bannerIn
+		bundleIn, bundleOut = bundleOut, bundleIn
 		wbIn, wbOut = wbOut, wbIn
 		wrIn, wrOut = wrOut, wrIn
 	}
@@ -1311,6 +1339,25 @@ func copyFullSlot(r *bytes.Reader, out *[]byte, remap func(int32) int32, version
 			*out = AppendVarInt(*out, n)
 			for j := int32(0); j < n; j++ {
 				if !copyNBTString(r, out) {
+					return false
+				}
+			}
+		case bundleIn:
+			// bundle_contents: a varint-counted list of full Slots. Each nested
+			// stack carries its own item id and its own components, so this
+			// recurses through the same copier — which is what remaps the ids of
+			// what is INSIDE the bundle, not merely the bundle itself.
+			if depth >= maxBundleNesting {
+				return false
+			}
+			n, err := ReadVarInt(r)
+			if err != nil || n < 0 || n > 64 {
+				return false
+			}
+			*out = AppendVarInt(*out, bundleOut)
+			*out = AppendVarInt(*out, n)
+			for j := int32(0); j < n; j++ {
+				if !copyFullSlotAt(r, out, remap, version, serverbound, depth+1) {
 					return false
 				}
 			}
