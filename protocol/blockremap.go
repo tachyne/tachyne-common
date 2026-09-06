@@ -29,6 +29,7 @@ const (
 	canonJoinGame           = 0x2b // clientbound Login / Join Game
 	canonUpdateTime         = 0x6a // clientbound Update Time / set_time
 	canonWorldEvent         = 0x28 // clientbound World Event (2001 carries a block-state ID)
+	canonBlockEvent         = 0x07 // clientbound Block Event (trailing varint is a BLOCK id)
 	canonWorldParticles     = 0x29 // clientbound Level Particles (particle-type ID)
 	canonUpdateAdvancements = 0x7b // clientbound Update Advancements (icon Slots)
 	canonMerchantOffers     = 0x2d // clientbound Merchant Offers (ItemCosts + result Slots)
@@ -117,6 +118,18 @@ func remapClientboundIDs(version, id int32, body []byte) []byte {
 	case canonWorldEvent:
 		if HasRemap(RegBlockState, version) {
 			return remapWorldEvent(version, body)
+		}
+	case canonBlockEvent:
+		// position (8) + action + param, then the block id the client checks
+		// the position against before it animates anything.
+		if HasRemap(RegBlock, version) && len(body) > 10 {
+			r := bytes.NewReader(body[10:])
+			id, err := ReadVarInt(r)
+			if err != nil {
+				return body
+			}
+			out := append([]byte(nil), body[:10]...)
+			return AppendVarInt(out, RemapID(RegBlock, version, id))
 		}
 	case canonWorldParticles:
 		if version > 770 {

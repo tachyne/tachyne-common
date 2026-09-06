@@ -126,6 +126,8 @@ func (v *EntityView) Render(ev any) (Packet, bool) {
 		return Particles(e), true
 	case attach.WorldFX:
 		return WorldFX(e), true
+	case attach.BlockEvent:
+		return BlockEvent(e), true
 	case attach.BlockSet:
 		return BlockSet(e), true
 	case attach.GameEvent:

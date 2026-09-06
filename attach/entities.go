@@ -995,3 +995,21 @@ type BundleSelect struct {
 	Slot     int32 `json:"slot"`
 	Selected int32 `json:"selected"`
 }
+
+// MsgBlockEvent mirrors vanilla's block_event (Level.blockEvent): a small
+// per-block animation trigger the client acts on only if the block at the
+// position is the named block — a bell swinging in a direction, a chest lid,
+// a shulker box opening, a note block's note. Action and Param are the
+// block's own two bytes (BellBlockEntity: action 1, param = the 3D
+// direction id it was struck from); Block is the canonical BLOCK registry
+// id (not a state), which the translation chain renumbers per client.
+const MsgBlockEvent = 0x6f // w→gw
+
+type BlockEvent struct {
+	X      int32 `json:"x"`
+	Y      int32 `json:"y"`
+	Z      int32 `json:"z"`
+	Action uint8 `json:"action"`
+	Param  uint8 `json:"param"`
+	Block  int32 `json:"block"`
+}

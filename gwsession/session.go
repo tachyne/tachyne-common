@@ -793,6 +793,12 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 					p := render770.WorldFX(e)
 					cc.send(p.ID, p.Body)
 				}
+			case attach.MsgBlockEvent:
+				var e attach.BlockEvent
+				if json.Unmarshal(payload, &e) == nil {
+					p := render770.BlockEvent(e)
+					cc.send(p.ID, p.Body)
+				}
 			case attach.MsgGameEvent:
 				var e attach.GameEvent
 				if json.Unmarshal(payload, &e) == nil {

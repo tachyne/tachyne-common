@@ -12,6 +12,7 @@ import (
 const (
 	IDBlockUpdate = 0x08
 	IDWorldEvent  = 0x28
+	IDBlockEvent  = 0x07 // block_event: position, action u8, param u8, block varint
 	IDParticles   = 0x29
 	IDSoundEffect = 0x6e
 )
@@ -51,6 +52,13 @@ func WorldFX(e attach.WorldFX) Packet {
 	b = protocol.AppendPosition(b, e.X, e.Y, e.Z)
 	b = protocol.AppendI32(b, e.Data)
 	return Packet{IDWorldEvent, protocol.AppendBool(b, false)} // not global
+}
+
+// BlockEvent renders block_event.
+func BlockEvent(e attach.BlockEvent) Packet {
+	b := protocol.AppendPosition(nil, int(e.X), int(e.Y), int(e.Z))
+	b = append(b, e.Action, e.Param)
+	return Packet{IDBlockEvent, protocol.AppendVarInt(b, e.Block)}
 }
 
 // BlockSet renders block_update.
