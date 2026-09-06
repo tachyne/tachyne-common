@@ -363,6 +363,11 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 	defer func() { b.Get().Close() }() // close the CURRENT backend (post-swap) on exit
 	pos := welcome.Spawn
 	var curDim atomic.Int32
+	// The vehicle this player rides (0 = none), from Passengers frames. A
+	// server-driven vehicle (a minecart) carries the player without the
+	// client ever reporting a new position — a passenger only sends its
+	// camera — so its entity moves must advance the chunk window instead.
+	var myVehicle int32
 	ccx, ccz := int32(math.Floor(pos.X))>>4, int32(math.Floor(pos.Z))>>4
 	// viewDist is the honored render distance (clamped). Atomic because the
 	// client→world reader updates it on a video-settings change while the
@@ -577,6 +582,14 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 				if json.Unmarshal(payload, &e) == nil {
 					p := view.Move(e) // relative, or absolute resync — render770 decides
 					cc.send(p.ID, p.Body)
+					if myVehicle != 0 && e.EID == myVehicle {
+						pos.X, pos.Y, pos.Z = e.X, e.Y, e.Z
+						if ncx, ncz := int32(math.Floor(pos.X))>>4, int32(math.Floor(pos.Z))>>4; ncx != ccx || ncz != ccz {
+							ccx, ccz = ncx, ncz
+							cc.send(playClientCenterChunk, protocol.AppendVarInt(protocol.AppendVarInt(nil, ccx), ccz))
+							b.Write(attach.MsgWant, attach.Want{CX: ccx, CZ: ccz, Radius: viewDist.Load(), Dim: curDim.Load()})
+						}
+					}
 				}
 			case attach.MsgEntityHead:
 				var e attach.EntityHead
@@ -816,6 +829,17 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 				if json.Unmarshal(payload, &e) == nil {
 					p := render770.Passengers(e)
 					cc.send(p.ID, p.Body)
+					aboard := false
+					for _, r := range e.Riders {
+						if r == welcome.EID {
+							aboard = true
+						}
+					}
+					if aboard {
+						myVehicle = e.Vehicle
+					} else if e.Vehicle == myVehicle {
+						myVehicle = 0
+					}
 				}
 			case attach.MsgEntityLink:
 				var e attach.EntityLink
@@ -1144,6 +1168,14 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 			case render770.SIDVehicleMove:
 				if e, ok := render770.ParseVehicleMove(pkt.Data); ok {
 					b.Write(attach.MsgVehicleMove, e)
+					// A client-driven vehicle (boat, horse) carries the player
+					// too; a passenger's own move packets only carry the camera.
+					pos.X, pos.Y, pos.Z = e.X, e.Y, e.Z
+					if ncx, ncz := int32(math.Floor(pos.X))>>4, int32(math.Floor(pos.Z))>>4; ncx != ccx || ncz != ccz {
+						ccx, ccz = ncx, ncz
+						cc.send(playClientCenterChunk, protocol.AppendVarInt(protocol.AppendVarInt(nil, ccx), ccz))
+						b.Write(attach.MsgWant, attach.Want{CX: ccx, CZ: ccz, Radius: viewDist.Load(), Dim: curDim.Load()})
+					}
 				}
 			case render770.SIDSelTrade:
 				if e, ok := render770.ParseSelTrade(pkt.Data); ok {

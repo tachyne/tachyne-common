@@ -40,7 +40,16 @@ const (
 	SIDUseItem        = 0x3f
 )
 
-const inputSneakBit = 0x20 // player_input flags: sneak
+// player_input flag bits (vanilla's Input.STREAM_CODEC bit order).
+const (
+	inputForwardBit  = 0x01
+	inputBackwardBit = 0x02
+	inputLeftBit     = 0x04
+	inputRightBit    = 0x08
+	inputJumpBit     = 0x10
+	inputSneakBit    = 0x20
+	inputSprintBit   = 0x40
+)
 
 func readI16(br *bytes.Reader) (int16, bool) {
 	var b [2]byte
@@ -127,7 +136,16 @@ func ParseInput(data []byte) (attach.Input, bool) {
 	if len(data) < 1 {
 		return attach.Input{}, false
 	}
-	return attach.Input{Sneak: data[0]&inputSneakBit != 0}, true
+	f := data[0]
+	return attach.Input{
+		Forward:  f&inputForwardBit != 0,
+		Backward: f&inputBackwardBit != 0,
+		Left:     f&inputLeftBit != 0,
+		Right:    f&inputRightBit != 0,
+		Jump:     f&inputJumpBit != 0,
+		Sneak:    f&inputSneakBit != 0,
+		Sprint:   f&inputSprintBit != 0,
+	}, true
 }
 
 // ParseWindowClick decodes container_click. Changed-slot stacks arrive in the

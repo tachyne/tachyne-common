@@ -179,8 +179,19 @@ type SelTrade struct {
 	Slot int32 `json:"slot"`
 }
 
+// Input is the player's movement-key state (vanilla's Input record, sent by
+// the client whenever a key changes). Sneak dismounts; the direction keys are
+// the rider's move intent for a server-driven vehicle (a minecart has no
+// controlling passenger since 1.21.2, so the server rolls it and the rider
+// only nudges it from rest).
 type Input struct {
-	Sneak bool `json:"sneak,omitempty"`
+	Forward  bool `json:"forward,omitempty"`
+	Backward bool `json:"backward,omitempty"`
+	Left     bool `json:"left,omitempty"`
+	Right    bool `json:"right,omitempty"`
+	Jump     bool `json:"jump,omitempty"`
+	Sneak    bool `json:"sneak,omitempty"`
+	Sprint   bool `json:"sprint,omitempty"`
 }
 
 // ClickChange is one slot the client's click prediction changed. Item carries
