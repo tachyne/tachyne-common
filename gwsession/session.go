@@ -139,12 +139,14 @@ const (
 	typeGlowFrame   = 60
 	// Ageable-mob species the engine sends type-specific metadata (index ≥17)
 	// for — enrolled in the 26.2 AGE_LOCKED index shift below.
-	typeSheep  = 111
-	typeWolf   = 148
-	typeCat    = 21
-	typeOcelot = 91
-	typeParrot = 98
-	typeBee    = 11
+	typeSheep   = 111
+	typeWolf    = 148
+	typeCat     = 21
+	typeOcelot  = 91
+	typeParrot  = 98
+	typeBee     = 11
+	typeFrog    = 55 // variant holder at 17 (+ serializer renumber at 26.2)
+	typeAxolotl = 7  // variant INT at 17
 )
 
 // clientConn serializes writes to the Minecraft client. tr is the per-
@@ -710,8 +712,14 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 					// predates the insertion and stays put. Seen live: a byte at a
 					// 26.2 bee's 17 (a Boolean there) is a type-mismatch disconnect.
 					if etype == typeSheep || etype == typeWolf || etype == typeCat ||
-						etype == typeOcelot || etype == typeParrot || etype == typeBee {
+						etype == typeOcelot || etype == typeParrot || etype == typeBee || etype == typeAxolotl {
 						p.Body = protocol.ShiftAgeableMobMeta(clientProto, p.Body)
+					}
+					// A frog's variant holder: the ageable shift plus its
+					// serializer's 26.x renumbering (COMPOUND_TAG gone, sound
+					// variants inserted).
+					if etype == typeFrog {
+						p.Body = protocol.FixFrogMeta(clientProto, p.Body)
 					}
 					// The copper golem's index-16 oxidation state ships as an INT
 					// placeholder; restore its WEATHERING_COPPER_STATE value-type on

@@ -855,11 +855,47 @@ func ShiftAgeableMobMeta(version int32, body []byte) []byte {
 	})
 }
 
+// FrogVariantSerializer770 is the FROG_VARIANT entity-data serializer id in
+// canonical numbering (a Holder<FrogVariant>: one varint registry id). 26.x
+// removed COMPOUND_TAG (16) and inserted the sound-variant serializers, so at
+// 776 it is 27; the frog's variant entry itself sits at index 17 (18 on 26.2,
+// after the AGE_LOCKED insertion).
+const (
+	FrogVariantSerializer770 = 26
+	frogVariantSerializer776 = 27
+)
+
+// FixFrogMeta rewrites a frog's set_entity_data for a 26.2 client: the
+// ageable index shift plus the FROG_VARIANT serializer renumbering. Only the
+// frog needs both — an axolotl's variant is a plain INT, covered by
+// ShiftAgeableMobMeta alone.
+func FixFrogMeta(version int32, body []byte) []byte {
+	if version < 776 {
+		return body
+	}
+	return rewriteMetaEntries(body, func(idx byte, typ int32) (byte, int32) {
+		if idx >= 17 {
+			idx++
+		}
+		if typ == FrogVariantSerializer770 {
+			typ = frogVariantSerializer776
+		}
+		return idx, typ
+	})
+}
+
 // rewriteMetaIndices re-walks a canonical set_entity_data body (eid + entries)
 // applying mapIdx to each entry's index. Any parse trouble or a value type the
 // walker doesn't know returns the body untouched — the shared bail-don't-guess
 // rule of every rewriter here.
 func rewriteMetaIndices(body []byte, mapIdx func(idx byte, typ int32) byte) []byte {
+	return rewriteMetaEntries(body, func(idx byte, typ int32) (byte, int32) { return mapIdx(idx, typ), typ })
+}
+
+// rewriteMetaEntries is rewriteMetaIndices with the serializer TYPE id
+// rewritable too (a variant holder's serializer renumbers across versions).
+// The value is read by the CANONICAL type, then written under the mapped one.
+func rewriteMetaEntries(body []byte, mapEntry func(idx byte, typ int32) (byte, int32)) []byte {
 	r := bytes.NewReader(body)
 	eid, err := ReadVarInt(r)
 	if err != nil {
@@ -878,9 +914,9 @@ func rewriteMetaIndices(body []byte, mapIdx func(idx byte, typ int32) byte) []by
 		if err != nil {
 			return body
 		}
-		idx = mapIdx(idx, typ)
-		out = append(out, idx)
-		out = AppendVarInt(out, typ)
+		outIdx, outTyp := mapEntry(idx, typ)
+		out = append(out, outIdx)
+		out = AppendVarInt(out, outTyp)
 		switch typ {
 		case metaTypeByte, metaTypeBoolean:
 			b, err := r.ReadByte()
@@ -888,7 +924,7 @@ func rewriteMetaIndices(body []byte, mapIdx func(idx byte, typ int32) byte) []by
 				return body
 			}
 			out = append(out, b)
-		case metaTypeVarInt, metaTypePose:
+		case metaTypeVarInt, metaTypePose, FrogVariantSerializer770: // varint payloads (a holder is one varint)
 			v, err := ReadVarInt(r)
 			if err != nil {
 				return body
