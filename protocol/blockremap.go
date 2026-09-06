@@ -1050,6 +1050,21 @@ func bundleContentsCompID(version int32) int32 {
 	return componentBundleContents
 }
 
+// lodestoneCompID is minecraft:lodestone_tracker (a lodestone compass's
+// target: optional GlobalPos + tracked bool) at a client version — 58 on
+// 1.21.5-1.21.9, 65 at 1.21.11, 67 at 26.1/26.2 (datagen registry reports).
+const componentLodestone = 58
+
+func lodestoneCompID(version int32) int32 {
+	switch {
+	case version >= 776:
+		return 67
+	case version >= 774:
+		return 65
+	}
+	return componentLodestone
+}
+
 func mapIDCompID(version int32) int32 {
 	switch {
 	case version >= 776:
@@ -1168,7 +1183,9 @@ func copyFullSlotAt(r *bytes.Reader, out *[]byte, remap func(int32) int32, versi
 	bundleIn, bundleOut := int32(componentBundleContents), bundleContentsCompID(version)
 	wbIn, wbOut := int32(componentWritableBook), writableBookCompID(version)
 	wrIn, wrOut := int32(componentWrittenBook), writtenBookCompID(version)
+	lodeIn, lodeOut := int32(componentLodestone), lodestoneCompID(version)
 	if serverbound {
+		lodeIn, lodeOut = lodeOut, lodeIn
 		enchIn, enchOut = enchOut, enchIn
 		storedIn, storedOut = storedOut, storedIn
 		nameIn, nameOut = nameOut, nameIn
@@ -1292,6 +1309,34 @@ func copyFullSlotAt(r *bytes.Reader, out *[]byte, remap func(int32) int32, versi
 				return false
 			}
 			*out = append(*out, res)
+		case lodeIn:
+			// lodestone_tracker: optional GlobalPos (bool; dimension
+			// identifier string + packed block position i64) + tracked bool.
+			// Values pass through untouched — dimension names and positions
+			// are version-stable; only the component id renumbers.
+			has, err := r.ReadByte()
+			if err != nil {
+				return false
+			}
+			*out = AppendVarInt(*out, lodeOut)
+			*out = append(*out, has)
+			if has != 0 {
+				dim, err := ReadString(r)
+				if err != nil {
+					return false
+				}
+				*out = AppendString(*out, dim)
+				var pos [8]byte
+				if _, err := io.ReadFull(r, pos[:]); err != nil {
+					return false
+				}
+				*out = append(*out, pos[:]...)
+			}
+			tracked, err := r.ReadByte()
+			if err != nil {
+				return false
+			}
+			*out = append(*out, tracked)
 		case componentDamage, componentMaxDamage:
 			val, err := ReadVarInt(r)
 			if err != nil {
