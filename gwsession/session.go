@@ -139,14 +139,15 @@ const (
 	typeGlowFrame   = 60
 	// Ageable-mob species the engine sends type-specific metadata (index ≥17)
 	// for — enrolled in the 26.2 AGE_LOCKED index shift below.
-	typeSheep   = 111
-	typeWolf    = 148
-	typeCat     = 21
-	typeOcelot  = 91
-	typeParrot  = 98
-	typeBee     = 11
-	typeFrog    = 55 // variant holder at 17 (+ serializer renumber at 26.2)
-	typeAxolotl = 7  // variant INT at 17
+	typeSheep    = 111
+	typeWolf     = 148
+	typeCat      = 21
+	typeOcelot   = 91
+	typeParrot   = 98
+	typeBee      = 11
+	typeFrog     = 55  // variant holder at 17 (+ serializer renumber at 26.2)
+	typeAxolotl  = 7   // variant INT at 17
+	typeVillager = 139 // VILLAGER_DATA at 18 (an AgeableMob: 19 on 26.2)
 )
 
 // clientConn serializes writes to the Minecraft client. tr is the per-
@@ -725,7 +726,8 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 					// predates the insertion and stays put. Seen live: a byte at a
 					// 26.2 bee's 17 (a Boolean there) is a type-mismatch disconnect.
 					if etype == typeSheep || etype == typeWolf || etype == typeCat ||
-						etype == typeOcelot || etype == typeParrot || etype == typeBee || etype == typeAxolotl {
+						etype == typeOcelot || etype == typeParrot || etype == typeBee || etype == typeAxolotl ||
+						etype == typeVillager {
 						p.Body = protocol.ShiftAgeableMobMeta(clientProto, p.Body)
 					}
 					// A frog's variant holder: the ageable shift plus its

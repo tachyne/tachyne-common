@@ -762,8 +762,8 @@ func remapEntityMeta(version int32, body []byte) []byte {
 		// (it tracks eid→type from spawn packets).
 		out = append(out, idx)
 		wireType := typ
-		if typ == metaTypePose && version >= 773 {
-			wireType = metaTypePose - 1
+		if (typ == metaTypePose || typ == VillagerDataSerializer770) && version >= 773 {
+			wireType = typ - 1 // COMPOUND_TAG (16) left the serializer list in 1.21.6
 		}
 		out = AppendVarInt(out, wireType)
 		switch typ {
@@ -779,6 +779,14 @@ func remapEntityMeta(version int32, body []byte) []byte {
 				return body
 			}
 			out = AppendVarInt(out, v)
+		case VillagerDataSerializer770: // type, profession, level — registry orders match through 26.2
+			for i := 0; i < 3; i++ {
+				v, err := ReadVarInt(r)
+				if err != nil {
+					return body
+				}
+				out = AppendVarInt(out, v)
+			}
 		case metaTypeFloat:
 			var f [4]byte
 			if _, err := io.ReadFull(r, f[:]); err != nil {
@@ -878,6 +886,13 @@ const (
 	frogVariantSerializer776 = 27
 )
 
+// VillagerDataSerializer770 is the VILLAGER_DATA entity-data serializer id in
+// canonical numbering: three varints (villager type, profession, level).
+// From 773 on it is 19 (COMPOUND_TAG's removal), which remapEntityMeta
+// applies to every entity's metadata; a villager's INDEX shift (AgeableMob's
+// AGE_LOCKED insertion at 26.2) is ShiftAgeableMobMeta's, per type.
+const VillagerDataSerializer770 = 20
+
 // FixFrogMeta rewrites a frog's set_entity_data for a 26.2 client: the
 // ageable index shift plus the FROG_VARIANT serializer renumbering. Only the
 // frog needs both — an axolotl's variant is a plain INT, covered by
@@ -943,6 +958,14 @@ func rewriteMetaEntries(body []byte, mapEntry func(idx byte, typ int32) (byte, i
 				return body
 			}
 			out = AppendVarInt(out, v)
+		case VillagerDataSerializer770: // three varints
+			for i := 0; i < 3; i++ {
+				v, err := ReadVarInt(r)
+				if err != nil {
+					return body
+				}
+				out = AppendVarInt(out, v)
+			}
 		case metaTypeFloat:
 			var f [4]byte
 			if _, err := io.ReadFull(r, f[:]); err != nil {
