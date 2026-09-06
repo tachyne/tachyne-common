@@ -31,6 +31,7 @@ const (
 	canonWorldEvent         = 0x28 // clientbound World Event (2001 carries a block-state ID)
 	canonWorldParticles     = 0x29 // clientbound Level Particles (particle-type ID)
 	canonUpdateAdvancements = 0x7b // clientbound Update Advancements (icon Slots)
+	canonMerchantOffers     = 0x2d // clientbound Merchant Offers (ItemCosts + result Slots)
 
 	metaIndexItemStack = 8 // entity-metadata index of an item entity's stack
 	metaTypeSlot       = 7 // entity-metadata value type: Slot
@@ -124,6 +125,13 @@ func remapClientboundIDs(version, id int32, body []byte) []byte {
 	case canonUpdateAdvancements:
 		if HasRemap(RegItem, version) {
 			return remapAdvancementIcons(version, body)
+		}
+	case canonMerchantOffers:
+		// Item ids AND the result's component ids (an enchanted book's
+		// enchantments component renumbers at 774+), so every translated
+		// client, not only those with an item shift.
+		if version > 770 {
+			return remapMerchantOffers(version, body)
 		}
 	case canonAwardStats:
 		// Four registries ride this packet; RemapID self-no-ops per registry
