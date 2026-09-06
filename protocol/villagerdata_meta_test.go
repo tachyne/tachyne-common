@@ -5,8 +5,8 @@ import (
 	"testing"
 )
 
-// A villager's VILLAGER_DATA entry (index 18, serializer 20: type,
-// profession, level) reaches a 26.2 client as serializer 19 at index 19
+// A villager's VILLAGER_DATA entry (index 18, serializer 19: type,
+// profession, level) reaches a 26.2 client as serializer 18 at index 19
 // (the ageable shift), payload intact; a 770 client gets it untouched.
 func TestVillagerDataMetaTranslation(t *testing.T) {
 	body := AppendVarInt(nil, 7)
@@ -22,7 +22,7 @@ func TestVillagerDataMetaTranslation(t *testing.T) {
 	}
 	want := AppendVarInt(nil, 7)
 	want = append(want, 18)
-	want = AppendVarInt(want, 19)
+	want = AppendVarInt(want, 18)
 	want = AppendVarInt(want, 2)
 	want = AppendVarInt(want, 9)
 	want = AppendVarInt(want, 3)
@@ -31,6 +31,9 @@ func TestVillagerDataMetaTranslation(t *testing.T) {
 		t.Errorf("776 serializer renumber: got %x want %x", got, want)
 	}
 	shifted := ShiftAgeableMobMeta(776, body)
+	if VillagerDataSerializer770 != 19 {
+		t.Fatalf("VILLAGER_DATA is the 20th 1.21.5 serializer registration (id 19), not %d", VillagerDataSerializer770)
+	}
 	if len(shifted) < 2 || shifted[1] != 19 {
 		t.Errorf("ageable shift should move index 18 to 19: %x", shifted)
 	}

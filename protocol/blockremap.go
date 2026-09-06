@@ -876,28 +876,67 @@ func ShiftAgeableMobMeta(version int32, body []byte) []byte {
 	})
 }
 
-// FrogVariantSerializer770 is the FROG_VARIANT entity-data serializer id in
-// canonical numbering (a Holder<FrogVariant>: one varint registry id). 26.x
-// removed COMPOUND_TAG (16) and inserted the sound-variant serializers, so at
-// 776 it is 27; the frog's variant entry itself sits at index 17 (18 on 26.2,
-// after the AGE_LOCKED insertion).
+// The mob-variant HOLDER serializers in canonical (1.21.5) numbering — each a
+// Holder<XVariant>, one varint registry id on the wire. The 1.21.5 list runs
+// … POSE 21, CAT_VARIANT 22, COW_VARIANT 23, WOLF_VARIANT 24,
+// WOLF_SOUND_VARIANT 25, FROG_VARIANT 26, PIG_VARIANT 27, CHICKEN_VARIANT 28.
+// 26.x removed COMPOUND_TAG (16) and inserted the sound-variant serializers
+// (CAT_SOUND 22, COW_SOUND 24, PIG_SOUND 29, CHICKEN_SOUND 31), so at 776 the
+// list reads CAT 21, COW 23, WOLF 25, FROG 27, PIG 28, CHICKEN 30. The entry
+// INDEX each rides on is the species' own (frog/cow/chicken 17, pig 18, cat
+// 19, wolf 22 canonically; +1 on 26.2 after the AGE_LOCKED insertion) — the
+// gateway's per-type FixVariantMeta applies both. 773–775 are unrouted, so
+// only the 776 numbering is carried here.
 const (
-	FrogVariantSerializer770 = 26
-	frogVariantSerializer776 = 27
+	CatVariantSerializer770     = 22
+	CowVariantSerializer770     = 23
+	WolfVariantSerializer770    = 24
+	FrogVariantSerializer770    = 26
+	PigVariantSerializer770     = 27
+	ChickenVariantSerializer770 = 28
+
+	catVariantSerializer776     = 21
+	cowVariantSerializer776     = 23
+	wolfVariantSerializer776    = 25
+	frogVariantSerializer776    = 27
+	pigVariantSerializer776     = 28
+	chickenVariantSerializer776 = 30
 )
 
-// VillagerDataSerializer770 is the VILLAGER_DATA entity-data serializer id in
-// canonical numbering: three varints (villager type, profession, level).
-// From 773 on it is 19 (COMPOUND_TAG's removal), which remapEntityMeta
-// applies to every entity's metadata; a villager's INDEX shift (AgeableMob's
-// AGE_LOCKED insertion at 26.2) is ShiftAgeableMobMeta's, per type.
-const VillagerDataSerializer770 = 20
+// variantSerializer776 maps each canonical holder serializer to its 26.2 id.
+var variantSerializer776 = map[int32]int32{
+	CatVariantSerializer770:     catVariantSerializer776,
+	CowVariantSerializer770:     cowVariantSerializer776,
+	WolfVariantSerializer770:    wolfVariantSerializer776,
+	FrogVariantSerializer770:    frogVariantSerializer776,
+	PigVariantSerializer770:     pigVariantSerializer776,
+	ChickenVariantSerializer770: chickenVariantSerializer776,
+}
 
-// FixFrogMeta rewrites a frog's set_entity_data for a 26.2 client: the
-// ageable index shift plus the FROG_VARIANT serializer renumbering. Only the
-// frog needs both — an axolotl's variant is a plain INT, covered by
-// ShiftAgeableMobMeta alone.
-func FixFrogMeta(version int32, body []byte) []byte {
+// isVariantHolderSerializer reports whether typ is one of the mob-variant
+// holder serializers (a one-varint payload).
+func isVariantHolderSerializer(typ int32) bool {
+	_, ok := variantSerializer776[typ]
+	return ok
+}
+
+// VillagerDataSerializer770 is the VILLAGER_DATA entity-data serializer id in
+// canonical numbering: three varints (villager type, profession, level). It
+// is the 20th registration in 1.21.5's serializer list (BYTE 0 … PARTICLES
+// 18, VILLAGER_DATA 19, OPTIONAL_UNSIGNED_INT 20, POSE 21). From 773 on it is
+// 18 (COMPOUND_TAG's removal), which remapEntityMeta applies to every
+// entity's metadata; a villager's INDEX shift (AgeableMob's AGE_LOCKED
+// insertion at 26.2) is ShiftAgeableMobMeta's, per type.
+const VillagerDataSerializer770 = 19
+
+// FixVariantMeta rewrites an ageable mob's set_entity_data for a 26.2 client
+// when the species carries a HOLDER variant (frog, wolf, cat, pig, cow,
+// chicken): the ageable index shift (every index ≥17 up one, AGE_LOCKED) plus
+// the holder serializer's renumbering. It subsumes ShiftAgeableMobMeta for
+// those species — call one or the other, never both. Species whose variant
+// is a plain INT (axolotl, horse, llama, parrot, rabbit, fox, mooshroom) need
+// only ShiftAgeableMobMeta.
+func FixVariantMeta(version int32, body []byte) []byte {
 	if version < 776 {
 		return body
 	}
@@ -905,12 +944,15 @@ func FixFrogMeta(version int32, body []byte) []byte {
 		if idx >= 17 {
 			idx++
 		}
-		if typ == FrogVariantSerializer770 {
-			typ = frogVariantSerializer776
+		if t, ok := variantSerializer776[typ]; ok {
+			typ = t
 		}
 		return idx, typ
 	})
 }
+
+// FixFrogMeta is FixVariantMeta under its original, frog-only name.
+func FixFrogMeta(version int32, body []byte) []byte { return FixVariantMeta(version, body) }
 
 // rewriteMetaIndices re-walks a canonical set_entity_data body (eid + entries)
 // applying mapIdx to each entry's index. Any parse trouble or a value type the
@@ -952,7 +994,7 @@ func rewriteMetaEntries(body []byte, mapEntry func(idx byte, typ int32) (byte, i
 				return body
 			}
 			out = append(out, b)
-		case metaTypeVarInt, metaTypePose, FrogVariantSerializer770: // varint payloads (a holder is one varint)
+		case metaTypeVarInt, metaTypePose: // varint payloads
 			v, err := ReadVarInt(r)
 			if err != nil {
 				return body
@@ -992,6 +1034,14 @@ func rewriteMetaEntries(body []byte, mapEntry func(idx byte, typ int32) (byte, i
 				out = append(out, p[:]...)
 			}
 		default:
+			if isVariantHolderSerializer(typ) { // a holder is one varint
+				v, err := ReadVarInt(r)
+				if err != nil {
+					return body
+				}
+				out = AppendVarInt(out, v)
+				continue
+			}
 			return body // a value type we never emit here (e.g. a Slot) — bail
 		}
 	}

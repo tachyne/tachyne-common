@@ -138,17 +138,42 @@ const (
 	typeItemFrame   = 73
 	typeGlowFrame   = 60
 	// Ageable-mob species the engine sends type-specific metadata (index ≥17)
-	// for — enrolled in the 26.2 AGE_LOCKED index shift below.
-	typeSheep    = 111
-	typeWolf     = 148
-	typeCat      = 21
-	typeOcelot   = 91
-	typeParrot   = 98
-	typeBee      = 11
-	typeFrog     = 55  // variant holder at 17 (+ serializer renumber at 26.2)
-	typeAxolotl  = 7   // variant INT at 17
-	typeVillager = 139 // VILLAGER_DATA at 18 (an AgeableMob: 19 on 26.2)
+	// for — enrolled in the 26.2 AGE_LOCKED index shift below. Those whose
+	// variant is a registry HOLDER also get their serializer renumbered
+	// (FixVariantMeta); the rest carry plain INT/byte fields.
+	typeSheep       = 111
+	typeWolf        = 148 // tame flags 17, WOLF_VARIANT holder at 22
+	typeCat         = 21  // CAT_VARIANT holder at 19 (tame flags 17)
+	typeOcelot      = 91
+	typeParrot      = 98 // tame flags 17, variant INT at 19
+	typeBee         = 11
+	typeFrog        = 55  // FROG_VARIANT holder at 17
+	typeAxolotl     = 7   // variant INT at 17
+	typeVillager    = 139 // VILLAGER_DATA at 18 (an AgeableMob: 19 on 26.2)
+	typeHorse       = 66  // variant INT (colour | markings<<8) at 18
+	typeLlama       = 78  // strength INT 19, variant INT 20
+	typeTraderLlama = 134 // a Llama subclass: the same fields
+	typeRabbit      = 108 // variant INT at 17
+	typeFox         = 54  // variant INT at 17
+	typeMooshroom   = 86  // variant INT at 17
+	typePig         = 100 // PIG_VARIANT holder at 18 (boost time 17)
+	typeCow         = 30  // COW_VARIANT holder at 17
+	typeChicken     = 26  // CHICKEN_VARIANT holder at 17
 )
+
+// ageableIntMetaTypes are the AgeableMob species whose type-specific
+// metadata is all plain scalars: only the 26.2 index shift applies.
+var ageableIntMetaTypes = map[int32]bool{
+	typeSheep: true, typeOcelot: true, typeParrot: true, typeBee: true, typeAxolotl: true,
+	typeVillager: true, typeHorse: true, typeLlama: true, typeTraderLlama: true,
+	typeRabbit: true, typeFox: true, typeMooshroom: true,
+}
+
+// ageableHolderMetaTypes are the AgeableMob species carrying a registry-holder
+// variant: the index shift AND the holder serializer's 26.x renumbering.
+var ageableHolderMetaTypes = map[int32]bool{
+	typeWolf: true, typeCat: true, typeFrog: true, typePig: true, typeCow: true, typeChicken: true,
+}
 
 // clientConn serializes writes to the Minecraft client. tr is the per-
 // connection translation chain (Identity for a 770 client; renumbers packet
@@ -722,19 +747,19 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 					}
 					// Ageable mobs: 26.2 inserted AGE_LOCKED as AgeableMob's second
 					// field, pushing every subclass's indices up one (sheep wool,
-					// tamable flags, ocelot trust, bee flags/anger). Baby (16)
-					// predates the insertion and stays put. Seen live: a byte at a
-					// 26.2 bee's 17 (a Boolean there) is a type-mismatch disconnect.
-					if etype == typeSheep || etype == typeWolf || etype == typeCat ||
-						etype == typeOcelot || etype == typeParrot || etype == typeBee || etype == typeAxolotl ||
-						etype == typeVillager {
+					// tamable flags, ocelot trust, bee flags/anger, every mob
+					// variant). Baby (16) predates the insertion and stays put.
+					// Seen live: a byte at a 26.2 bee's 17 (a Boolean there) is a
+					// type-mismatch disconnect.
+					if ageableIntMetaTypes[etype] {
 						p.Body = protocol.ShiftAgeableMobMeta(clientProto, p.Body)
 					}
-					// A frog's variant holder: the ageable shift plus its
-					// serializer's 26.x renumbering (COMPOUND_TAG gone, sound
-					// variants inserted).
-					if etype == typeFrog {
-						p.Body = protocol.FixFrogMeta(clientProto, p.Body)
+					// A holder variant (frog, wolf, cat, pig, cow, chicken): the
+					// ageable shift plus the serializer's 26.x renumbering
+					// (COMPOUND_TAG gone, sound variants inserted) — one rewrite,
+					// never both.
+					if ageableHolderMetaTypes[etype] {
+						p.Body = protocol.FixVariantMeta(clientProto, p.Body)
 					}
 					// The copper golem's index-16 oxidation state ships as an INT
 					// placeholder; restore its WEATHERING_COPPER_STATE value-type on
