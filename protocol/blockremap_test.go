@@ -876,9 +876,9 @@ func TestReadSlot770(t *testing.T) {
 	b = AppendVarInt(b, 1)
 	b = AppendVarInt(b, 0)
 	b = AppendVarInt(b, int32(componentEnchantments))
-	b = AppendVarInt(b, 1) // one enchantment
-	b = AppendVarInt(b, 3) // id
-	b = AppendVarInt(b, 2) // level
+	b = AppendVarInt(b, 1)  // one enchantment
+	b = AppendVarInt(b, 3)  // id
+	b = AppendVarInt(b, 2)  // level
 	b = AppendVarInt(b, 77) // whatever follows the slot
 	r := bytes.NewReader(b)
 	item, count, ok := ReadSlot770(r)
