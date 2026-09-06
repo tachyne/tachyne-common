@@ -1250,6 +1250,31 @@ func copyFullSlot(r *bytes.Reader, out *[]byte, remap func(int32) int32, version
 	return copyFullSlotAt(r, out, remap, version, serverbound, 0)
 }
 
+// ReadSlot770 reads one canonical (770) Slot off r — the item id and count,
+// with the component bytes walked past — for a consumer that renders the
+// stack in a foreign form (the Bedrock gateway's trade list) and cannot
+// use the wire bytes as they are. An empty slot is (0, 0, true); false
+// means the component set was one this walker does not know.
+func ReadSlot770(r *bytes.Reader) (item, count int32, ok bool) {
+	var out []byte
+	if !copyFullSlotAt(r, &out, func(id int32) int32 { return id }, 770, false, 0) {
+		return 0, 0, false
+	}
+	br := bytes.NewReader(out)
+	count, err := ReadVarInt(br)
+	if err != nil {
+		return 0, 0, false
+	}
+	if count <= 0 {
+		return 0, 0, true
+	}
+	item, err = ReadVarInt(br)
+	if err != nil {
+		return 0, 0, false
+	}
+	return item, count, true
+}
+
 func copyFullSlotAt(r *bytes.Reader, out *[]byte, remap func(int32) int32, version int32, serverbound bool, depth int) bool {
 	// Component-id translation pairs for this direction: canonical (770) ids on
 	// the server side, the client version's ids on the wire side.

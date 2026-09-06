@@ -867,3 +867,28 @@ func TestRemapParticleID(t *testing.T) {
 		}
 	}
 }
+
+// ReadSlot770 walks a full Slot (components included) and reports the item.
+func TestReadSlot770(t *testing.T) {
+	// an enchanted stack: count 1, item 5, one component (enchantments), none removed
+	b := AppendVarInt(nil, 1)
+	b = AppendVarInt(b, 5)
+	b = AppendVarInt(b, 1)
+	b = AppendVarInt(b, 0)
+	b = AppendVarInt(b, int32(componentEnchantments))
+	b = AppendVarInt(b, 1) // one enchantment
+	b = AppendVarInt(b, 3) // id
+	b = AppendVarInt(b, 2) // level
+	b = AppendVarInt(b, 77) // whatever follows the slot
+	r := bytes.NewReader(b)
+	item, count, ok := ReadSlot770(r)
+	if !ok || item != 5 || count != 1 {
+		t.Fatalf("got %d x%d ok=%v", item, count, ok)
+	}
+	if next, err := ReadVarInt(r); err != nil || next != 77 {
+		t.Errorf("reader left at %d (%v), want 77", next, err)
+	}
+	if item, count, ok := ReadSlot770(bytes.NewReader(AppendVarInt(nil, 0))); !ok || item != 0 || count != 0 {
+		t.Errorf("empty slot: %d %d %v", item, count, ok)
+	}
+}
