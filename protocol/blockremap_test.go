@@ -892,3 +892,52 @@ func TestReadSlot770(t *testing.T) {
 		t.Errorf("empty slot: %d %d %v", item, count, ok)
 	}
 }
+
+// A dyed leather helmet keeps its colour across versions: the component id
+// renumbers (35 → 42 → 44) and the rgb varint rides through unchanged.
+func TestDyedColorComponentRenumbers(t *testing.T) {
+	slot := AppendVarInt(nil, 1) // count
+	slot = AppendVarInt(slot, 5) // some item
+	slot = AppendVarInt(slot, 1) // one component added
+	slot = AppendVarInt(slot, 0) // none removed
+	slot = AppendVarInt(slot, componentDyedColor)
+	slot = AppendVarInt(slot, 0xA06540)
+	for _, tc := range []struct {
+		version int32
+		want    int32
+	}{{770, 35}, {772, 35}, {774, 42}, {775, 44}, {776, 44}} {
+		var out []byte
+		if !copyFullSlot(bytes.NewReader(slot), &out, func(id int32) int32 { return id }, tc.version, false) {
+			t.Fatalf("v%d: walker refused the dyed slot", tc.version)
+		}
+		r := bytes.NewReader(out)
+		ReadVarInt(r) // count
+		ReadVarInt(r) // item
+		ReadVarInt(r) // added
+		ReadVarInt(r) // removed
+		if id, _ := ReadVarInt(r); id != tc.want {
+			t.Errorf("v%d: dyed_color id = %d, want %d", tc.version, id, tc.want)
+		}
+		if rgb, _ := ReadVarInt(r); rgb != 0xA06540 {
+			t.Errorf("v%d: rgb = %#x, want a06540", tc.version, rgb)
+		}
+	}
+	// Serverbound (a 26.2 creative slot) maps the client's 44 back to 35.
+	sb := AppendVarInt(nil, 1)
+	sb = AppendVarInt(sb, 5)
+	sb = AppendVarInt(sb, 1)
+	sb = AppendVarInt(sb, 0)
+	sb = AppendVarInt(sb, 44)
+	sb = AppendVarInt(sb, 0x123456)
+	var out []byte
+	if !copyFullSlot(bytes.NewReader(sb), &out, func(id int32) int32 { return id }, 776, true) {
+		t.Fatal("serverbound dyed slot refused")
+	}
+	r := bytes.NewReader(out)
+	for i := 0; i < 4; i++ {
+		ReadVarInt(r)
+	}
+	if id, _ := ReadVarInt(r); id != componentDyedColor {
+		t.Errorf("serverbound dyed_color id = %d, want %d", id, componentDyedColor)
+	}
+}

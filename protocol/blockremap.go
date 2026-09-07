@@ -1099,6 +1099,7 @@ const (
 	componentLore            = 8  // minecraft:lore (list of NBT texts), canonical
 	componentStoredEnch      = 34 // minecraft:stored_enchantments (books), canonical
 	componentMapID           = 37 // minecraft:map_id (varint), canonical
+	componentDyedColor       = 35 // minecraft:dyed_color (varint rgb), canonical
 	componentTrim            = 47 // minecraft:trim (2 holder varints), canonical
 	componentBannerPatterns  = 63 // minecraft:banner_patterns (layer list), canonical
 	componentWritableBook    = 45 // minecraft:writable_book_content, canonical
@@ -1193,6 +1194,19 @@ func lodestoneCompID(version int32) int32 {
 		return 65
 	}
 	return componentLodestone
+}
+
+// dyedColorCompID: 35 through 1.21.9 (770-773), 42 at 1.21.11 (774), 44 from
+// 26.1 (775+) — the per-version datagen registry reports again. The payload
+// is one rgb varint on every version (show_in_tooltip left it before 1.21.5).
+func dyedColorCompID(version int32) int32 {
+	switch {
+	case version >= 775:
+		return 44
+	case version >= 774:
+		return 42
+	}
+	return componentDyedColor
 }
 
 func mapIDCompID(version int32) int32 {
@@ -1333,6 +1347,7 @@ func copyFullSlotAt(r *bytes.Reader, out *[]byte, remap func(int32) int32, versi
 	nameIn, nameOut := int32(componentCustomName), customNameCompID(version)
 	loreIn, loreOut := int32(componentLore), loreCompID(version)
 	mapIn, mapOut := int32(componentMapID), mapIDCompID(version)
+	dyedIn, dyedOut := int32(componentDyedColor), dyedColorCompID(version)
 	trimIn, trimOut := int32(componentTrim), trimCompID(version)
 	bannerIn, bannerOut := int32(componentBannerPatterns), bannerPatternsCompID(version)
 	bundleIn, bundleOut := int32(componentBundleContents), bundleContentsCompID(version)
@@ -1346,6 +1361,7 @@ func copyFullSlotAt(r *bytes.Reader, out *[]byte, remap func(int32) int32, versi
 		nameIn, nameOut = nameOut, nameIn
 		loreIn, loreOut = loreOut, loreIn
 		mapIn, mapOut = mapOut, mapIn
+		dyedIn, dyedOut = dyedOut, dyedIn
 		trimIn, trimOut = trimOut, trimIn
 		bannerIn, bannerOut = bannerOut, bannerIn
 		bundleIn, bundleOut = bundleOut, bundleIn
@@ -1387,6 +1403,15 @@ func copyFullSlotAt(r *bytes.Reader, out *[]byte, remap func(int32) int32, versi
 			}
 			*out = AppendVarInt(*out, mapOut)
 			*out = AppendVarInt(*out, val)
+		case dyedIn:
+			// dyed_color: one rgb varint (leather armour, wolf armour);
+			// only the component id renumbers.
+			rgb, err := ReadVarInt(r)
+			if err != nil {
+				return false
+			}
+			*out = AppendVarInt(*out, dyedOut)
+			*out = AppendVarInt(*out, rgb)
 		case trimIn:
 			// trim: two holder varints (material ref, pattern ref) — our own
 			// declared registry orders, identical on every version; only the
