@@ -1024,3 +1024,23 @@ type BlockEvent struct {
 	Param  uint8 `json:"param"`
 	Block  int32 `json:"block"`
 }
+
+// MsgShelfItems syncs a wooden shelf's three display slots to viewers
+// (ShelfBlockEntity's update tag: Items + align_items_to_bottom) — the
+// client renders the items standing on the shelf. 1.21.9+ clients only;
+// the chain drops it for older ones.
+const MsgShelfItems = 0x70 // w→gw
+
+// ShelfItem is one shelf slot: item registry name ("" = empty) and count.
+type ShelfItem struct {
+	Name  string `json:"name,omitempty"`
+	Count int32  `json:"count,omitempty"`
+}
+
+// ShelfItems is one shelf's contents in the receiving player's dimension.
+type ShelfItems struct {
+	X     int32        `json:"x"`
+	Y     int32        `json:"y"`
+	Z     int32        `json:"z"`
+	Items [3]ShelfItem `json:"items"`
+}

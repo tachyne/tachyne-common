@@ -25,6 +25,7 @@ const (
 	beTypeHangingSign = 8
 	beTypeBanner      = 20
 	beTypeCampfire    = 33
+	beTypeShelf       = 40 // 1.21.9+; the chain renumbers or drops it per client
 )
 
 func signSideNBT(s attach.SignSide) protocol.SignSideNBT {
@@ -50,6 +51,20 @@ func CampfireData(e attach.CampfireItems) Packet {
 	b := protocol.AppendPosition(nil, int(e.X), int(e.Y), int(e.Z))
 	b = protocol.AppendVarInt(b, beTypeCampfire)
 	b = protocol.AppendCampfireNBT(b, e.Items)
+	return Packet{IDBlockEntityData, b}
+}
+
+// ShelfData composes block_entity_data for a wooden shelf's three slots.
+func ShelfData(e attach.ShelfItems) Packet {
+	b := protocol.AppendPosition(nil, int(e.X), int(e.Y), int(e.Z))
+	b = protocol.AppendVarInt(b, beTypeShelf)
+	var items [3]protocol.ShelfItemNBT
+	for i, st := range e.Items {
+		if st.Count > 0 && st.Name != "" {
+			items[i] = protocol.ShelfItemNBT{ID: st.Name, Count: st.Count}
+		}
+	}
+	b = protocol.AppendShelfNBT(b, items)
 	return Packet{IDBlockEntityData, b}
 }
 

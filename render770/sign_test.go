@@ -292,3 +292,75 @@ func TestCampfireDataReparse(t *testing.T) {
 		t.Fatalf("%d trailing bytes", br.Len())
 	}
 }
+
+// TestShelfDataReparse: position, the shelf type, then Items with Slot,
+// id and count per filled slot and the alignment flag.
+func TestShelfDataReparse(t *testing.T) {
+	pkt := ShelfData(attach.ShelfItems{X: 1, Y: 70, Z: -2,
+		Items: [3]attach.ShelfItem{{Name: "minecraft:diamond", Count: 3}, {}, {Name: "minecraft:stick", Count: 1}}})
+	if pkt.ID != IDBlockEntityData {
+		t.Fatalf("id 0x%x", pkt.ID)
+	}
+	br := bytes.NewReader(pkt.Body[8:])
+	if typ, _ := protocol.ReadVarInt(br); typ != beTypeShelf {
+		t.Fatalf("be type %d", typ)
+	}
+	mustByte := func(want byte, what string) {
+		b, _ := br.ReadByte()
+		if b != want {
+			t.Fatalf("%s: 0x%02x want 0x%02x", what, b, want)
+		}
+	}
+	readStr := func() string {
+		var n [2]byte
+		br.Read(n[:])
+		buf := make([]byte, int(n[0])<<8|int(n[1]))
+		br.Read(buf)
+		return string(buf)
+	}
+	readI32 := func() int32 {
+		var b [4]byte
+		br.Read(b[:])
+		return int32(b[0])<<24 | int32(b[1])<<16 | int32(b[2])<<8 | int32(b[3])
+	}
+	mustByte(0x0a, "root compound")
+	mustByte(0x09, "list tag")
+	if name := readStr(); name != "Items" {
+		t.Fatalf("list name %q", name)
+	}
+	mustByte(0x0a, "list elem type")
+	if n := readI32(); n != 2 {
+		t.Fatalf("two filled slots, got %d", n)
+	}
+	for _, want := range []struct {
+		slot  byte
+		id    string
+		count int32
+	}{{0, "minecraft:diamond", 3}, {2, "minecraft:stick", 1}} {
+		mustByte(0x01, "Slot tag")
+		if readStr() != "Slot" {
+			t.Fatal("Slot name")
+		}
+		mustByte(want.slot, "slot index")
+		mustByte(0x08, "id tag")
+		readStr()
+		if id := readStr(); id != want.id {
+			t.Fatalf("id %q want %q", id, want.id)
+		}
+		mustByte(0x03, "count tag")
+		readStr()
+		if c := readI32(); c != want.count {
+			t.Fatalf("count %d want %d", c, want.count)
+		}
+		mustByte(0x00, "entry end")
+	}
+	mustByte(0x01, "align byte tag")
+	if readStr() != "align_items_to_bottom" {
+		t.Fatal("align tag name")
+	}
+	mustByte(0x00, "align false")
+	mustByte(0x00, "root end")
+	if br.Len() != 0 {
+		t.Fatalf("%d trailing bytes", br.Len())
+	}
+}
