@@ -1021,20 +1021,17 @@ func TestArmadilloStateMeta(t *testing.T) {
 	body = AppendVarInt(body, ArmadilloStateSerializer770)
 	body = AppendVarInt(body, 2) // scared
 	body = append(body, 0xff)
-	out := remapEntityMeta(776, body)
+	// The gateway shifts indices on the canonical body first, then the
+	// chain renumbers serializers.
+	shifted := ShiftAgeableMobMeta(776, body)
+	out := remapEntityMeta(776, shifted)
 	r := bytes.NewReader(out)
 	ReadVarInt(r)
 	idx, _ := r.ReadByte()
 	typ, _ := ReadVarInt(r)
 	val, _ := ReadVarInt(r)
-	if idx != 17 || typ != 34 || val != 2 {
-		t.Fatalf("26.2 armadillo meta = idx %d typ %d val %d, want 17/34/2 before the ageable shift", idx, typ, val)
-	}
-	shifted := ShiftAgeableMobMeta(776, out)
-	r = bytes.NewReader(shifted)
-	ReadVarInt(r)
-	if idx, _ := r.ReadByte(); idx != 18 {
-		t.Fatalf("after the ageable shift the index should be 18, got %d", idx)
+	if idx != 18 || typ != 34 || val != 2 {
+		t.Fatalf("26.2 armadillo meta = idx %d typ %d val %d, want 18/34/2", idx, typ, val)
 	}
 	if !bytes.Equal(remapEntityMeta(770, body), body) {
 		t.Fatal("a 1.21.5 client gets it untouched")
