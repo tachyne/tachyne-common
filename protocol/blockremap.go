@@ -16,6 +16,7 @@ import (
 // Canonical (770) play packet IDs that carry version-specific registry IDs.
 const (
 	canonChunkData          = 0x27 // clientbound Chunk Data (block-state IDs)
+	canonBlockEntityData    = 0x06 // clientbound Block Entity Data (block_entity_type ID + NBT)
 	canonBlockUpdate        = 0x08 // clientbound Block Update (one block-state ID)
 	canonSpawnEntity        = 0x01 // clientbound Spawn Entity (entity-type ID)
 	canonSetSlot            = 0x14 // clientbound Set Slot (item ID in a Slot)
@@ -41,41 +42,45 @@ const (
 // remapClientboundIDs rewrites version-specific registry IDs in a clientbound play
 // packet, dispatching by canonical (770) packet ID. Returns body unchanged when no
 // registry applies for this client version.
-func remapClientboundIDs(version, id int32, body []byte) []byte {
+func remapClientboundIDs(version, id int32, body []byte) ([]byte, bool) {
 	switch id {
 	case canonChunkData:
-		if HasRemap(RegBlockState, version) {
-			return remapChunkBlocks(version, body)
+		if HasRemap(RegBlockState, version) || blockEntityTypesShift(version) {
+			return remapChunkBlocks(version, body), false
+		}
+	case canonBlockEntityData:
+		if blockEntityTypesShift(version) {
+			return remapBlockEntityData(version, body)
 		}
 	case canonBlockUpdate:
 		if HasRemap(RegBlockState, version) {
-			return remapBlockUpdate(version, body)
+			return remapBlockUpdate(version, body), false
 		}
 	case canonSpawnEntity:
 		if HasRemap(RegEntity, version) {
-			return remapSpawnEntityType(version, body)
+			return remapSpawnEntityType(version, body), false
 		}
 	case canonSetSlot:
 		if HasRemap(RegItem, version) {
-			return remapSetSlot(version, body)
+			return remapSetSlot(version, body), false
 		}
 	case canonWindowItems:
 		if HasRemap(RegItem, version) {
-			return remapWindowItems(version, body)
+			return remapWindowItems(version, body), false
 		}
 	case canonEntityMetadata:
 		if HasRemap(RegItem, version) { // item ids inside item-entity metadata (incl. 770 now)
-			return remapEntityMeta(version, body)
+			return remapEntityMeta(version, body), false
 		}
 	case canonSetCursorItem:
 		if HasRemap(RegItem, version) {
 			r := bytes.NewReader(body) // body is a single Slot
 			return remapTrailingSlot(body, r, func(i int32) int32 { return RemapID(RegItem, version, i) },
-				version, false)
+				version, false), false
 		}
 	case canonSetEquipment:
 		if HasRemap(RegItem, version) {
-			return remapEquipment(version, body)
+			return remapEquipment(version, body), false
 		}
 	case canonEntityVelocity:
 		// 1.21.9 (773) changed the velocity encoding from vec3i16 (3×i16 in
@@ -84,7 +89,7 @@ func remapClientboundIDs(version, id int32, body []byte) []byte {
 		// clientbound/minecraft:set_entity_motion") — hit the first time we ever
 		// sent this packet (zombie-bite knockback).
 		if version >= 773 {
-			return rewriteEntityVelocity773(body)
+			return rewriteEntityVelocity773(body), false
 		}
 	case canonJoinGame:
 		// 26.2 (proto 776) INSERTED onlineMode(bool) before the trailing
@@ -108,16 +113,16 @@ func remapClientboundIDs(version, id int32, body []byte) []byte {
 			// "<name>" messages regardless of the "Only Show Secure Chat" toggle.
 			// false restores the vanilla offline behaviour (toast shown, but chat
 			// visible when the client's Only-Show-Secure-Chat is off).
-			return out
+			return out, false
 		}
 	case canonUpdateTime:
 		// 26.1 (proto 775+) reworked Update Time into the clock-based form.
 		if version >= 775 {
-			return rewriteSetTime26x(body)
+			return rewriteSetTime26x(body), false
 		}
 	case canonWorldEvent:
 		if HasRemap(RegBlockState, version) {
-			return remapWorldEvent(version, body)
+			return remapWorldEvent(version, body), false
 		}
 	case canonBlockEvent:
 		// position (8) + action + param, then the block id the client checks
@@ -126,32 +131,32 @@ func remapClientboundIDs(version, id int32, body []byte) []byte {
 			r := bytes.NewReader(body[10:])
 			id, err := ReadVarInt(r)
 			if err != nil {
-				return body
+				return body, false
 			}
 			out := append([]byte(nil), body[:10]...)
-			return AppendVarInt(out, RemapID(RegBlock, version, id))
+			return AppendVarInt(out, RemapID(RegBlock, version, id)), false
 		}
 	case canonWorldParticles:
 		if version > 770 {
-			return remapWorldParticles(version, body)
+			return remapWorldParticles(version, body), false
 		}
 	case canonUpdateAdvancements:
 		if HasRemap(RegItem, version) {
-			return remapAdvancementIcons(version, body)
+			return remapAdvancementIcons(version, body), false
 		}
 	case canonMerchantOffers:
 		// Item ids AND the result's component ids (an enchanted book's
 		// enchantments component renumbers at 774+), so every translated
 		// client, not only those with an item shift.
 		if version > 770 {
-			return remapMerchantOffers(version, body)
+			return remapMerchantOffers(version, body), false
 		}
 	case canonAwardStats:
 		// Four registries ride this packet; RemapID self-no-ops per registry
 		// when a version needs no shift, so no HasRemap gate here.
-		return remapAwardStats(version, body)
+		return remapAwardStats(version, body), false
 	}
-	return body
+	return body, false
 }
 
 // remapWorldEvent rewrites the data field of a World Event when the event is
@@ -499,16 +504,117 @@ func remapChunkBlocks(version int32, body []byte) []byte {
 		return body
 	}
 	col := body[colAt : colAt+int(colLen)]
-	newCol := remapSections(version, col)
-	if newCol == nil {
-		return body // parse failure — leave the chunk untouched
+	newCol := col
+	if HasRemap(RegBlockState, version) {
+		if newCol = remapSections(version, col); newCol == nil {
+			return body // parse failure — leave the chunk untouched
+		}
+	}
+	tail := body[colAt+int(colLen):] // block entities + light
+	if blockEntityTypesShift(version) {
+		if t := remapChunkBlockEntities(version, tail); t != nil {
+			tail = t
+		}
 	}
 	out := make([]byte, 0, len(body)+len(newCol)-len(col))
 	out = append(out, body[:colLenAt]...)       // cx, cz, heightmaps
 	out = AppendVarInt(out, int32(len(newCol))) // (re)write col length
 	out = append(out, newCol...)
-	out = append(out, body[colAt+int(colLen):]...) // block entities + light
+	out = append(out, tail...)
 	return out
+}
+
+// Block-entity TYPE ids are canonical 1.21.11 (block_entity_type registry
+// order, ViaVersion's mapping-1.21.11): 47 types shared with 1.21.5, then
+// shelf (40) inserted before brushable_block and copper_golem_statue (48)
+// appended. 26.2 dropped bed (24) — beds lost their block entity — so
+// everything from conduit on sits one lower there. A client of 1.21.5-1.21.8
+// has no shelf or statue type and one of 26.2 has no bed type: those entries
+// are dropped from chunks, and a block_entity_data for them is swallowed.
+
+func blockEntityTypesShift(version int32) bool { return version < 774 || version >= 776 }
+
+// blockEntityTypeFor maps a canonical block_entity_type id to the client's.
+func blockEntityTypeFor(version, typ int32) (int32, bool) {
+	switch {
+	case version < 774: // 1.21.5-1.21.8
+		switch {
+		case typ < 40:
+			return typ, true
+		case typ == 40 || typ >= 48:
+			return 0, false
+		}
+		return typ - 1, true
+	case version >= 776: // 26.2
+		switch {
+		case typ < 24:
+			return typ, true
+		case typ == 24:
+			return 0, false
+		}
+		return typ - 1, true
+	}
+	return typ, true
+}
+
+// remapChunkBlockEntities rewrites a chunk body's block-entity section
+// (varint count, then {u8 xz, i16 y, varint type, network NBT}) for the
+// client's block_entity_type ids, dropping entries it has no type for. The
+// light data after the section is copied verbatim. nil on parse trouble.
+func remapChunkBlockEntities(version int32, tail []byte) []byte {
+	r := bytes.NewReader(tail)
+	n, err := ReadVarInt(r)
+	if err != nil || n < 0 {
+		return nil
+	}
+	var out []byte
+	kept := int32(0)
+	for i := int32(0); i < n; i++ {
+		start := len(tail) - r.Len()
+		if !skip(r, 3) { // xz, y
+			return nil
+		}
+		typ, err := ReadVarInt(r)
+		if err != nil {
+			return nil
+		}
+		nbtAt := len(tail) - r.Len()
+		if err := SkipNetworkNBT(r); err != nil {
+			return nil
+		}
+		end := len(tail) - r.Len()
+		ct, ok := blockEntityTypeFor(version, typ)
+		if !ok {
+			continue
+		}
+		out = append(out, tail[start:start+3]...)
+		out = AppendVarInt(out, ct)
+		out = append(out, tail[nbtAt:end]...)
+		kept++
+	}
+	head := AppendVarInt(nil, kept)
+	rest := tail[len(tail)-r.Len():]
+	return append(append(head, out...), rest...)
+}
+
+// remapBlockEntityData rewrites block_entity_data's type (position, varint
+// type, NBT); a type the client lacks drops the packet.
+func remapBlockEntityData(version int32, body []byte) ([]byte, bool) {
+	if len(body) < 9 {
+		return body, false
+	}
+	r := bytes.NewReader(body[8:])
+	typ, err := ReadVarInt(r)
+	if err != nil {
+		return body, false
+	}
+	ct, ok := blockEntityTypeFor(version, typ)
+	if !ok {
+		return body, true
+	}
+	out := append([]byte{}, body[:8]...)
+	out = AppendVarInt(out, ct)
+	return append(out, body[8+len(body[8:])-r.Len():]...), false
 }
 
 // remapSections walks the back-to-back chunk sections in col, remapping each

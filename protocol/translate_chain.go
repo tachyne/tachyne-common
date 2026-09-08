@@ -94,7 +94,10 @@ func (c chainTranslator) Clientbound(state State, id int32, body []byte) (int32,
 	// renumbering. Newer versions shifted block-state IDs, so chunk palettes and
 	// block updates must be translated or the client renders the wrong blocks.
 	if state == StatePlay {
-		body = remapClientboundIDs(c.version, id, body)
+		var drop bool
+		if body, drop = remapClientboundIDs(c.version, id, body); drop {
+			return id, body, true // a block entity this client has no type for
+		}
 	}
 	for _, s := range c.steps { // canonical → client version
 		var drop bool

@@ -417,12 +417,12 @@ func TestJoinBoolean776(t *testing.T) {
 	// enforcesSecureChat=true(1)] — offline clients send unsigned chat but trust
 	// our system-chat relays (no "messages can't be verified", no hiding).
 	body := []byte{1, 2, 3}
-	out := remapClientboundIDs(776, canonJoinGame, body)
+	out, _ := remapClientboundIDs(776, canonJoinGame, body)
 	if len(out) != 4 || out[0] != 1 || out[1] != 2 || out[2] != 0x00 || out[3] != 0x00 {
 		t.Errorf("776 join tail wrong: got %v, want [1 2 0 0] (onlineMode=false, enforcesSecureChat=false)", out)
 	}
 	// 775 and below have no onlineMode field — unchanged.
-	if out2 := remapClientboundIDs(775, canonJoinGame, body); len(out2) != 3 {
+	if out2, _ := remapClientboundIDs(775, canonJoinGame, body); len(out2) != 3 {
 		t.Errorf("775 join should be unchanged, got %v", out2)
 	}
 }
@@ -939,5 +939,76 @@ func TestDyedColorComponentRenumbers(t *testing.T) {
 	}
 	if id, _ := ReadVarInt(r); id != componentDyedColor {
 		t.Errorf("serverbound dyed_color id = %d, want %d", id, componentDyedColor)
+	}
+}
+
+// Block-entity type ids are canonical 1.21.11: a 1.21.5 client gets the
+// types after the shelf shifted down and the shelf and statue entries
+// dropped; a 26.2 client gets everything from conduit on shifted down and
+// bed entries dropped. Chunk sections and block_entity_data alike.
+func TestBlockEntityTypesPerVersion(t *testing.T) {
+	entry := func(typ int32) []byte {
+		b := []byte{0x12}           // xz
+		b = AppendI16(b, 64)        // y
+		b = AppendVarInt(b, typ)    // type
+		b = append(b, NBTRoot()...) // nameless root compound…
+		b = NBTInt(b, "x", 7)       // …with one tag
+		return NBTEnd(b)
+	}
+	tail := AppendVarInt(nil, 4)
+	tail = append(tail, entry(33)...) // campfire
+	tail = append(tail, entry(40)...) // shelf
+	tail = append(tail, entry(41)...) // brushable_block
+	tail = append(tail, entry(24)...) // bed
+	tail = append(tail, 0xAA, 0xBB)   // light stand-in
+	types := func(b []byte) []int32 {
+		r := bytes.NewReader(b)
+		n, _ := ReadVarInt(r)
+		var out []int32
+		for i := int32(0); i < n; i++ {
+			skip(r, 3)
+			typ, _ := ReadVarInt(r)
+			out = append(out, typ)
+			if err := SkipNetworkNBT(r); err != nil {
+				t.Fatalf("nbt: %v", err)
+			}
+		}
+		if rest, _ := r.ReadByte(); rest != 0xAA {
+			t.Fatalf("light tail lost: %#x", rest)
+		}
+		return out
+	}
+	got := types(remapChunkBlockEntities(770, tail))
+	if len(got) != 3 || got[0] != 33 || got[1] != 40 || got[2] != 24 {
+		t.Errorf("770 types = %v, want [33 40 24] (shelf dropped, brushable 41→40)", got)
+	}
+	got = types(remapChunkBlockEntities(776, tail))
+	if len(got) != 3 || got[0] != 32 || got[1] != 39 || got[2] != 40 {
+		t.Errorf("776 types = %v, want [32 39 40] (bed dropped, the rest one lower)", got)
+	}
+	if _, ok := blockEntityTypeFor(774, 40); !ok {
+		t.Error("1.21.11 knows the shelf as itself")
+	}
+	// block_entity_data: the type renumbers, or the packet drops.
+	body := AppendPosition(nil, 1, 2, 3)
+	body = AppendVarInt(body, 33)
+	body = append(body, NBTRoot()...)
+	body = NBTEnd(body)
+	out, drop := remapBlockEntityData(776, body)
+	if drop {
+		t.Fatal("a campfire exists on 26.2")
+	}
+	if typ, _ := ReadVarInt(bytes.NewReader(out[8:])); typ != 32 {
+		t.Errorf("26.2 campfire type = %d, want 32", typ)
+	}
+	shelf := AppendPosition(nil, 1, 2, 3)
+	shelf = AppendVarInt(shelf, 40)
+	shelf = append(shelf, NBTRoot()...)
+	shelf = NBTEnd(shelf)
+	if _, drop := remapBlockEntityData(770, shelf); !drop {
+		t.Error("a 1.21.5 client has no shelf type: the packet must drop")
+	}
+	if _, drop := remapClientboundIDs(770, canonBlockEntityData, shelf); !drop {
+		t.Error("the dispatcher must drop it too")
 	}
 }

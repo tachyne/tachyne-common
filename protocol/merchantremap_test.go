@@ -91,7 +91,7 @@ func TestMerchantOffersTranslateItemsAndComponents(t *testing.T) {
 		t.Errorf("fixed tail changed: %x vs %x", tail, wantTail)
 	}
 	// A canonical client gets the body untouched through the dispatcher.
-	if got := remapClientboundIDs(770, canonMerchantOffers, body); !bytes.Equal(got, body) {
+	if got, _ := remapClientboundIDs(770, canonMerchantOffers, body); !bytes.Equal(got, body) {
 		t.Error("770 must not rewrite merchant offers")
 	}
 }
