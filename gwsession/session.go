@@ -142,6 +142,7 @@ const (
 	// variant is a registry HOLDER also get their serializer renumbered
 	// (FixVariantMeta); the rest carry plain INT/byte fields.
 	typeSheep       = 111
+	typeArmadillo   = 4   // ARMADILLO_STATE at 17 (an AgeableMob: 18 on 26.2)
 	typeWolf        = 148 // tame flags 17, WOLF_VARIANT holder at 22
 	typeCat         = 21  // CAT_VARIANT holder at 19 (tame flags 17)
 	typeOcelot      = 91
@@ -166,7 +167,7 @@ const (
 var ageableIntMetaTypes = map[int32]bool{
 	typeSheep: true, typeOcelot: true, typeParrot: true, typeBee: true, typeAxolotl: true,
 	typeVillager: true, typeHorse: true, typeLlama: true, typeTraderLlama: true,
-	typeRabbit: true, typeFox: true, typeMooshroom: true,
+	typeRabbit: true, typeFox: true, typeMooshroom: true, typeArmadillo: true,
 }
 
 // ageableHolderMetaTypes are the AgeableMob species carrying a registry-holder

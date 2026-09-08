@@ -871,6 +871,9 @@ func remapEntityMeta(version int32, body []byte) []byte {
 		if (typ == metaTypePose || typ == VillagerDataSerializer770) && version >= 773 {
 			wireType = typ - 1 // COMPOUND_TAG (16) left the serializer list in 1.21.6
 		}
+		if typ == ArmadilloStateSerializer770 {
+			wireType = armadilloStateSerializer(version)
+		}
 		out = AppendVarInt(out, wireType)
 		switch typ {
 		case metaTypeByte, metaTypeBoolean:
@@ -879,7 +882,7 @@ func remapEntityMeta(version int32, body []byte) []byte {
 				return body
 			}
 			out = append(out, b)
-		case metaTypeVarInt, metaTypePose:
+		case metaTypeVarInt, metaTypePose, ArmadilloStateSerializer770:
 			v, err := ReadVarInt(r)
 			if err != nil {
 				return body
@@ -1035,6 +1038,21 @@ func isVariantHolderSerializer(typ int32) bool {
 // insertion at 26.2) is ShiftAgeableMobMeta's, per type.
 const VillagerDataSerializer770 = 19
 
+// ArmadilloStateSerializer770 is EntityDataSerializers.ARMADILLO_STATE (an
+// enum varint: idle, rolling, scared, unrolling): 32 on 1.21.5, 34 on 26.2
+// (31 across the unrouted 1.21.6-26.1 gap, COMPOUND_TAG's removal only).
+const ArmadilloStateSerializer770 = 32
+
+func armadilloStateSerializer(version int32) int32 {
+	switch {
+	case version >= 776:
+		return 34
+	case version >= 773:
+		return 31
+	}
+	return ArmadilloStateSerializer770
+}
+
 // FixVariantMeta rewrites an ageable mob's set_entity_data for a 26.2 client
 // when the species carries a HOLDER variant (frog, wolf, cat, pig, cow,
 // chicken): the ageable index shift (every index ≥17 up one, AGE_LOCKED) plus
@@ -1100,7 +1118,7 @@ func rewriteMetaEntries(body []byte, mapEntry func(idx byte, typ int32) (byte, i
 				return body
 			}
 			out = append(out, b)
-		case metaTypeVarInt, metaTypePose: // varint payloads
+		case metaTypeVarInt, metaTypePose, ArmadilloStateSerializer770: // varint payloads
 			v, err := ReadVarInt(r)
 			if err != nil {
 				return body
@@ -1856,7 +1874,7 @@ func FixCopperGolemMeta(version int32, body []byte) []byte {
 				return body
 			}
 			out = append(out, b)
-		case metaTypeVarInt, metaTypePose:
+		case metaTypeVarInt, metaTypePose, ArmadilloStateSerializer770:
 			v, err := ReadVarInt(r)
 			if err != nil {
 				return body
