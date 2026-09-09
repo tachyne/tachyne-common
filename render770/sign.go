@@ -11,6 +11,7 @@ package render770
 import (
 	attach "github.com/tachyne/tachyne-common/attach"
 	"github.com/tachyne/tachyne-common/protocol"
+	"sort"
 )
 
 // Canonical-770 clientbound play packet IDs.
@@ -23,6 +24,7 @@ const (
 const (
 	beTypeSign        = 7
 	beTypeHangingSign = 8
+	beTypePiston      = 11
 	beTypeBanner      = 20
 	beTypeCampfire    = 33
 	beTypeShelf       = 40 // 1.21.9+; the chain renumbers or drops it per client
@@ -89,4 +91,36 @@ func SignEditor(e attach.SignEditor) Packet {
 		b = append(b, 0)
 	}
 	return Packet{IDOpenSignEditor, b}
+}
+
+// MovingPistonData renders one moving_piston cell's block_entity_data
+// (PistonMovingBlockEntity.saveAdditional): blockState {Name, Properties},
+// facing (legacy direction id), progress, extending, source. The client's
+// piston renderer draws the carried block sliding from progress toward the
+// cell over the next ticks.
+func MovingPistonData(e attach.MovingPiston) Packet {
+	b := protocol.AppendPosition(nil, int(e.X), int(e.Y), int(e.Z))
+	b = protocol.AppendVarInt(b, beTypePiston)
+	b = append(b, protocol.NBTRoot()...)
+	b = protocol.NBTCompound(b, "blockState")
+	b = protocol.NBTString(b, "Name", e.Block)
+	if len(e.Props) > 0 {
+		keys := make([]string, 0, len(e.Props))
+		for k := range e.Props {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		b = protocol.NBTCompound(b, "Properties")
+		for _, k := range keys {
+			b = protocol.NBTString(b, k, e.Props[k])
+		}
+		b = protocol.NBTEnd(b)
+	}
+	b = protocol.NBTEnd(b)
+	b = protocol.NBTInt(b, "facing", e.Facing)
+	b = protocol.NBTFloat(b, "progress", e.Progress)
+	b = protocol.NBTBool(b, "extending", e.Extending)
+	b = protocol.NBTBool(b, "source", e.Source)
+	b = protocol.NBTEnd(b)
+	return Packet{IDBlockEntityData, b}
 }

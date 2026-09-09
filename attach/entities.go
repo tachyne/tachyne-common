@@ -1044,3 +1044,27 @@ type ShelfItems struct {
 	Z     int32        `json:"z"`
 	Items [3]ShelfItem `json:"items"`
 }
+
+// MsgMovingPiston syncs one moving_piston cell to viewers: the block a
+// piston is carrying (PistonMovingBlockEntity's update tag — blockState,
+// facing, progress, extending, source) so the client animates it sliding
+// into place over the two ticks before the world lays the real block down.
+const MsgMovingPiston = 0x71 // w→gw
+
+// MovingPiston is one animating cell in the receiving player's dimension.
+// Facing is vanilla's legacy direction id (down 0, up 1, north 2, south 3,
+// west 4, east 5): the piston's facing. State is the moved block's canonical
+// state id (for gateways that map by id); Block and Props are its name and
+// properties (for the Java update tag).
+type MovingPiston struct {
+	X         int32             `json:"x"`
+	Y         int32             `json:"y"`
+	Z         int32             `json:"z"`
+	State     uint32            `json:"state"`
+	Block     string            `json:"block"`
+	Props     map[string]string `json:"props,omitempty"`
+	Facing    int32             `json:"facing"`
+	Extending bool              `json:"extending,omitempty"`
+	Source    bool              `json:"source,omitempty"`
+	Progress  float32           `json:"progress,omitempty"`
+}

@@ -1033,6 +1033,12 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 					p := render770.ShelfData(e)
 					cc.send(p.ID, p.Body)
 				}
+			case attach.MsgMovingPiston:
+				var e attach.MovingPiston
+				if json.Unmarshal(payload, &e) == nil {
+					p := render770.MovingPistonData(e)
+					cc.send(p.ID, p.Body)
+				}
 			case attach.MsgWorldBorder:
 				var e attach.WorldBorder
 				if json.Unmarshal(payload, &e) == nil {

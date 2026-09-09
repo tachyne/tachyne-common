@@ -3,6 +3,7 @@ package render770
 import (
 	"bytes"
 	"encoding/binary"
+	"io"
 	"testing"
 
 	attach "github.com/tachyne/tachyne-common/attach"
@@ -362,5 +363,51 @@ func TestShelfDataReparse(t *testing.T) {
 	mustByte(0x00, "root end")
 	if br.Len() != 0 {
 		t.Fatalf("%d trailing bytes", br.Len())
+	}
+}
+
+// A moving piston cell renders as block_entity_data of the piston type with
+// the carried block's state compound first, then facing/progress/flags.
+func TestMovingPistonDataReparse(t *testing.T) {
+	pkt := MovingPistonData(attach.MovingPiston{X: 3, Y: 64, Z: -7, State: 1,
+		Block: "minecraft:oak_stairs", Props: map[string]string{"half": "bottom", "facing": "north"},
+		Facing: 5, Extending: true, Source: false})
+	if pkt.ID != IDBlockEntityData {
+		t.Fatalf("id 0x%x", pkt.ID)
+	}
+	br := bytes.NewReader(pkt.Body[8:])
+	if typ, _ := protocol.ReadVarInt(br); typ != beTypePiston {
+		t.Fatalf("be type %d", typ)
+	}
+	rest, _ := io.ReadAll(br)
+	// Root compound → nested "blockState" compound → Name string.
+	want := []byte{0x0a, 0x0a, 0, 10}
+	want = append(want, "blockState"...)
+	want = append(want, 0x08, 0, 4)
+	want = append(want, "Name"...)
+	want = append(want, 0, byte(len("minecraft:oak_stairs")))
+	want = append(want, "minecraft:oak_stairs"...)
+	if !bytes.HasPrefix(rest, want) {
+		t.Fatalf("header %x", rest[:len(want)])
+	}
+	// Properties sorted: facing before half.
+	if !bytes.Contains(rest, append([]byte{0x08, 0, 6}, "facing"...)) || !bytes.Contains(rest, append([]byte{0x08, 0, 4}, "half"...)) {
+		t.Fatal("properties missing")
+	}
+	if bytes.Index(rest, []byte("facing")) > bytes.Index(rest, []byte("half")) {
+		t.Fatal("properties not sorted")
+	}
+	// Tail: facing int 5, progress float 0, extending 1, source 0, end.
+	tail := []byte{0x03, 0, 6}
+	tail = append(tail, "facing"...)
+	tail = append(tail, 0, 0, 0, 5, 0x05, 0, 8)
+	tail = append(tail, "progress"...)
+	tail = append(tail, 0, 0, 0, 0, 0x01, 0, 9)
+	tail = append(tail, "extending"...)
+	tail = append(tail, 1, 0x01, 0, 6)
+	tail = append(tail, "source"...)
+	tail = append(tail, 0, 0x00)
+	if !bytes.HasSuffix(rest, tail) {
+		t.Fatalf("tail %x", rest[len(rest)-len(tail):])
 	}
 }
