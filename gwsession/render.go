@@ -9,6 +9,7 @@ import (
 
 	attach "github.com/tachyne/tachyne-common/attach"
 	"github.com/tachyne/tachyne-common/protocol"
+	"github.com/tachyne/tachyne-common/render770"
 )
 
 const (
@@ -30,7 +31,7 @@ var fullDark [2048]byte
 // joinPacket builds Login/"Join Game". gamemode is the player's real mode
 // (0 survival, 1 creative, 2 adventure, 3 spectator) so the client renders
 // the correct HUD from the first frame instead of flashing survival.
-func joinPacket(eid int32, gamemode int32, view int32) []byte {
+func joinPacket(eid int32, gamemode int32, view int32, death *attach.DeathPos) []byte {
 	b := protocol.AppendI32(nil, eid)
 	b = protocol.AppendBool(b, false) // hardcore
 	b = protocol.AppendVarInt(b, 3)
@@ -51,10 +52,10 @@ func joinPacket(eid int32, gamemode int32, view int32) []byte {
 	b = protocol.AppendU8(b, 0xFF)           // previous gamemode: none
 	b = protocol.AppendBool(b, false)        // debug
 	b = protocol.AppendBool(b, false)        // flat
-	b = protocol.AppendBool(b, false)        // death location
-	b = protocol.AppendVarInt(b, 0)          // portal cooldown
-	b = protocol.AppendVarInt(b, 63)         // sea level
-	b = protocol.AppendBool(b, false)        // enforces secure chat
+	b = render770.AppendDeathLocation(b, death)
+	b = protocol.AppendVarInt(b, 0)   // portal cooldown
+	b = protocol.AppendVarInt(b, 63)  // sea level
+	b = protocol.AppendBool(b, false) // enforces secure chat
 	return b
 }
 

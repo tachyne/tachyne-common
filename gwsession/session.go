@@ -407,7 +407,7 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 	// belong to the reader goroutines; the pacer must not race on them.
 	spawnCX, spawnCZ := ccx, ccz
 
-	cc.send(playClientLogin, joinPacket(welcome.EID, welcome.Gamemode, viewDist.Load()))
+	cc.send(playClientLogin, joinPacket(welcome.EID, welcome.Gamemode, viewDist.Load(), welcome.Death))
 	cc.send(playClientGameEvent, []byte{13, 0, 0, 0, 0})
 	cc.send(playClientCenterChunk, protocol.AppendVarInt(protocol.AppendVarInt(nil, ccx), ccz))
 	tp := render770.Time(attach.Time{Time: welcome.Time})

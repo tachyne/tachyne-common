@@ -141,6 +141,9 @@ type Welcome struct {
 	// 2 adventure, 3 spectator) so the gateway's join packet renders the right
 	// HUD from the first frame instead of hardcoding survival.
 	Gamemode int32 `json:"gamemode"`
+	// Death is the player's last death location, for the login packet's
+	// spawn info (nil = never died).
+	Death *DeathPos `json:"death,omitempty"`
 	// SID/Topo identify the answering pod in a sharded world. The gateway
 	// asserts Topo == its own shard.Map.TopoHash() so a mixed-topology cluster
 	// fails at session start instead of corrupting a seam. Zero/empty on an

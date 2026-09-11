@@ -114,10 +114,32 @@ func Respawn(e attach.Dimension) Packet {
 	b = protocol.AppendU8(b, 0xFF)    // previous gamemode: none
 	b = protocol.AppendBool(b, false) // debug
 	b = protocol.AppendBool(b, false) // flat
-	b = protocol.AppendBool(b, false) // death location
-	b = protocol.AppendVarInt(b, 0)   // portal cooldown
-	b = protocol.AppendVarInt(b, 63)  // sea level
+	b = AppendDeathLocation(b, e.Death)
+	b = protocol.AppendVarInt(b, 0)  // portal cooldown
+	b = protocol.AppendVarInt(b, 63) // sea level
 	return Packet{IDRespawn, protocol.AppendU8(b, 0x03)}
+}
+
+// dimensionKey is the dimension's ResourceKey<Level> identifier.
+func dimensionKey(dim int32) string {
+	switch dim {
+	case 1:
+		return "minecraft:the_nether"
+	case 2:
+		return "minecraft:the_end"
+	}
+	return "minecraft:overworld"
+}
+
+// AppendDeathLocation writes CommonPlayerSpawnInfo's Optional<GlobalPos>
+// last death location: absent, or the dimension key and the block position.
+func AppendDeathLocation(b []byte, d *attach.DeathPos) []byte {
+	if d == nil {
+		return protocol.AppendBool(b, false)
+	}
+	b = protocol.AppendBool(b, true)
+	b = protocol.AppendString(b, dimensionKey(d.Dim))
+	return protocol.AppendPosition(b, int(d.X), int(d.Y), int(d.Z))
 }
 
 // Entity animation packet IDs.

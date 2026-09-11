@@ -136,6 +136,19 @@ type Dimension struct {
 	// Gamemode rides along so the respawn packet carries the player's real
 	// mode (0 survival, 1 creative, 2 adventure, 3 spectator).
 	Gamemode int32 `json:"gamemode,omitempty"`
+	// Death is the player's last death location (ServerPlayer.lastDeathLocation,
+	// the respawn packet's optional GlobalPos): what a recovery compass points
+	// at. nil = never died.
+	Death *DeathPos `json:"death,omitempty"`
+}
+
+// DeathPos is a GlobalPos: the dimension (0 overworld, 1 nether, 2 end) and
+// the block the player died in.
+type DeathPos struct {
+	Dim int32 `json:"dim"`
+	X   int32 `json:"x"`
+	Y   int32 `json:"y"`
+	Z   int32 `json:"z"`
 }
 
 type Teleport struct {
