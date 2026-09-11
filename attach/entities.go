@@ -1081,3 +1081,34 @@ type MovingPiston struct {
 	Source    bool              `json:"source,omitempty"`
 	Progress  float32           `json:"progress,omitempty"`
 }
+
+// MsgEntityAttributes syncs a living entity's attributes to viewers — what
+// vanilla's ServerEntity sends: every syncable attribute when a viewer
+// starts tracking the entity (addPairing), and the ones that changed since
+// (sendChanges). A mount's MOVEMENT_SPEED and JUMP_STRENGTH are what the
+// riding client steers by; a player's own MAX_HEALTH and reach draw the
+// hearts and gate the hand.
+const MsgEntityAttributes = 0x72 // w→gw
+
+// AttributeModifier is one modifier on an attribute: vanilla's identifier,
+// amount and operation (0 add_value, 1 add_multiplied_base, 2
+// add_multiplied_total).
+type AttributeModifier struct {
+	ID     string  `json:"id"`
+	Amount float64 `json:"amount"`
+	Op     int32   `json:"op"`
+}
+
+// AttributeSnapshot is one attribute by its canonical registry name
+// ("minecraft:max_health"), its base and its modifiers.
+type AttributeSnapshot struct {
+	Name      string              `json:"name"`
+	Base      float64             `json:"base"`
+	Modifiers []AttributeModifier `json:"mods,omitempty"`
+}
+
+// EntityAttributes is the frame: the entity and the attributes to apply.
+type EntityAttributes struct {
+	EID   int32               `json:"eid"`
+	Attrs []AttributeSnapshot `json:"attrs"`
+}

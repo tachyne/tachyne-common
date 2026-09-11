@@ -60,6 +60,10 @@ func remapClientboundIDs(version, id int32, body []byte) ([]byte, bool) {
 		if HasRemap(RegEntity, version) {
 			return remapSpawnEntityType(version, body), false
 		}
+	case canonUpdateAttributes:
+		if HasRemap(RegAttribute, version) {
+			return remapUpdateAttributes(version, body), false
+		}
 	case canonSetSlot:
 		if HasRemap(RegItem, version) {
 			return remapSetSlot(version, body), false
