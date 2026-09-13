@@ -149,6 +149,7 @@ const (
 	typeTurtle      = 137 // HAS_EGG/LAYING_EGG bools at 17/18 (an AgeableMob: 18/19 on 26.2)
 	typePolarBear   = 104 // DATA_STANDING_ID bool at 17 (an AgeableMob: 18 on 26.2)
 	typeGlowSquid   = 61  // DATA_DARK_TICKS_REMAINING int at 17 (an AgeableWaterCreature: 18 on 26.2)
+	typeStrider     = 129 // BOOST_TIME int at 17, SUFFOCATING bool at 18 (an Animal: 18/19 on 26.2)
 	typeWolf        = 148 // tame flags 17, WOLF_VARIANT holder at 22
 	typeCat         = 21  // CAT_VARIANT holder at 19 (tame flags 17)
 	typeOcelot      = 91
@@ -173,7 +174,7 @@ const (
 var ageableIntMetaTypes = map[int32]bool{
 	typeSheep: true, typeOcelot: true, typeParrot: true, typeBee: true, typeAxolotl: true,
 	typeVillager: true, typeHorse: true, typeLlama: true, typeTraderLlama: true,
-	typeRabbit: true, typeFox: true, typeMooshroom: true, typeArmadillo: true, typePanda: true, typeCamel: true, typeGoat: true, typeTurtle: true, typePolarBear: true, typeGlowSquid: true,
+	typeRabbit: true, typeFox: true, typeMooshroom: true, typeArmadillo: true, typePanda: true, typeCamel: true, typeGoat: true, typeTurtle: true, typePolarBear: true, typeGlowSquid: true, typeStrider: true,
 }
 
 // ageableHolderMetaTypes are the AgeableMob species carrying a registry-holder
