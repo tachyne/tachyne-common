@@ -144,6 +144,7 @@ const (
 	typeSheep       = 111
 	typeArmadillo   = 4   // ARMADILLO_STATE at 17 (an AgeableMob: 18 on 26.2)
 	typePanda       = 96  // MAIN_GENE/HIDDEN_GENE bytes at 20/21 (an AgeableMob: 21/22 on 26.2)
+	typeCamel       = 19  // DASH bool at 18 (an AgeableMob: 19 on 26.2)
 	typeWolf        = 148 // tame flags 17, WOLF_VARIANT holder at 22
 	typeCat         = 21  // CAT_VARIANT holder at 19 (tame flags 17)
 	typeOcelot      = 91
@@ -168,7 +169,7 @@ const (
 var ageableIntMetaTypes = map[int32]bool{
 	typeSheep: true, typeOcelot: true, typeParrot: true, typeBee: true, typeAxolotl: true,
 	typeVillager: true, typeHorse: true, typeLlama: true, typeTraderLlama: true,
-	typeRabbit: true, typeFox: true, typeMooshroom: true, typeArmadillo: true, typePanda: true,
+	typeRabbit: true, typeFox: true, typeMooshroom: true, typeArmadillo: true, typePanda: true, typeCamel: true,
 }
 
 // ageableHolderMetaTypes are the AgeableMob species carrying a registry-holder
