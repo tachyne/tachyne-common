@@ -1112,3 +1112,19 @@ type EntityAttributes struct {
 	EID   int32               `json:"eid"`
 	Attrs []AttributeSnapshot `json:"attrs"`
 }
+
+// MsgBlockBreakProgress shows a block being broken by something that is
+// not the viewer: the crack overlay vanilla draws from
+// ClientboundBlockDestructionPacket (Level.destroyBlockProgress) — a zombie
+// beating on a door, a mob mining. Progress 0-9 draws a stage, anything
+// else clears it.
+const MsgBlockBreakProgress = 0x73 // w→gw
+
+// BlockBreakProgress is one breaker's progress on one block.
+type BlockBreakProgress struct {
+	EID      int32 `json:"eid"` // the breaker
+	X        int32 `json:"x"`
+	Y        int32 `json:"y"`
+	Z        int32 `json:"z"`
+	Progress int8  `json:"progress"` // 0-9, or -1 to clear
+}

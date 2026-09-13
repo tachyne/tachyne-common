@@ -145,6 +145,8 @@ const (
 	typeArmadillo   = 4   // ARMADILLO_STATE at 17 (an AgeableMob: 18 on 26.2)
 	typePanda       = 96  // MAIN_GENE/HIDDEN_GENE bytes at 20/21 (an AgeableMob: 21/22 on 26.2)
 	typeCamel       = 19  // DASH bool at 18 (an AgeableMob: 19 on 26.2)
+	typeGoat        = 62  // IS_SCREAMING/HAS_LEFT_HORN/HAS_RIGHT_HORN bools at 17-19 (an AgeableMob: 18-20 on 26.2)
+	typeTurtle      = 137 // HOME_POS/HAS_EGG/LAYING_EGG/… at 17-22 (an AgeableMob: 18-23 on 26.2)
 	typeWolf        = 148 // tame flags 17, WOLF_VARIANT holder at 22
 	typeCat         = 21  // CAT_VARIANT holder at 19 (tame flags 17)
 	typeOcelot      = 91
@@ -169,7 +171,7 @@ const (
 var ageableIntMetaTypes = map[int32]bool{
 	typeSheep: true, typeOcelot: true, typeParrot: true, typeBee: true, typeAxolotl: true,
 	typeVillager: true, typeHorse: true, typeLlama: true, typeTraderLlama: true,
-	typeRabbit: true, typeFox: true, typeMooshroom: true, typeArmadillo: true, typePanda: true, typeCamel: true,
+	typeRabbit: true, typeFox: true, typeMooshroom: true, typeArmadillo: true, typePanda: true, typeCamel: true, typeGoat: true, typeTurtle: true,
 }
 
 // ageableHolderMetaTypes are the AgeableMob species carrying a registry-holder
@@ -1045,6 +1047,12 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 				var e attach.EntityAttributes
 				if json.Unmarshal(payload, &e) == nil {
 					p := render770.UpdateAttributes(e)
+					cc.send(p.ID, p.Body)
+				}
+			case attach.MsgBlockBreakProgress:
+				var e attach.BlockBreakProgress
+				if json.Unmarshal(payload, &e) == nil {
+					p := render770.BlockDestruction(e)
 					cc.send(p.ID, p.Body)
 				}
 			case attach.MsgWorldBorder:
