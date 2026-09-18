@@ -1128,3 +1128,20 @@ type BlockBreakProgress struct {
 	Z        int32 `json:"z"`
 	Progress int8  `json:"progress"` // 0-9, or -1 to clear
 }
+
+// MsgItemCooldown is the server-driven item cooldown vanilla sends from
+// ServerItemCooldowns (ClientboundCooldownPacket): the client draws the
+// sweep over every stack in the cooldown group and refuses to use it until
+// the ticks are up. The world decides the cooldown (a shield disabled by an
+// axe, a goat horn blown, chorus fruit eaten); the client only shows it.
+// Ticks 0 clears one early.
+const MsgItemCooldown = 0x74 // w→gw
+
+// ItemCooldown is one cooldown group starting (or, at 0, ending) for the
+// viewer. Group is the cooldown group as vanilla keys it: the item's
+// use_cooldown group when it has one, else the item's canonical id —
+// which for every vanilla item comes to the item id itself.
+type ItemCooldown struct {
+	Group string `json:"group"` // e.g. "minecraft:shield"
+	Ticks int32  `json:"ticks"`
+}

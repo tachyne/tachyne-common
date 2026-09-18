@@ -1058,6 +1058,12 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 					p := render770.BlockDestruction(e)
 					cc.send(p.ID, p.Body)
 				}
+			case attach.MsgItemCooldown:
+				var e attach.ItemCooldown
+				if json.Unmarshal(payload, &e) == nil {
+					p := render770.Cooldown(e)
+					cc.send(p.ID, p.Body)
+				}
 			case attach.MsgWorldBorder:
 				var e attach.WorldBorder
 				if json.Unmarshal(payload, &e) == nil {
