@@ -19,7 +19,7 @@ func TestFrogVariantMetaRenumbersFor26x(t *testing.T) {
 	if got := FixFrogMeta(770, body); !bytes.Equal(got, body) {
 		t.Fatal("770 must be untouched")
 	}
-	got := FixFrogMeta(776, body)
+	got := remapEntityMeta(776, FixFrogMeta(776, body)) // the gateway's index shift, then the chain's renumbering
 	want := AppendVarInt(nil, 42)
 	want = append(want, 18)
 	want = AppendVarInt(want, frogVariantSerializer776)

@@ -878,6 +878,13 @@ func remapEntityMeta(version int32, body []byte) []byte {
 		if typ == ArmadilloStateSerializer770 {
 			wireType = armadilloStateSerializer(version)
 		}
+		if t, ok := variantSerializer776[typ]; ok && version >= 776 {
+			// The mob-variant holders renumber here, on the CANONICAL id, so
+			// the pose shift above cannot mistake a renumbered cat (26.2's 21)
+			// for the canonical POSE (21) and push it on to 20 — which is what
+			// disconnected every 26.2 client that met a cat.
+			wireType = t
+		}
 		out = AppendVarInt(out, wireType)
 		switch typ {
 		case metaTypeByte, metaTypeBoolean:
@@ -943,6 +950,14 @@ func remapEntityMeta(version int32, body []byte) []byte {
 			}
 			out = AppendVarInt(out, state)
 		default:
+			if isVariantHolderSerializer(typ) { // a mob-variant holder: one varint (registry id), carried verbatim
+				v, err := ReadVarInt(r)
+				if err != nil {
+					return body
+				}
+				out = AppendVarInt(out, v)
+				continue
+			}
 			return body // a type we never emit — don't guess at its payload
 		}
 	}
@@ -998,8 +1013,10 @@ func ShiftAgeableMobMeta(version int32, body []byte) []byte {
 // list reads CAT 21, COW 23, WOLF 25, FROG 27, PIG 28, CHICKEN 30. The entry
 // INDEX each rides on is the species' own (frog/cow/chicken 17, pig 18, cat
 // 19, wolf 22 canonically; +1 on 26.2 after the AGE_LOCKED insertion) — the
-// gateway's per-type FixVariantMeta applies both. 773–775 are unrouted, so
-// only the 776 numbering is carried here.
+// gateway's per-type FixVariantMeta shifts the index and the chain's
+// remapEntityMeta renumbers the serializer (on the canonical id, so the
+// chain's own POSE 21→20 shift cannot hit a renumbered cat). 773–775 are
+// unrouted, so only the 776 numbering is carried here.
 const (
 	CatVariantSerializer770     = 22
 	CowVariantSerializer770     = 23
@@ -1072,9 +1089,10 @@ func FixVariantMeta(version int32, body []byte) []byte {
 		if idx >= 17 {
 			idx++
 		}
-		if t, ok := variantSerializer776[typ]; ok {
-			typ = t
-		}
+		// The serializer's 26.x id is the translation chain's job
+		// (remapEntityMeta), which runs after this on the canonical type; a
+		// body renumbered here would reach it already in 26.2 numbering,
+		// where a cat's 21 reads as the canonical POSE and is shifted again.
 		return idx, typ
 	})
 }

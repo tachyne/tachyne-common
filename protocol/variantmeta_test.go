@@ -37,7 +37,18 @@ func TestVariantHolderMetaRenumbersFor26x(t *testing.T) {
 		if got := remapEntityMeta(770, body); !bytes.Equal(got, body) {
 			t.Errorf("%s: the 770 translator must pass the body through", c.name)
 		}
-		got := FixVariantMeta(776, body)
+		// The gateway shifts the index; the chain renumbers the serializer on
+		// the canonical id; composed, both — and never twice.
+		shifted := FixVariantMeta(776, body)
+		wantShifted := AppendVarInt(nil, 42)
+		wantShifted = append(wantShifted, c.idx+1)
+		wantShifted = AppendVarInt(wantShifted, c.typ770)
+		wantShifted = AppendVarInt(wantShifted, 5)
+		wantShifted = append(wantShifted, 0xff)
+		if !bytes.Equal(shifted, wantShifted) {
+			t.Errorf("%s: gateway shift %x, want %x", c.name, shifted, wantShifted)
+		}
+		got := remapEntityMeta(776, shifted)
 		want := AppendVarInt(nil, 42)
 		want = append(want, c.idx+1)
 		want = AppendVarInt(want, c.want)
@@ -86,5 +97,28 @@ func TestIntVariantMetaShiftsFor26x(t *testing.T) {
 	}
 	if got := ShiftAgeableMobMeta(770, horse); !bytes.Equal(got, horse) {
 		t.Fatal("770 must be untouched")
+	}
+}
+
+// A cat's 26.2 serializer id (21) is the canonical POSE id: the chain must
+// still shift a real pose entry to 20 and leave a cat's renumbered 21 alone.
+func TestCatVariantIsNotAPose(t *testing.T) {
+	pose := AppendVarInt(nil, 7)
+	pose = append(pose, 6)
+	pose = AppendVarInt(pose, metaTypePose)
+	pose = AppendVarInt(pose, 8) // DYING
+	pose = append(pose, 0xff)
+	gotPose := remapEntityMeta(776, pose)
+	if gotPose[2] != 20 {
+		t.Fatalf("a pose entry should shift to 20 at 776: %x", gotPose)
+	}
+	cat := AppendVarInt(nil, 7)
+	cat = append(cat, 19)
+	cat = AppendVarInt(cat, CatVariantSerializer770)
+	cat = AppendVarInt(cat, 3)
+	cat = append(cat, 0xff)
+	got := remapEntityMeta(776, FixVariantMeta(776, cat))
+	if got[1] != 20 || got[2] != 21 || got[3] != 3 {
+		t.Fatalf("a cat variant at 776 should be index 20, serializer 21, id 3: %x", got)
 	}
 }
