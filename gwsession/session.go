@@ -1064,6 +1064,12 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 					p := render770.Cooldown(e)
 					cc.send(p.ID, p.Body)
 				}
+			case attach.MsgWindowCloseServer:
+				var e attach.WindowCloseServer
+				if json.Unmarshal(payload, &e) == nil {
+					p := render770.ContainerClose(e)
+					cc.send(p.ID, p.Body)
+				}
 			case attach.MsgWorldBorder:
 				var e attach.WorldBorder
 				if json.Unmarshal(payload, &e) == nil {

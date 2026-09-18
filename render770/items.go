@@ -10,14 +10,15 @@ import (
 
 // Canonical-770 clientbound play packet IDs for this family.
 const (
-	IDWindowItems   = 0x12
-	IDContainerData = 0x13
-	IDSetSlot       = 0x14
-	IDOpenWindow    = 0x34
-	IDEntityMeta    = 0x5c
-	IDSetEquipment  = 0x5f
-	IDHeldSlot      = 0x62
-	IDCollect       = 0x75
+	IDContainerClose = 0x11
+	IDWindowItems    = 0x12
+	IDContainerData  = 0x13
+	IDSetSlot        = 0x14
+	IDOpenWindow     = 0x34
+	IDEntityMeta     = 0x5c
+	IDSetEquipment   = 0x5f
+	IDHeldSlot       = 0x62
+	IDCollect        = 0x75
 )
 
 // AppendItemStack encodes a Slot: count, then id + component bytes when
@@ -156,4 +157,10 @@ func Collect(e attach.Collect) Packet {
 	b := protocol.AppendVarInt(nil, e.Collected)
 	b = protocol.AppendVarInt(b, e.Collector)
 	return Packet{IDCollect, protocol.AppendVarInt(b, e.Count)}
+}
+
+// ContainerClose renders container_close: the window id the server is
+// closing (a VarInt container id since 1.21.2).
+func ContainerClose(e attach.WindowCloseServer) Packet {
+	return Packet{IDContainerClose, protocol.AppendVarInt(nil, e.ID)}
 }

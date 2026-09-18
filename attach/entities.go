@@ -1145,3 +1145,15 @@ type ItemCooldown struct {
 	Group string `json:"group"` // e.g. "minecraft:shield"
 	Ticks int32  `json:"ticks"`
 }
+
+// MsgWindowCloseServer closes the viewer's open container from the server
+// (ClientboundContainerClosePacket): vanilla sends it when a menu stops
+// being valid — the block is gone, the player walked out of reach, or the
+// server opens something else. The gateway-bound WindowClose (0x3a) is the
+// client's own close; this is the other direction.
+const MsgWindowCloseServer = 0x75 // w→gw
+
+// WindowCloseServer names the window to close.
+type WindowCloseServer struct {
+	ID int32 `json:"id"`
+}
