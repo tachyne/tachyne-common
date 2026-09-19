@@ -254,7 +254,7 @@ func Run(cfg Config, br *bufio.Reader, c net.Conn, name string, uuid [16]byte, u
 	if err != nil || ack.ID != 0x03 {
 		return fmt.Errorf("login ack: %v", err)
 	}
-	clientView, err := configure(cfg, br, c, tr, int32(welcome.Sections)*16)
+	clientView, err := configure(cfg, br, c, tr, int32(welcome.Sections)*16, clientProto)
 	if err != nil {
 		return fmt.Errorf("configuration: %w", err)
 	}
@@ -276,12 +276,13 @@ func loginDisconnect(c net.Conn, msg string) {
 // Client Information, so the caller falls back to the default) so the join
 // packet and chunk window honor the player's render-distance slider.
 //
-// Content is composed at cfg.Proto (the gateway's pinned version — 770 data
-// translated per client for gw-770's 770-772 range; native 26.x data for 776)
-// and passed through the client's translator, exactly as each gateway did
-// standalone.
-func configure(cfg Config, br *bufio.Reader, c net.Conn, tr protocol.Translator, worldHeight int32) (int32, error) {
-	// send composes at cfg.Proto and translates to the client version.
+// Registries and tags are composed at the CLIENT's version (their contents
+// are version-specific by construction: 26.3 syncs registries 26.2 does not
+// and has its own tag set), then passed through the client's translator for
+// the packet ids. Composing at the gateway's pinned version left a 26.3
+// client without block_transformer and crashed it at finish_configuration.
+func configure(cfg Config, br *bufio.Reader, c net.Conn, tr protocol.Translator, worldHeight, clientProto int32) (int32, error) {
+	// send translates the packet id to the client version.
 	send := func(id int32, data []byte) error {
 		id, data, drop := tr.Clientbound(protocol.StateConfiguration, id, data)
 		if drop {
@@ -324,12 +325,12 @@ func configure(cfg Config, br *bufio.Reader, c net.Conn, tr protocol.Translator,
 			// The overworld dimension declares the WORLD's real height
 			// (attach Welcome) — a tall earth world tells the client its
 			// true ceiling so chunk columns and the build limit match.
-			for _, data := range protocol.ConfigRegistryPacketsFor(cfg.Proto, worldHeight) {
+			for _, data := range protocol.ConfigRegistryPacketsFor(clientProto, worldHeight) {
 				if err := send(cfgClientRegistryData, data); err != nil {
 					return 0, err
 				}
 			}
-			if err := send(cfgClientUpdateTags, protocol.UpdateTagsPacket(cfg.Proto)); err != nil {
+			if err := send(cfgClientUpdateTags, protocol.UpdateTagsPacket(clientProto)); err != nil {
 				return 0, err
 			}
 			if err := send(cfgClientFinish, nil); err != nil {
