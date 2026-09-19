@@ -27,6 +27,8 @@ const (
 	levelParticles776      = 47
 	animate776             = 2
 	updateAdvancements776  = 130
+	levelChunkWithLight776 = 45
+	lightUpdate776         = 48
 	signUpdate776          = 61 // serverbound
 	acceptTeleportation776 = 0  // serverbound
 	swing776               = 63 // serverbound: 26.3's punch maps here (protomap_777_gen.go)
@@ -40,14 +42,16 @@ func init() {
 		cbUp: map[State]map[int32]bodyFn{
 			StateConfiguration: {cfgKnownPacksID: rewriteKnownPacksVersion("26.3")},
 			StatePlay: {
-				login776:              rewriteLoginPrevGameMode777,
-				respawn776:            rewriteRespawnPrevGameMode777,
-				moveEntityPos776:      rewriteMoveEntity777(false),
-				moveEntityPosRot776:   rewriteMoveEntity777(true),
-				entityPositionSync776: rewriteEntityPositionSync777,
-				levelParticles776:     rewriteLevelParticles777,
-				animate776:            rewriteAnimateActions777,
-				updateAdvancements776: rewriteAdvancementsPositioned777,
+				login776:               rewriteLoginPrevGameMode777,
+				respawn776:             rewriteRespawnPrevGameMode777,
+				moveEntityPos776:       rewriteMoveEntity777(false),
+				moveEntityPosRot776:    rewriteMoveEntity777(true),
+				entityPositionSync776:  rewriteEntityPositionSync777,
+				levelParticles776:      rewriteLevelParticles777,
+				animate776:             rewriteAnimateActions777,
+				updateAdvancements776:  rewriteAdvancementsPositioned777,
+				levelChunkWithLight776: rewriteChunkLightBitSets777,
+				lightUpdate776:         rewriteLightUpdateBitSets777,
 			},
 		},
 		sbDown: map[State]map[int32]bodyFn{
@@ -396,4 +400,96 @@ func rewriteAdvancementsPositioned777(_ State, body []byte) []byte {
 	}
 	out = append(out, body[flushed:]...) // removed + progress + showAdvancements: unchanged
 	return out
+}
+
+// 26.3's light data codes its four masks with ByteBufCodecs.BIT_SET, which
+// reads a BYTE array (BitSet.valueOf(byte[])); 26.2 read a long array. The
+// bits are the same (both little-endian), so each mask becomes the longs'
+// little-endian bytes. A 26.3 client had stopped 8n-n bytes short of every
+// chunk and reported the rest as "larger than I expected".
+
+// rewriteBitSets777 converts count masks at r's position into out.
+func rewriteBitSets777(r *bytes.Reader, out *[]byte, count int) bool {
+	for i := 0; i < count; i++ {
+		n, err := ReadVarInt(r)
+		if err != nil || n < 0 || int(n)*8 > r.Len() {
+			return false
+		}
+		*out = AppendVarInt(*out, n*8)
+		var l [8]byte
+		for j := int32(0); j < n; j++ {
+			if _, err := io.ReadFull(r, l[:]); err != nil {
+				return false
+			}
+			for k := 7; k >= 0; k-- { // big-endian i64 on the wire → little-endian bytes
+				*out = append(*out, l[k])
+			}
+		}
+	}
+	return true
+}
+
+// rewriteLightUpdateBitSets777: i32 x, i32 z, four masks, two lists.
+func rewriteLightUpdateBitSets777(_ State, body []byte) []byte {
+	if len(body) < 8 {
+		return body
+	}
+	r := bytes.NewReader(body[8:])
+	out := append([]byte(nil), body[:8]...)
+	if !rewriteBitSets777(r, &out, 4) {
+		return body
+	}
+	rest := make([]byte, r.Len())
+	r.Read(rest)
+	return append(out, rest...)
+}
+
+// rewriteChunkLightBitSets777: i32 x, i32 z, heightmaps (varint n × (varint
+// type, varint longs, longs)), buffer (varint length, bytes), block entities
+// (varint n × (byte, i16, varint type, NBT)), then the light data as above.
+func rewriteChunkLightBitSets777(_ State, body []byte) []byte {
+	r := bytes.NewReader(body)
+	pos := func() int { return len(body) - r.Len() }
+	if skipN(r, 8) != nil {
+		return body
+	}
+	n, err := ReadVarInt(r) // heightmaps
+	if err != nil || n < 0 {
+		return body
+	}
+	for i := int32(0); i < n; i++ {
+		if _, err := ReadVarInt(r); err != nil { // type
+			return body
+		}
+		l, err := ReadVarInt(r)
+		if err != nil || l < 0 || skipN(r, int64(l)*8) != nil {
+			return body
+		}
+	}
+	l, err := ReadVarInt(r) // section buffer
+	if err != nil || l < 0 || skipN(r, int64(l)) != nil {
+		return body
+	}
+	n, err = ReadVarInt(r) // block entities
+	if err != nil || n < 0 {
+		return body
+	}
+	for i := int32(0); i < n; i++ {
+		if skipN(r, 3) != nil { // packed xz, y
+			return body
+		}
+		if _, err := ReadVarInt(r); err != nil { // type
+			return body
+		}
+		if SkipNetworkNBT(r) != nil { // tag (TAG_End when absent)
+			return body
+		}
+	}
+	out := append([]byte(nil), body[:pos()]...)
+	if !rewriteBitSets777(r, &out, 4) {
+		return body
+	}
+	rest := make([]byte, r.Len())
+	r.Read(rest)
+	return append(out, rest...)
 }
