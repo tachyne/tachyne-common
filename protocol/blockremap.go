@@ -1332,6 +1332,22 @@ func bundleContentsCompID(version int32) int32 {
 // 1.21.5-1.21.9, 65 at 1.21.11, 67 at 26.1/26.2 (datagen registry reports).
 const componentLodestone = 58
 
+// componentBaseColor is minecraft:base_color (a shield's banner base, one
+// DyeColor varint) in canonical (770) numbering; baseColorCompID is its id
+// at a client's version — from the per-version datagen registry reports
+// (64 through 1.21.9, 71 at 1.21.11, 73 at 26.1/26.2).
+const componentBaseColor = 64
+
+func baseColorCompID(version int32) int32 {
+	switch {
+	case version >= 775:
+		return 73
+	case version >= 774:
+		return 71
+	}
+	return componentBaseColor
+}
+
 func lodestoneCompID(version int32) int32 {
 	switch {
 	case version >= 776:
@@ -1500,8 +1516,10 @@ func copyFullSlotAt(r *bytes.Reader, out *[]byte, remap func(int32) int32, versi
 	wbIn, wbOut := int32(componentWritableBook), writableBookCompID(version)
 	wrIn, wrOut := int32(componentWrittenBook), writtenBookCompID(version)
 	lodeIn, lodeOut := int32(componentLodestone), lodestoneCompID(version)
+	baseIn, baseOut := int32(componentBaseColor), baseColorCompID(version)
 	if serverbound {
 		lodeIn, lodeOut = lodeOut, lodeIn
+		baseIn, baseOut = baseOut, baseIn
 		enchIn, enchOut = enchOut, enchIn
 		storedIn, storedOut = storedOut, storedIn
 		nameIn, nameOut = nameOut, nameIn
@@ -1558,6 +1576,15 @@ func copyFullSlotAt(r *bytes.Reader, out *[]byte, remap func(int32) int32, versi
 			}
 			*out = AppendVarInt(*out, dyedOut)
 			*out = AppendVarInt(*out, rgb)
+		case baseIn:
+			// base_color: one DyeColor varint (a decorated shield's banner
+			// base); the enum is stable, only the component id renumbers.
+			dye, err := ReadVarInt(r)
+			if err != nil {
+				return false
+			}
+			*out = AppendVarInt(*out, baseOut)
+			*out = AppendVarInt(*out, dye)
 		case trimIn:
 			// trim: two holder varints (material ref, pattern ref) — our own
 			// declared registry orders, identical on every version; only the
