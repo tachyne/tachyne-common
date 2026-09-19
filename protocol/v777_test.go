@@ -158,3 +158,28 @@ func TestTags263SkipFeatureRegistry(t *testing.T) {
 		t.Fatal("the block tags should still be there")
 	}
 }
+
+// The registries 26.3 newly syncs go only to 26.3 clients, and the
+// configuration phase must be composed at the CLIENT's version for that to
+// hold (a 26.3 client composed at 776 crashed on block_transformer).
+func TestConfigRegistries777(t *testing.T) {
+	has := func(v int32, id string) bool {
+		for _, p := range ConfigRegistryPackets(v) {
+			if bytes.HasPrefix(p, AppendString(nil, id)) {
+				return true
+			}
+		}
+		return false
+	}
+	for _, id := range []string{"minecraft:block_transformer", "minecraft:decorated_pot_pattern", "minecraft:worldgen/block_state_provider"} {
+		if !has(777, id) {
+			t.Errorf("a 26.3 client must receive %s", id)
+		}
+		if has(776, id) {
+			t.Errorf("a 26.2 client must not receive %s", id)
+		}
+	}
+	if !has(777, "minecraft:dimension_type") || !has(776, "minecraft:world_clock") {
+		t.Error("the base and 26.x registries still go to both")
+	}
+}
