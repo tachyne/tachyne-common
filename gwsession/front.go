@@ -134,7 +134,7 @@ func (s *Server) handle(c net.Conn) {
 	}
 	switch hs.intent {
 	case intentStatus:
-		s.status(br, c)
+		s.status(br, c, hs.proto)
 	case intentLogin, intentTransfer:
 		s.login(br, c, hs, remote)
 	default:
@@ -186,10 +186,11 @@ type statusJSON struct {
 	EnforcesSecureChat bool `json:"enforcesSecureChat"`
 }
 
-// status serves the server-list ping, pinned to this gateway's protocol: a
-// client outside the accepted range sees the gateway as incompatible in the
-// list, which is honest.
-func (s *Server) status(br *bufio.Reader, c net.Conn) {
+// status serves the server-list ping. A client inside the accepted range is
+// answered with its own protocol (a multi-version gateway is compatible
+// with every version it serves); one outside it sees the gateway's own,
+// and so an incompatible entry in the list, which is honest.
+func (s *Server) status(br *bufio.Reader, c net.Conn, clientProto int32) {
 	for {
 		c.SetDeadline(time.Now().Add(connTimeout))
 		pkt, err := protocol.ReadPacket(br)
@@ -201,6 +202,9 @@ func (s *Server) status(br *bufio.Reader, c net.Conn) {
 			var st statusJSON
 			st.Version.Name = s.VersionName
 			st.Version.Protocol = s.Proto
+			if clientProto >= s.MinProto && clientProto <= s.MaxProto {
+				st.Version.Protocol = clientProto
+			}
 			st.Players.Max = 100
 			st.Description.Text = s.MOTD
 			payload, err := json.Marshal(st)
