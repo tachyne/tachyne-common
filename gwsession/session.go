@@ -1080,7 +1080,7 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 				if clientProto >= 776 { // 26.2+ only; older clients lack the HUD
 					var e attach.Waypoint
 					if json.Unmarshal(payload, &e) == nil {
-						cc.sendRaw(render770.IDWaypoint776, render770.WaypointBody(e))
+						cc.sendRaw(render770.IDWaypointFor(clientProto), render770.WaypointBody(e))
 					}
 				}
 			case attach.MsgOpenBook:

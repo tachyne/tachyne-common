@@ -81,6 +81,8 @@ func PaintingComponentID(version int32) int32 {
 		return 89
 	case version == 776:
 		return 103
+	case version == 777:
+		return 109
 	}
 	return -1
 }

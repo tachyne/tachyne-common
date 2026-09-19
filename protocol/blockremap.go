@@ -228,6 +228,8 @@ func remapParticleID(version, id int32) int32 {
 		}
 	case 55: // minecraft:note
 		switch {
+		case version >= 777:
+			return 68
 		case version >= 776:
 			return 65
 		case version >= 775:
@@ -237,6 +239,8 @@ func remapParticleID(version, id int32) int32 {
 		}
 	case 56: // minecraft:poof
 		switch {
+		case version >= 777:
+			return 69
 		case version >= 776:
 			return 66
 		case version >= 775:
@@ -260,6 +264,8 @@ func remapParticleID(version, id int32) int32 {
 		}
 	case 67: // minecraft:splash
 		switch {
+		case version >= 777:
+			return 80
 		case version >= 776:
 			return 77
 		case version >= 775:
@@ -269,6 +275,8 @@ func remapParticleID(version, id int32) int32 {
 		}
 	case 42: // minecraft:happy_villager (bonemeal / bee crop-boost bursts)
 		switch {
+		case version >= 777:
+			return 53
 		case version >= 776:
 			return 50
 		case version >= 773:
@@ -276,6 +284,8 @@ func remapParticleID(version, id int32) int32 {
 		}
 	case 79: // minecraft:falling_nectar (a pollen-laden bee's drip)
 		switch {
+		case version >= 777:
+			return 92
 		case version >= 776:
 			return 89
 		case version >= 775:
@@ -1255,6 +1265,8 @@ const (
 // writableBookCompID / writtenBookCompID: per-version ids (datagen reports).
 func writableBookCompID(version int32) int32 {
 	switch {
+	case version >= 777:
+		return 56
 	case version >= 776:
 		return 54
 	case version >= 774:
@@ -1265,6 +1277,8 @@ func writableBookCompID(version int32) int32 {
 
 func writtenBookCompID(version int32) int32 {
 	switch {
+	case version >= 777:
+		return 57
 	case version >= 776:
 		return 55
 	case version >= 774:
@@ -1285,6 +1299,8 @@ func enchCompID(version int32) int32 {
 // 1.21.11 inserted components; 26.2 inserted one more before stored_ench).
 func storedEnchCompID(version int32) int32 {
 	switch {
+	case version >= 777:
+		return 45
 	case version >= 776:
 		return 42
 	case version >= 774:
@@ -1319,6 +1335,8 @@ const componentBundleContents = 41
 
 func bundleContentsCompID(version int32) int32 {
 	switch {
+	case version >= 777:
+		return 52
 	case version >= 776:
 		return 50
 	case version >= 774:
@@ -1340,6 +1358,8 @@ const componentBaseColor = 64
 
 func baseColorCompID(version int32) int32 {
 	switch {
+	case version >= 777:
+		return 75
 	case version >= 775:
 		return 73
 	case version >= 774:
@@ -1350,6 +1370,8 @@ func baseColorCompID(version int32) int32 {
 
 func lodestoneCompID(version int32) int32 {
 	switch {
+	case version >= 777:
+		return 69
 	case version >= 776:
 		return 67
 	case version >= 774:
@@ -1363,6 +1385,8 @@ func lodestoneCompID(version int32) int32 {
 // is one rgb varint on every version (show_in_tooltip left it before 1.21.5).
 func dyedColorCompID(version int32) int32 {
 	switch {
+	case version >= 777:
+		return 47
 	case version >= 775:
 		return 44
 	case version >= 774:
@@ -1373,6 +1397,8 @@ func dyedColorCompID(version int32) int32 {
 
 func mapIDCompID(version int32) int32 {
 	switch {
+	case version >= 777:
+		return 48
 	case version >= 776:
 		return 46
 	case version >= 774:
@@ -1385,6 +1411,8 @@ func mapIDCompID(version int32) int32 {
 // per-version datagen registry reports like the rest.
 func trimCompID(version int32) int32 {
 	switch {
+	case version >= 777:
+		return 58
 	case version >= 776:
 		return 56
 	case version >= 774:
@@ -1395,6 +1423,8 @@ func trimCompID(version int32) int32 {
 
 func bannerPatternsCompID(version int32) int32 {
 	switch {
+	case version >= 777:
+		return 74
 	case version >= 776:
 		return 72
 	case version >= 774:

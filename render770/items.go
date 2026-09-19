@@ -62,6 +62,18 @@ func Equipment(e attach.Equipment) Packet {
 // count. New in 1.21.6, so no 770 equivalent exists.
 const IDWaypoint776 = 0x8a
 
+// IDWaypoint777 is the same packet at protocol 777 (26.3): three clientbound
+// play packets were inserted ahead of it (the datagen packet report).
+const IDWaypoint777 = 0x8d
+
+// IDWaypointFor is the tracked_waypoint id for a 26.x client version.
+func IDWaypointFor(version int32) int32 {
+	if version >= 777 {
+		return IDWaypoint777
+	}
+	return IDWaypoint776
+}
+
 // WaypointBody composes the tracked_waypoint packet body (version-independent
 // — UUID/identifier/varints/RGB need no id remap). The caller sends it raw at
 // the 776 packet id for 26.2 clients and drops it for older ones.

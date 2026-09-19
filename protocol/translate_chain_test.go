@@ -14,8 +14,8 @@ func TestChainSupportedRange(t *testing.T) {
 	if TranslatorFor(772) == nil {
 		t.Error("772 should be served by the chain (771→772 is a no-op step)")
 	}
-	if TranslatorFor(777) != nil {
-		t.Error("777 is above MaxTranslated — should be rejected")
+	if TranslatorFor(778) != nil {
+		t.Error("778 is above MaxTranslated — should be rejected")
 	}
 	if got := TranslatorFor(772); got.Version() != 772 {
 		t.Errorf("chain Version() = %d, want 772", got.Version())
@@ -144,14 +144,14 @@ func TestSpawnEntityReorder772to773(t *testing.T) {
 	}
 }
 
-func TestChainServesThrough776(t *testing.T) {
-	for _, v := range []int32{773, 774, 775, 776} {
+func TestChainServesThrough777(t *testing.T) {
+	for _, v := range []int32{773, 774, 775, 776, 777} {
 		if TranslatorFor(v) == nil {
 			t.Errorf("%d should be served", v)
 		}
 	}
-	if TranslatorFor(777) != nil {
-		t.Error("777 is above MaxTranslated — should be rejected")
+	if TranslatorFor(778) != nil {
+		t.Error("778 is above MaxTranslated — should be rejected")
 	}
 }
 

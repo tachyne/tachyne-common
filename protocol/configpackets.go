@@ -54,7 +54,32 @@ func ConfigRegistryPacketsFor(v int32, overworldHeight int32) [][]byte {
 			out = append(out, data)
 		}
 	}
+	if v >= 777 {
+		for _, reg := range extra263Registries {
+			data := AppendString(nil, reg.id)
+			data = AppendVarInt(data, int32(len(reg.entries)))
+			for _, e := range reg.entries {
+				data = AppendString(data, e)
+				data = AppendBool(data, false)
+			}
+			out = append(out, data)
+		}
+	}
 	return out
+}
+
+// extra263Registries are the registries 26.3 made synced on top of 26.2's
+// (RegistryDataLoader.SYNCHRONIZED_REGISTRIES): the decorated pot patterns,
+// the block transformers (axe/hoe/shovel) and the worldgen block-state
+// providers. Declared has_data=false (the client's own pack resolves them);
+// entry order = network id, from the 26.3 jar's data folders.
+var extra263Registries = []struct {
+	id      string
+	entries []string
+}{
+	{"minecraft:decorated_pot_pattern", []string{"minecraft:angler", "minecraft:archer", "minecraft:arms_up", "minecraft:blade", "minecraft:brewer", "minecraft:burn", "minecraft:danger", "minecraft:explorer", "minecraft:flow", "minecraft:friend", "minecraft:guster", "minecraft:heart", "minecraft:heartbreak", "minecraft:howl", "minecraft:miner", "minecraft:mourner", "minecraft:plenty", "minecraft:prize", "minecraft:scrape", "minecraft:sheaf", "minecraft:shelter", "minecraft:skull", "minecraft:snort"}},
+	{"minecraft:block_transformer", []string{"minecraft:axe", "minecraft:hoe", "minecraft:shovel"}},
+	{"minecraft:worldgen/block_state_provider", []string{"minecraft:cave_vines_body", "minecraft:cave_vines_head", "minecraft:flower_flower_forest", "minecraft:flower_meadow", "minecraft:flower_plain", "minecraft:mangrove_propagule", "minecraft:podzol_beneath_tree", "minecraft:soil_beneath_tree"}},
 }
 
 // UpdateTagsPacket returns the Update Tags payload for protocol version v.
@@ -148,6 +173,13 @@ func dynamic26xIndex() map[string]map[string]int32 {
 		idx[reg.ID] = m
 	}
 	for _, reg := range extra26xRegistries {
+		m := map[string]int32{}
+		for i, e := range reg.entries {
+			m[e] = int32(i)
+		}
+		idx[reg.id] = m
+	}
+	for _, reg := range extra263Registries { // harmless for 26.2 clients: no 26.2 tag names them
 		m := map[string]int32{}
 		for i, e := range reg.entries {
 			m[e] = int32(i)
@@ -269,14 +301,21 @@ func tags26x(version int32) []byte {
 	}
 	full := version >= 776
 	dyn := dynamic26xIndex()
+	// The tag set and the static-registry ids are the client's own version's:
+	// 26.3 (777) inserted blocks, items and entities ahead of the 26.2 ids and
+	// references tags 26.2 never had.
+	data, blockID, itemID, entityID := tags26xData, block26xID, item26xID, entity26xID
+	if version >= 777 {
+		data, blockID, itemID, entityID = tags263Data, block263ID, item263ID, entity263ID
+	}
 	resolverFor := func(registry string) map[string]int32 {
 		switch registry {
 		case "minecraft:block":
-			return block26xID
+			return blockID
 		case "minecraft:item":
-			return item26xID
+			return itemID
 		case "minecraft:entity_type":
-			return entity26xID
+			return entityID
 		case "minecraft:fluid":
 			return fluid26xID
 		default:
@@ -285,7 +324,7 @@ func tags26x(version int32) []byte {
 	}
 
 	var sent []tagReg26x
-	for _, reg := range tags26xData {
+	for _, reg := range data {
 		if !tags26xSkip[reg.registry] {
 			sent = append(sent, reg)
 		}

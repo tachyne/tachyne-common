@@ -22,7 +22,7 @@ package protocol
 // plus the chunk fluid-count and Join-boolean rewriters — so 1.21.5 through 26.2
 // (proto 776) are served. 26.x is newly wired and may need iteration against a
 // real client.
-const MaxTranslated = 776
+const MaxTranslated = 777
 
 // idRemap is one step's packet-ID remap between adjacent versions lower→upper.
 // Maps contain only IDs that differ (identity otherwise). Field shape MUST match
@@ -99,6 +99,13 @@ func (c chainTranslator) Clientbound(state State, id int32, body []byte) (int32,
 			return id, body, true // a block entity this client has no type for
 		}
 	}
+	// 26.3 moved the arm swing out of animate into swing_animation: retarget
+	// the packet itself (a step's body rewriter cannot change the id).
+	if state == StatePlay && c.version >= 777 && id == canonAnimate {
+		if sw, ok := swingAnimation777(body); ok {
+			return SwingAnimation777, sw, false
+		}
+	}
 	for _, s := range c.steps { // canonical → client version
 		var drop bool
 		if id, body, drop = s.up(state, id, body); drop {
@@ -107,6 +114,9 @@ func (c chainTranslator) Clientbound(state State, id int32, body []byte) (int32,
 	}
 	return id, body, false
 }
+
+// canonAnimate is the clientbound animate packet id at canonical 770.
+const canonAnimate = 0x02
 
 func (c chainTranslator) Serverbound(state State, id int32, body []byte) (int32, []byte, bool) {
 	// 26.x (proto ≥775) split use_entity into separate Attack and Interact packets.

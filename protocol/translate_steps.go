@@ -183,6 +183,14 @@ func init() {
 			StateLogin:         {loginFinishedID: appendLoginSessionID},
 		},
 	}
+	// 776→777 (26.3): packet ids move (three new clientbound play packets, one
+	// in configuration; the serverbound swing became punch) — protomap_777_gen.go
+	// — and the Known Packs version. Registry/component ids via the tables.
+	stepBody[777] = bodyRewriters{
+		cbUp: map[State]map[int32]bodyFn{
+			StateConfiguration: {cfgKnownPacksID: rewriteKnownPacksVersion("26.3")},
+		},
+	}
 }
 
 // loginFinishedID is the clientbound Login Success / login_finished packet ID
