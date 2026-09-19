@@ -146,3 +146,15 @@ func TestKnownPacks777(t *testing.T) {
 		t.Fatalf("known packs should carry 26.3: %q", out)
 	}
 }
+
+// The 26.3 tag set names the datapack-only feature registry by its new name;
+// a client cannot resolve it at configuration time, so it is never sent.
+func TestTags263SkipFeatureRegistry(t *testing.T) {
+	b := tags26x(777)
+	if bytes.Contains(b, []byte("minecraft:worldgen/feature")) {
+		t.Fatal("worldgen/feature tags must not reach a 26.3 client")
+	}
+	if !bytes.Contains(b, []byte("minecraft:mineable/pickaxe")) {
+		t.Fatal("the block tags should still be there")
+	}
+}

@@ -141,6 +141,7 @@ var extra26xRegistries = []struct {
 // sending them throws "Missing registry".
 var tags26xSkip = map[string]bool{
 	"minecraft:worldgen/configured_feature":          true,
+	"minecraft:worldgen/feature":                     true, // 26.3's name for it (a 26.3 client crashed on it at configuration, 2026-09-19)
 	"minecraft:worldgen/flat_level_generator_preset": true,
 	"minecraft:worldgen/structure":                   true,
 	"minecraft:worldgen/world_preset":                true,
