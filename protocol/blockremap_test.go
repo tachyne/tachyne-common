@@ -842,25 +842,33 @@ func TestTrimBannerRenumbered(t *testing.T) {
 }
 
 // TestRemapParticleID pins the per-version ids of every payload-free particle
-// the engine emits, verified against the vanilla registry reports (particle_type
-// protocol_id at 1.21.5 / 1.21.9 / 26.1 / 26.2).
+// the engine emits. The expectations are written out by hand from the vanilla
+// registry reports (particle_type protocol_id at 1.21.5 / 1.21.9 / 26.1 /
+// 26.2 / 26.3), which cross-checks the generated table against its own source.
 func TestRemapParticleID(t *testing.T) {
 	cases := []struct {
-		id                     int32
-		v770, v773, v775, v776 int32
+		id                           int32
+		v770, v773, v775, v776, v777 int32
 	}{
-		{3, 3, 3, 3, 3},      // bubble: stable everywhere
-		{5, 5, 6, 6, 13},     // crit
-		{21, 21, 22, 22, 29}, // explosion_emitter
-		{30, 30, 31, 31, 38}, // fishing
-		{55, 55, 56, 58, 65}, // note
-		{56, 56, 57, 59, 66}, // poof
-		{67, 67, 68, 70, 77}, // splash
-		{42, 42, 43, 43, 50}, // happy_villager
-		{79, 79, 80, 82, 89}, // falling_nectar
+		{3, 3, 3, 3, 3, 3},             // bubble: stable everywhere
+		{5, 5, 6, 6, 13, 13},           // crit
+		{21, 21, 22, 22, 29, 29},       // explosion_emitter
+		{30, 30, 31, 31, 38, 38},       // fishing
+		{55, 55, 56, 58, 65, 68},       // note
+		{56, 56, 57, 59, 66, 69},       // poof
+		{67, 67, 68, 70, 77, 80},       // splash
+		{42, 42, 43, 43, 50, 53},       // happy_villager
+		{79, 79, 80, 82, 89, 92},       // falling_nectar
+		{104, 104, 105, 107, 114, 117}, // dust_plume
+		// These four the engine emits and the old hand-written switch did not
+		// list at all, so they came out as whatever particle held their id.
+		{52, 52, 53, 55, 62, 65},   // large_smoke (a furnace minecart)
+		{59, 59, 60, 62, 69, 72},   // smoke
+		{63, 63, 64, 66, 73, 76},   // squid_ink
+		{96, 96, 97, 99, 106, 109}, // glow_squid_ink
 	}
 	for _, c := range cases {
-		for _, vv := range [][2]int32{{770, c.v770}, {773, c.v773}, {775, c.v775}, {776, c.v776}} {
+		for _, vv := range [][2]int32{{770, c.v770}, {773, c.v773}, {775, c.v775}, {776, c.v776}, {777, c.v777}} {
 			if got := remapParticleID(vv[0], c.id); got != vv[1] {
 				t.Errorf("remapParticleID(%d, %d) = %d, want %d", vv[0], c.id, got, vv[1])
 			}

@@ -207,92 +207,25 @@ func remapWorldParticles(version int32, body []byte) []byte {
 	return AppendVarInt(out, np)
 }
 
-// remapParticleID maps the canonical (770) ids of the payload-free particles
-// we emit to the client version's ids (verified against ViaVersion mappings:
-// 1.21.9 and 26.1 inserted particles ahead of these; 26.2 inserted more).
+// remapParticleID maps a canonical (770) particle id to the client version's
+// id. The table is generated from the vanilla registry reports
+// (tachyne-world/scripts/gen_particleremap.py) and covers every particle, not
+// only the ones somebody remembered to add: squid ink, glow squid ink and a
+// furnace minecart's smoke were all missing from the hand-written switch this
+// replaces, and came out as whatever particle held their id on the client.
 func remapParticleID(version, id int32) int32 {
-	switch id {
-	case 21: // minecraft:explosion_emitter
-		switch {
-		case version >= 776:
-			return 29
-		case version >= 773:
-			return 22
-		}
-	case 22: // minecraft:explosion
-		switch {
-		case version >= 776:
-			return 30
-		case version >= 773:
-			return 23
-		}
-	case 55: // minecraft:note
-		switch {
-		case version >= 777:
-			return 68
-		case version >= 776:
-			return 65
-		case version >= 775:
-			return 58
-		case version >= 773:
-			return 56
-		}
-	case 56: // minecraft:poof
-		switch {
-		case version >= 777:
-			return 69
-		case version >= 776:
-			return 66
-		case version >= 775:
-			return 59
-		case version >= 773:
-			return 57
-		}
-	case 5: // minecraft:crit
-		switch {
-		case version >= 776:
-			return 13
-		case version >= 773:
-			return 6
-		}
-	case 30: // minecraft:fishing (the bobber wake)
-		switch {
-		case version >= 776:
-			return 38
-		case version >= 773:
-			return 31
-		}
-	case 67: // minecraft:splash
-		switch {
-		case version >= 777:
-			return 80
-		case version >= 776:
-			return 77
-		case version >= 775:
-			return 70
-		case version >= 773:
-			return 68
-		}
-	case 42: // minecraft:happy_villager (bonemeal / bee crop-boost bursts)
-		switch {
-		case version >= 777:
-			return 53
-		case version >= 776:
-			return 50
-		case version >= 773:
-			return 43
-		}
-	case 79: // minecraft:falling_nectar (a pollen-laden bee's drip)
-		switch {
-		case version >= 777:
-			return 92
-		case version >= 776:
-			return 89
-		case version >= 775:
-			return 82
-		case version >= 773:
-			return 80
-		}
+	if id < 0 || int(id) >= len(particleTo773) {
+		return id
+	}
+	switch {
+	case version >= 777:
+		return particleTo777[id]
+	case version >= 776:
+		return particleTo776[id]
+	case version >= 775:
+		return particleTo775[id]
+	case version >= 773:
+		return particleTo773[id]
 	}
 	return id
 }
