@@ -1193,6 +1193,7 @@ const (
 	componentPotionContents  = 42 // minecraft:potion_contents, canonical
 	componentStewEffects     = 44 // minecraft:suspicious_stew_effects, canonical
 	componentRepairCost      = 16 // minecraft:repair_cost (varint), canonical
+	componentContainer       = 66 // minecraft:container (list of Slots), canonical
 	componentBannerPatterns  = 63 // minecraft:banner_patterns (layer list), canonical
 	componentWritableBook    = 45 // minecraft:writable_book_content, canonical
 	componentWrittenBook     = 46 // minecraft:written_book_content, canonical
@@ -1383,6 +1384,19 @@ func stewEffectsCompID(version int32) int32 {
 		return 51
 	}
 	return componentStewEffects
+}
+
+// containerCompID: a shulker box's contents renumber with everything else.
+func containerCompID(version int32) int32 {
+	switch {
+	case version >= 777:
+		return 77
+	case version >= 775:
+		return 75
+	case version >= 774:
+		return 73
+	}
+	return componentContainer
 }
 
 func repairCostCompID(version int32) int32 {
@@ -1627,6 +1641,7 @@ func copyFullSlotAt(r *bytes.Reader, out *[]byte, remap func(int32) int32, versi
 	potIn, potOut := int32(componentPotionContents), potionContentsCompID(version)
 	stewIn, stewOut := int32(componentStewEffects), stewEffectsCompID(version)
 	repairIn, repairOut := int32(componentRepairCost), repairCostCompID(version)
+	contIn, contOut := int32(componentContainer), containerCompID(version)
 	if serverbound {
 		lodeIn, lodeOut = lodeOut, lodeIn
 		baseIn, baseOut = baseOut, baseIn
@@ -1644,6 +1659,7 @@ func copyFullSlotAt(r *bytes.Reader, out *[]byte, remap func(int32) int32, versi
 		potIn, potOut = potOut, potIn
 		stewIn, stewOut = stewOut, stewIn
 		repairIn, repairOut = repairOut, repairIn
+		contIn, contOut = contOut, contIn
 	}
 	count, err := ReadVarInt(r)
 	if err != nil {
@@ -1719,6 +1735,25 @@ func copyFullSlotAt(r *bytes.Reader, out *[]byte, remap func(int32) int32, versi
 			*out = AppendVarInt(*out, potOut)
 			if !copyPotionContents(r, out) {
 				return false
+			}
+		case contIn:
+			// container: a shulker box's contents, a varint-counted list of
+			// full Slots. Like bundle_contents it RECURSES, which is what
+			// remaps the ids of what is inside the box rather than only the
+			// box itself. The list is positional, so empty slots ride along.
+			if depth >= maxBundleNesting {
+				return false
+			}
+			n, err := ReadVarInt(r)
+			if err != nil || n < 0 || n > 256 {
+				return false
+			}
+			*out = AppendVarInt(*out, contOut)
+			*out = AppendVarInt(*out, n)
+			for j := int32(0); j < n; j++ {
+				if !copyFullSlotAt(r, out, remap, version, serverbound, depth+1) {
+					return false
+				}
 			}
 		case stewIn:
 			// suspicious_stew_effects: (effect holder, duration) pairs. The

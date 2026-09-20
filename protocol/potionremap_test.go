@@ -164,3 +164,81 @@ func TestStewAndRepairCostRenumber(t *testing.T) {
 		}
 	}
 }
+
+// containerSlot builds a shulker box carrying contents: a positional list of
+// Slots, so the empty ones ride along too.
+func containerSlot(box int32, items []int32) []byte {
+	b := AppendVarInt(nil, 1)
+	b = AppendVarInt(b, box)
+	b = AppendVarInt(b, 1)
+	b = AppendVarInt(b, 0)
+	b = AppendVarInt(b, componentContainer)
+	b = AppendVarInt(b, int32(len(items)))
+	for _, it := range items {
+		if it == 0 {
+			b = AppendVarInt(b, 0) // an empty slot
+			continue
+		}
+		b = AppendVarInt(b, 1)
+		b = AppendVarInt(b, it)
+		b = AppendVarInt(b, 0) // no components of its own
+		b = AppendVarInt(b, 0)
+	}
+	return b
+}
+
+// The box's own component id renumbers, and so do the ITEM ids inside it —
+// that is the whole reason the copier recurses rather than skipping the
+// payload.
+func TestContainerContentsRemapInside(t *testing.T) {
+	const shift = 3
+	remap := func(i int32) int32 { return i + shift }
+	for _, tc := range []struct {
+		version int32
+		wantID  int32
+	}{{770, 66}, {774, 73}, {776, 75}, {777, 77}} {
+		items := []int32{100, 0, 250, 0, 0}
+		body := containerSlot(1190, items)
+		var out []byte
+		if !copyFullSlot(bytes.NewReader(body), &out, remap, tc.version, false) {
+			t.Fatalf("v%d: the container case is missing", tc.version)
+		}
+		r := bytes.NewReader(out)
+		ReadVarInt(r) // count
+		if got, _ := ReadVarInt(r); got != 1190+shift {
+			t.Errorf("v%d: the box itself is %d, want %d", tc.version, got, 1190+shift)
+		}
+		ReadVarInt(r) // add count
+		ReadVarInt(r) // remove count
+		if cid, _ := ReadVarInt(r); cid != tc.wantID {
+			t.Errorf("v%d: component id %d, want %d", tc.version, cid, tc.wantID)
+		}
+		n, _ := ReadVarInt(r)
+		if int(n) != len(items) {
+			t.Fatalf("v%d: %d slots, want %d", tc.version, n, len(items))
+		}
+		for j, want := range items {
+			cnt, _ := ReadVarInt(r)
+			if want == 0 {
+				if cnt != 0 {
+					t.Errorf("v%d slot %d: count %d, want the empty slot", tc.version, j, cnt)
+				}
+				continue
+			}
+			id, _ := ReadVarInt(r)
+			if id != want+shift {
+				t.Errorf("v%d slot %d: item %d, want %d", tc.version, j, id, want+shift)
+			}
+			ReadVarInt(r)
+			ReadVarInt(r)
+		}
+		// And the client's echo comes back canonical, items included.
+		back := []byte{}
+		if !copyFullSlot(bytes.NewReader(out), &back, func(i int32) int32 { return i - shift }, tc.version, true) {
+			t.Fatalf("v%d: serverbound copy failed", tc.version)
+		}
+		if !bytes.Equal(back, body) {
+			t.Errorf("v%d: round trip %x, want %x", tc.version, back, body)
+		}
+	}
+}
