@@ -100,6 +100,9 @@ type Dig struct {
 	Y      int   `json:"y"`
 	Z      int   `json:"z"`
 	Face   int32 `json:"face"`
+	// Seq is the client's block-prediction sequence (see MsgBlockAck). The
+	// world acknowledges it once it has processed the action.
+	Seq int32 `json:"seq,omitempty"`
 }
 
 type Place struct {
@@ -112,6 +115,7 @@ type Place struct {
 	CY     float32 `json:"cy"`
 	CZ     float32 `json:"cz"`
 	Inside bool    `json:"inside"`
+	Seq    int32   `json:"seq,omitempty"` // block-prediction sequence (MsgBlockAck)
 }
 
 type HeldSlot struct {
@@ -186,6 +190,7 @@ const (
 // frame because the offhand is where a shield lives.
 type UseItem struct {
 	Hand int32 `json:"hand,omitempty"`
+	Seq  int32 `json:"seq,omitempty"` // block-prediction sequence (MsgBlockAck)
 }
 
 type UseEntity struct {
@@ -1168,4 +1173,20 @@ const MsgWindowCloseServer = 0x75 // w→gw
 // WindowCloseServer names the window to close.
 type WindowCloseServer struct {
 	ID int32 `json:"id"`
+}
+
+// MsgBlockAck settles the client's own block predictions
+// (ClientboundBlockChangedAckPacket). Since 1.19 a client applies its dig
+// and place immediately and tags it with a sequence number, then holds the
+// prediction — ignoring what the server says about those positions — until
+// the server acknowledges that sequence. Vanilla's ServerGamePacketListener
+// keeps the highest sequence it has seen and sends one ack at the top of
+// the next tick, after the changes that processing produced, which is the
+// contract the world follows: every dig, use-on-block and use-item the
+// client tags is acknowledged, whether or not it changed anything.
+const MsgBlockAck = 0x76 // w→gw
+
+// BlockAck carries the highest prediction sequence the world has processed.
+type BlockAck struct {
+	Seq int32 `json:"seq"`
 }

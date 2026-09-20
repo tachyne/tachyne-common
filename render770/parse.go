@@ -93,11 +93,13 @@ func ParseUseEntity(data []byte) (attach.UseEntity, bool) {
 // ParseUseItem decodes use_item: the hand, then a prediction sequence and
 // the look angles the engine has from the move stream already.
 func ParseUseItem(data []byte) (attach.UseItem, bool) {
-	hand, err := protocol.ReadVarInt(bytes.NewReader(data))
+	r := bytes.NewReader(data)
+	hand, err := protocol.ReadVarInt(r)
 	if err != nil || hand < 0 || hand > 1 {
 		return attach.UseItem{}, false
 	}
-	return attach.UseItem{Hand: hand}, true
+	seq, _ := protocol.ReadVarInt(r) // the block-prediction sequence
+	return attach.UseItem{Hand: hand, Seq: seq}, true
 }
 
 // ParseVehicleMove decodes move_vehicle (x, y, z doubles + yaw, pitch).

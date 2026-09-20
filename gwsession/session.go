@@ -90,8 +90,6 @@ const (
 	playClientKeepAlive        = 0x26
 	playClientUpdateTime       = 0x6a
 
-	playClientAckDig = 0x04
-
 	playServerChatMessage  = 0x07
 	playServerChatCommand  = 0x05
 	playServerBlockDig     = 0x27
@@ -848,6 +846,12 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 					p := render770.BlockEvent(e)
 					cc.send(p.ID, p.Body)
 				}
+			case attach.MsgBlockAck:
+				var e attach.BlockAck
+				if json.Unmarshal(payload, &e) == nil {
+					p := render770.BlockChangedAck(e)
+					cc.send(p.ID, p.Body)
+				}
 			case attach.MsgGameEvent:
 				var e attach.GameEvent
 				if json.Unmarshal(payload, &e) == nil {
@@ -1196,8 +1200,10 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 				face, _ := r.ReadByte()
 				seq, _ := protocol.ReadVarInt(r)
 				x, y, z := protocol.ReadPosition(posb[:])
-				b.Write(attach.MsgDig, attach.Dig{Status: status, X: x, Y: y, Z: z, Face: int32(face)})
-				cc.send(playClientAckDig, protocol.AppendVarInt(nil, seq))
+				// The sequence rides along: the WORLD acks it, once it has
+				// processed the action, so the client's prediction is retired
+				// after the resulting block changes rather than before them.
+				b.Write(attach.MsgDig, attach.Dig{Status: status, X: x, Y: y, Z: z, Face: int32(face), Seq: seq})
 			case playServerBlockPlace:
 				r := pkt.Body()
 				hand, _ := protocol.ReadVarInt(r)
@@ -1217,8 +1223,8 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 				b.Write(attach.MsgPlace, attach.Place{
 					Hand: hand, X: x, Y: y, Z: z, Face: face,
 					CX: f32(cur[0:]), CY: f32(cur[4:]), CZ: f32(cur[8:]), Inside: inside == 1,
+					Seq: seq,
 				})
-				cc.send(playClientAckDig, protocol.AppendVarInt(nil, seq))
 			case playServerHeldItem:
 				if len(pkt.Data) >= 2 {
 					b.Write(attach.MsgHeldSlot, attach.HeldSlot{Slot: int16(binary.BigEndian.Uint16(pkt.Data))})
