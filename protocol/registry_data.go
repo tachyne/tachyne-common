@@ -5,6 +5,28 @@ package protocol
 // else resolves from the known pack (has_data=false). These builders provide
 // the minimal vanilla-accurate content for the entries we actually reference.
 
+// visualAttrs opens the 26.x dimension_type "attributes" compound and writes
+// the visual entries. 26.1 restructured dimension_type: `effects` is gone and
+// every look-and-light property moved into this map, so a 1.21.5-shaped entry
+// leaves a 26.x client with EnvironmentAttributeMap.EMPTY and the defaults —
+// which is why our nether was lit and fogged like the overworld. The keys are
+// the attribute registry's ids; an RGB_COLOR is ExtraCodecs.STRING_RGB_VEC3_
+// COLOR (a "#rrggbb" STRING, not an int) and a FLOAT is a plain float. Only
+// syncable attributes reach a client, and every visual one is syncable.
+func visualAttrs(b []byte, kv ...any) []byte {
+	b = NBTCompound(b, "attributes")
+	for i := 0; i+1 < len(kv); i += 2 {
+		key := "minecraft:visual/" + kv[i].(string)
+		switch v := kv[i+1].(type) {
+		case string:
+			b = NBTString(b, key, v)
+		case float64:
+			b = NBTFloat(b, key, float32(v))
+		}
+	}
+	return NBTEnd(b)
+}
+
 func overworldNBT(v int32, height int32) []byte {
 	if height <= 0 {
 		height = 384 // vanilla-height world
@@ -71,6 +93,19 @@ func netherNBT(v int32) []byte {
 		// Vanilla nether: frozen sky (no clock), nether ambience timelines.
 		b = NBTBool(b, "has_fixed_time", true)
 		b = NBTString(b, "timelines", "#minecraft:in_nether")
+		// Without these a 26.x client renders the nether with the OVERWORLD
+		// skybox, the overworld's directional face shading and no ambient
+		// tint — reported in game as "the lighting in the nether is not
+		// correct". Values are vanilla the_nether.json (26.1 through 26.3,
+		// identical).
+		b = NBTString(b, "skybox", "none")
+		b = NBTString(b, "cardinal_light", "nether")
+		b = visualAttrs(b,
+			"ambient_light_color", "#302821",
+			"sky_light_color", "#7a7aff",
+			"sky_light_factor", 0.0,
+			"fog_start_distance", 10.0,
+			"fog_end_distance", 96.0)
 	}
 	return NBTEnd(b)
 }
@@ -132,6 +167,13 @@ func endNBT(v int32) []byte {
 		b = NBTBool(b, "has_fixed_time", true)
 		b = NBTString(b, "default_clock", "minecraft:the_end")
 		b = NBTString(b, "timelines", "#minecraft:in_end")
+		b = NBTString(b, "skybox", "end")
+		b = visualAttrs(b,
+			"ambient_light_color", "#3f473f",
+			"sky_light_color", "#ac60cd",
+			"sky_light_factor", 0.0,
+			"sky_color", "#000000",
+			"fog_color", "#181318")
 	}
 	return NBTEnd(b)
 }
