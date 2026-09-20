@@ -1039,6 +1039,12 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 					p := render770.CampfireData(e)
 					cc.send(p.ID, p.Body)
 				}
+			case attach.MsgDefaultSpawn:
+				var e attach.DefaultSpawn
+				if json.Unmarshal(payload, &e) == nil {
+					p := render770.DefaultSpawnData(e)
+					cc.send(p.ID, p.Body)
+				}
 			case attach.MsgSpawnerData:
 				var e attach.SpawnerData
 				if json.Unmarshal(payload, &e) == nil {

@@ -94,6 +94,16 @@ func Difficulty(e attach.Difficulty) Packet {
 // CommandTree renders the brigadier tree from the opaque canonical body.
 func CommandTree(e attach.CommandTree) Packet { return Packet{IDCommands, e.Data} }
 
+// IDSetDefaultSpawn is the world spawn packet: the compass's north.
+const IDSetDefaultSpawn = 0x5a
+
+// DefaultSpawnData composes set_default_spawn_position: the packed block
+// position and the angle to face.
+func DefaultSpawnData(e attach.DefaultSpawn) Packet {
+	b := protocol.AppendPosition(nil, e.X, e.Y, e.Z)
+	return Packet{IDSetDefaultSpawn, protocol.AppendF32(b, e.Angle)}
+}
+
 // IDRespawn is the clientbound respawn packet (dimension switch / death).
 const IDRespawn = 0x4b
 

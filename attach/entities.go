@@ -1191,6 +1191,21 @@ type BlockAck struct {
 	Seq int32 `json:"seq"`
 }
 
+// MsgDefaultSpawn is the world's spawn point
+// (ClientboundSetDefaultSpawnPositionPacket). It is what a plain compass
+// points at, and what the client draws the respawn marker from — without it
+// the client keeps its own default of the world origin, so every compass in
+// the world points at 0,0 regardless of where spawn actually is.
+const MsgDefaultSpawn = 0x78 // w→gw
+
+// DefaultSpawn is the world spawn and the angle a player faces on arriving.
+type DefaultSpawn struct {
+	X     int     `json:"x"`
+	Y     int     `json:"y"`
+	Z     int     `json:"z"`
+	Angle float32 `json:"angle,omitempty"`
+}
+
 // MsgSpawnerData is a mob spawner's update tag (SpawnerBlockEntity's
 // getUpdateTag, minus SpawnPotentials as vanilla drops it). What the client
 // does with it is draw the little mob turning inside the cage — without it
