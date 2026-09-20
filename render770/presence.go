@@ -70,8 +70,9 @@ func Chat(e attach.Chat) Packet {
 	return Packet{IDSystemChat, protocol.AppendBool(chatNBT(e.Text), e.ActionBar)}
 }
 
-// BossBar renders a boss-bar operation. Color/style are the house constants
-// (purple, solid) every boss uses.
+// BossBar renders a boss-bar operation, with the bar's own colour, overlay
+// and flags — every boss used to be drawn purple and solid, so the dragon,
+// the wither and a raid were indistinguishable at the top of the screen.
 func BossBar(e attach.BossBar) Packet {
 	b := append([]byte(nil), e.UUID[:]...)
 	switch e.Op {
@@ -79,9 +80,9 @@ func BossBar(e attach.BossBar) Packet {
 		b = protocol.AppendVarInt(b, 0)
 		b = append(b, chatNBT(e.Title)...)
 		b = protocol.AppendF32(b, e.Health)
-		b = protocol.AppendVarInt(b, 5) // color: purple
-		b = protocol.AppendVarInt(b, 0) // style: solid
-		b = protocol.AppendU8(b, 0)     // flags
+		b = protocol.AppendVarInt(b, e.Color)
+		b = protocol.AppendVarInt(b, e.Overlay)
+		b = protocol.AppendU8(b, e.Flags)
 	case attach.BossBarHealth:
 		b = protocol.AppendVarInt(b, 2)
 		b = protocol.AppendF32(b, e.Health)

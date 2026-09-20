@@ -660,7 +660,35 @@ type BossBar struct {
 	Op     int32    `json:"op"`
 	Title  string   `json:"title,omitempty"`
 	Health float32  `json:"health,omitempty"` // 0..1 fill fraction
+	// BossEvent's own look. Each boss has its own: the dragon is pink with
+	// music and world fog, the wither purple and screen-darkening, a raid red
+	// and notched into ten. Zero values are vanilla's defaults (pink, a solid
+	// bar, no flags), so a caller that does not care need not say.
+	Color   int32 `json:"color,omitempty"`   // BossBarColor: pink 0 … white 6
+	Overlay int32 `json:"overlay,omitempty"` // BossBarOverlay: progress 0, notched 6/10/12/20
+	Flags   uint8 `json:"flags,omitempty"`   // 1 darken screen, 2 boss music, 4 world fog
 }
+
+// BossBarColor / BossBarOverlay / the flag bits, as BossEvent numbers them.
+const (
+	BossPink   = 0
+	BossBlue   = 1
+	BossRed    = 2
+	BossGreen  = 3
+	BossYellow = 4
+	BossPurple = 5
+	BossWhite  = 6
+
+	BossProgress  = 0
+	BossNotched6  = 1
+	BossNotched10 = 2
+	BossNotched12 = 3
+	BossNotched20 = 4
+
+	BossDarkenScreen = 0x01
+	BossMusic        = 0x02
+	BossWorldFog     = 0x04
+)
 
 // Advancement frames (w→gw). The engine owns the tree (canonical 1.21.11
 // data), criteria evaluation, and per-player grant state; the gateway renders

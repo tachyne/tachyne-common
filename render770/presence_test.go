@@ -20,14 +20,16 @@ func oracleSystemChat(text string, actionBar bool) []byte {
 	return protocol.AppendBool(oracleChatNBT(text), actionBar)
 }
 
-func oracleBossBarAdd(uuid [16]byte, title string, health float32) []byte {
+// oracleBossBarAdd takes the bar's look rather than assuming it: every boss
+// used to render purple and solid, which is what this oracle used to pin.
+func oracleBossBarAdd(uuid [16]byte, title string, health float32, colour, overlay int32, flags uint8) []byte {
 	b := append([]byte(nil), uuid[:]...)
 	b = protocol.AppendVarInt(b, 0)
 	b = append(b, oracleChatNBT(title)...)
 	b = protocol.AppendF32(b, health)
-	b = protocol.AppendVarInt(b, 5)
-	b = protocol.AppendVarInt(b, 0)
-	b = protocol.AppendU8(b, 0)
+	b = protocol.AppendVarInt(b, colour)
+	b = protocol.AppendVarInt(b, overlay)
+	b = protocol.AppendU8(b, flags)
 	return b
 }
 
@@ -114,8 +116,10 @@ func TestChatSanitizes(t *testing.T) {
 
 func TestBossBarMatchesOracle(t *testing.T) {
 	uuid := [16]byte{0xdd, 1}
-	eq(t, "add", BossBar(attach.BossBar{UUID: uuid, Op: attach.BossBarAdd, Title: "Ender Dragon", Health: 0.75}),
-		IDBossBar, oracleBossBarAdd(uuid, "Ender Dragon", 0.75))
+	eq(t, "add", BossBar(attach.BossBar{UUID: uuid, Op: attach.BossBarAdd, Title: "Ender Dragon", Health: 0.75,
+		Color: attach.BossPink, Overlay: attach.BossProgress, Flags: attach.BossMusic | attach.BossWorldFog}),
+		IDBossBar, oracleBossBarAdd(uuid, "Ender Dragon", 0.75, attach.BossPink, attach.BossProgress,
+			attach.BossMusic|attach.BossWorldFog))
 	wantHealth := append(append([]byte(nil), uuid[:]...), 2)
 	wantHealth = protocol.AppendF32(wantHealth, 0.5)
 	eq(t, "health", BossBar(attach.BossBar{UUID: uuid, Op: attach.BossBarHealth, Health: 0.5}),
