@@ -24,6 +24,7 @@ const (
 const (
 	beTypeSign        = 7
 	beTypeHangingSign = 8
+	beTypeSpawner     = 9
 	beTypePiston      = 11
 	beTypeBanner      = 20
 	beTypeCampfire    = 33
@@ -53,6 +54,23 @@ func CampfireData(e attach.CampfireItems) Packet {
 	b := protocol.AppendPosition(nil, int(e.X), int(e.Y), int(e.Z))
 	b = protocol.AppendVarInt(b, beTypeCampfire)
 	b = protocol.AppendCampfireNBT(b, e.Items)
+	return Packet{IDBlockEntityData, b}
+}
+
+// SpawnerData composes block_entity_data for a mob spawner: what it spawns
+// and its ranges. The block-entity type is 9 on every version we serve.
+func SpawnerData(e attach.SpawnerData) Packet {
+	b := protocol.AppendPosition(nil, e.X, e.Y, e.Z)
+	b = protocol.AppendVarInt(b, beTypeSpawner)
+	b = protocol.AppendSpawnerNBT(b, e.Entity, protocol.SpawnerCfg{
+		Delay:             e.Delay,
+		MinDelay:          e.MinDelay,
+		MaxDelay:          e.MaxDelay,
+		SpawnCount:        e.SpawnCount,
+		MaxNearbyEntities: e.MaxNearbyEntities,
+		PlayerRange:       e.PlayerRange,
+		SpawnRange:        e.SpawnRange,
+	})
 	return Packet{IDBlockEntityData, b}
 }
 

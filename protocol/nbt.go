@@ -14,6 +14,7 @@ import (
 const (
 	nbtEnd      = 0
 	nbtByte     = 1
+	nbtShort    = 2
 	nbtInt      = 3
 	nbtFloat    = 5
 	nbtDouble   = 6
@@ -42,6 +43,12 @@ func NBTBool(b []byte, name string, v bool) []byte {
 		return NBTByte(b, name, 1)
 	}
 	return NBTByte(b, name, 0)
+}
+
+func NBTShort(b []byte, name string, v int16) []byte {
+	b = append(b, nbtShort)
+	b = nbtName(b, name)
+	return AppendU16(b, uint16(v))
 }
 
 func NBTInt(b []byte, name string, v int32) []byte {

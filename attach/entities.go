@@ -1190,3 +1190,29 @@ const MsgBlockAck = 0x76 // w→gw
 type BlockAck struct {
 	Seq int32 `json:"seq"`
 }
+
+// MsgSpawnerData is a mob spawner's update tag (SpawnerBlockEntity's
+// getUpdateTag, minus SpawnPotentials as vanilla drops it). What the client
+// does with it is draw the little mob turning inside the cage — without it
+// every dungeon and fortress spawner is an empty box — and the ranges are
+// what its particles and its "player is close" glow read.
+const MsgSpawnerData = 0x77 // w→gw
+
+// SpawnerData is one spawner's synced state. Entity is the registry name of
+// what it spawns ("minecraft:blaze"); an empty one is a spawner nothing has
+// set yet, which vanilla draws empty.
+type SpawnerData struct {
+	X      int    `json:"x"`
+	Y      int    `json:"y"`
+	Z      int    `json:"z"`
+	Entity string `json:"entity,omitempty"`
+	// BaseSpawner's configuration. Zero values mean vanilla's defaults, so a
+	// frame that carries only a position and a name still renders correctly.
+	Delay             int16 `json:"delay,omitempty"`
+	MinDelay          int16 `json:"min_delay,omitempty"`
+	MaxDelay          int16 `json:"max_delay,omitempty"`
+	SpawnCount        int16 `json:"spawn_count,omitempty"`
+	MaxNearbyEntities int16 `json:"max_nearby,omitempty"`
+	PlayerRange       int16 `json:"player_range,omitempty"`
+	SpawnRange        int16 `json:"spawn_range,omitempty"`
+}
