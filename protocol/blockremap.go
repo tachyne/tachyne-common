@@ -1190,6 +1190,7 @@ const (
 	componentMapID           = 37 // minecraft:map_id (varint), canonical
 	componentDyedColor       = 35 // minecraft:dyed_color (varint rgb), canonical
 	componentTrim            = 47 // minecraft:trim (2 holder varints), canonical
+	componentPotionContents  = 42 // minecraft:potion_contents, canonical
 	componentBannerPatterns  = 63 // minecraft:banner_patterns (layer list), canonical
 	componentWritableBook    = 45 // minecraft:writable_book_content, canonical
 	componentWrittenBook     = 46 // minecraft:written_book_content, canonical
@@ -1354,6 +1355,20 @@ func trimCompID(version int32) int32 {
 	return componentTrim
 }
 
+// potionContentsCompID: potion_contents renumbers exactly like trim does —
+// 42 through 1.21.10, then 49 / 51 / 53 (the registry reports).
+func potionContentsCompID(version int32) int32 {
+	switch {
+	case version >= 777:
+		return 53
+	case version >= 775:
+		return 51
+	case version >= 774:
+		return 49
+	}
+	return componentPotionContents
+}
+
 func bannerPatternsCompID(version int32) int32 {
 	switch {
 	case version >= 777:
@@ -1364,6 +1379,112 @@ func bannerPatternsCompID(version int32) int32 {
 		return 70
 	}
 	return componentBannerPatterns
+}
+
+// copyPotionContents copies a potion_contents payload, verbatim but walked —
+// the copier has to know exactly how long it is to reach the component after
+// it. Shape (PotionContents.STREAM_CODEC): optional potion holder, optional
+// custom colour, the effect list, optional custom name.
+func copyPotionContents(r *bytes.Reader, out *[]byte) bool {
+	if !copyOptVarInt(r, out) { // potion holder ref
+		return false
+	}
+	has, err := r.ReadByte() // custom colour: ByteBufCodecs.INT, four bytes
+	if err != nil {
+		return false
+	}
+	*out = append(*out, has)
+	if has != 0 {
+		var rgb [4]byte
+		if _, err := io.ReadFull(r, rgb[:]); err != nil {
+			return false
+		}
+		*out = append(*out, rgb[:]...)
+	}
+	n, err := ReadVarInt(r)
+	if err != nil || n < 0 || n > 8 {
+		return false
+	}
+	*out = AppendVarInt(*out, n)
+	for i := int32(0); i < n; i++ {
+		if !copyEffectInstance(r, out, 0) {
+			return false
+		}
+	}
+	name, err := r.ReadByte() // optional custom name (a translation-key stem)
+	if err != nil {
+		return false
+	}
+	*out = append(*out, name)
+	if name != 0 {
+		s, err := ReadString(r)
+		if err != nil {
+			return false
+		}
+		*out = AppendString(*out, s)
+	}
+	return true
+}
+
+// maxEffectNesting caps MobEffectInstance.Details' hiddenEffect chain — the
+// recursion a drink-while-affected builds. Vanilla nests one deep per
+// overwritten effect; anything past a few is not ours.
+const maxEffectNesting = 4
+
+// copyEffectInstance copies one MobEffectInstance: the effect holder, then
+// Details (amplifier, duration, three flags, an optional hidden Details).
+func copyEffectInstance(r *bytes.Reader, out *[]byte, depth int) bool {
+	id, err := ReadVarInt(r) // holder ref: registry id + 1
+	if err != nil {
+		return false
+	}
+	*out = AppendVarInt(*out, id)
+	return copyEffectDetails(r, out, depth)
+}
+
+func copyEffectDetails(r *bytes.Reader, out *[]byte, depth int) bool {
+	if depth > maxEffectNesting {
+		return false
+	}
+	amp, e1 := ReadVarInt(r)
+	dur, e2 := ReadVarInt(r)
+	if e1 != nil || e2 != nil {
+		return false
+	}
+	*out = AppendVarInt(*out, amp)
+	*out = AppendVarInt(*out, dur)
+	var flags [3]byte // ambient, showParticles, showIcon
+	if _, err := io.ReadFull(r, flags[:]); err != nil {
+		return false
+	}
+	*out = append(*out, flags[:]...)
+	hidden, err := r.ReadByte()
+	if err != nil {
+		return false
+	}
+	*out = append(*out, hidden)
+	if hidden != 0 {
+		return copyEffectDetails(r, out, depth+1)
+	}
+	return true
+}
+
+// copyOptVarInt copies an Optional<varint>: presence byte + the value.
+func copyOptVarInt(r *bytes.Reader, out *[]byte) bool {
+	has, err := r.ReadByte()
+	if err != nil {
+		return false
+	}
+	*out = append(*out, has)
+	if has == 0 {
+		return true
+	}
+	v, err := ReadVarInt(r)
+	if err != nil {
+		return false
+	}
+	*out = AppendVarInt(*out, v)
+	return true
 }
 
 // copyFilterableString copies a Filterable<String>: raw + optional filtered.
@@ -1480,6 +1601,7 @@ func copyFullSlotAt(r *bytes.Reader, out *[]byte, remap func(int32) int32, versi
 	wrIn, wrOut := int32(componentWrittenBook), writtenBookCompID(version)
 	lodeIn, lodeOut := int32(componentLodestone), lodestoneCompID(version)
 	baseIn, baseOut := int32(componentBaseColor), baseColorCompID(version)
+	potIn, potOut := int32(componentPotionContents), potionContentsCompID(version)
 	if serverbound {
 		lodeIn, lodeOut = lodeOut, lodeIn
 		baseIn, baseOut = baseOut, baseIn
@@ -1494,6 +1616,7 @@ func copyFullSlotAt(r *bytes.Reader, out *[]byte, remap func(int32) int32, versi
 		bundleIn, bundleOut = bundleOut, bundleIn
 		wbIn, wbOut = wbOut, wbIn
 		wrIn, wrOut = wrOut, wrIn
+		potIn, potOut = potOut, potIn
 	}
 	count, err := ReadVarInt(r)
 	if err != nil {
@@ -1560,6 +1683,16 @@ func copyFullSlotAt(r *bytes.Reader, out *[]byte, remap func(int32) int32, versi
 			*out = AppendVarInt(*out, trimOut)
 			*out = AppendVarInt(*out, mat)
 			*out = AppendVarInt(*out, pat)
+		case potIn:
+			// potion_contents: optional potion holder, optional custom colour
+			// (a fixed-width int, not a varint), the effect list, and an
+			// optional name. Effect ids are our declared registry order, the
+			// same on every version, so the payload rides through untouched
+			// and only the component id renumbers.
+			*out = AppendVarInt(*out, potOut)
+			if !copyPotionContents(r, out) {
+				return false
+			}
 		case bannerIn:
 			// banner_patterns: varint layer count + (pattern holder, dye)
 			// varint pairs — pattern ids are our declared order, dye is the
