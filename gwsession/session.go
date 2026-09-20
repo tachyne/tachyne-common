@@ -1039,6 +1039,24 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 					p := render770.CampfireData(e)
 					cc.send(p.ID, p.Body)
 				}
+			case attach.MsgDisconnect:
+				var e attach.Disconnect
+				if json.Unmarshal(payload, &e) == nil {
+					p := render770.Disconnect(e)
+					cc.send(p.ID, p.Body)
+				}
+				// The reason has to reach the client before the socket does
+				// away with it, so the hang-up is the next thing that happens
+				// and nothing else is written in between.
+				errs <- fmt.Errorf("world disconnected session: %s", e.Reason)
+				return
+			case attach.MsgTitle:
+				var e attach.Title
+				if json.Unmarshal(payload, &e) == nil {
+					for _, p := range render770.TitlePackets(e) {
+						cc.send(p.ID, p.Body)
+					}
+				}
 			case attach.MsgDefaultSpawn:
 				var e attach.DefaultSpawn
 				if json.Unmarshal(payload, &e) == nil {

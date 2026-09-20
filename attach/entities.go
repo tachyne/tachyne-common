@@ -1219,6 +1219,33 @@ type BlockAck struct {
 	Seq int32 `json:"seq"`
 }
 
+// MsgDisconnect ends a session with a reason the player can read. Closing
+// the socket leaves them at "connection lost"; this is the screen vanilla
+// shows, with the kick reason on it. The gateway sends it and then hangs up.
+const MsgDisconnect = 0x7a // w→gw
+
+// Disconnect carries the reason to show.
+type Disconnect struct {
+	Reason string `json:"reason"`
+}
+
+// MsgTitle shows the big words across the middle of the screen, with their
+// subtitle and the fade/stay/fade they are shown with — or clears them.
+const MsgTitle = 0x79 // w→gw
+
+// Title is one title instruction. An empty Title or Subtitle simply is not
+// sent, so a caller can set one without disturbing the other; Clear takes
+// them both away, and Reset with it also forgets the timing.
+type Title struct {
+	Title    string `json:"title,omitempty"`
+	Subtitle string `json:"subtitle,omitempty"`
+	FadeIn   int32  `json:"fade_in,omitempty"`  // ticks
+	Stay     int32  `json:"stay,omitempty"`     // ticks
+	FadeOut  int32  `json:"fade_out,omitempty"` // ticks
+	Clear    bool   `json:"clear,omitempty"`
+	Reset    bool   `json:"reset,omitempty"`
+}
+
 // MsgDefaultSpawn is the world's spawn point
 // (ClientboundSetDefaultSpawnPositionPacket). It is what a plain compass
 // points at, and what the client draws the respawn marker from — without it

@@ -70,6 +70,17 @@ func Chat(e attach.Chat) Packet {
 	return Packet{IDSystemChat, protocol.AppendBool(chatNBT(e.Text), e.ActionBar)}
 }
 
+// IDDisconnect is the PLAY-state disconnect packet. Its id falls between
+// delete_chat and disguised_chat in the alphabetical registry; two anchors
+// this renderer already pins land on it exactly — horse_screen_open 0x23 and
+// initialize_border 0x25 are seven and nine further on.
+const IDDisconnect = 0x1c
+
+// Disconnect renders the kick screen, with the reason on it.
+func Disconnect(e attach.Disconnect) Packet {
+	return Packet{IDDisconnect, chatNBT(e.Reason)}
+}
+
 // BossBar renders a boss-bar operation, with the bar's own colour, overlay
 // and flags — every boss used to be drawn purple and solid, so the dragon,
 // the wither and a raid were indistinguishable at the top of the screen.
