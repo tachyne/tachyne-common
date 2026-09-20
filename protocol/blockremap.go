@@ -1197,6 +1197,7 @@ const (
 	componentOminousBottle   = 54 // minecraft:ominous_bottle_amplifier (varint 0-4), canonical
 	componentFireworks       = 60 // minecraft:fireworks (flight duration + explosions), canonical
 	componentFireworkStar    = 59 // minecraft:firework_explosion (one star's burst), canonical
+	componentPotDecorations  = 65 // minecraft:pot_decorations (four ITEM ids), canonical
 	componentBannerPatterns  = 63 // minecraft:banner_patterns (layer list), canonical
 	componentWritableBook    = 45 // minecraft:writable_book_content, canonical
 	componentWrittenBook     = 46 // minecraft:written_book_content, canonical
@@ -1439,6 +1440,20 @@ func fireworkStarCompID(version int32) int32 {
 		return 66
 	}
 	return componentFireworkStar
+}
+
+// potDecorationsCompID: a decorated pot's four faces. Unlike every other
+// component here its payload is ITEM ids, so the values are remapped too.
+func potDecorationsCompID(version int32) int32 {
+	switch {
+	case version >= 777:
+		return 76
+	case version >= 775:
+		return 74
+	case version >= 774:
+		return 72
+	}
+	return componentPotDecorations
 }
 
 func repairCostCompID(version int32) int32 {
@@ -1718,6 +1733,7 @@ func copyFullSlotAt(r *bytes.Reader, out *[]byte, remap func(int32) int32, versi
 	omenIn, omenOut := int32(componentOminousBottle), ominousBottleCompID(version)
 	fwIn, fwOut := int32(componentFireworks), fireworksCompID(version)
 	starIn, starOut := int32(componentFireworkStar), fireworkStarCompID(version)
+	potDecIn, potDecOut := int32(componentPotDecorations), potDecorationsCompID(version)
 	if serverbound {
 		lodeIn, lodeOut = lodeOut, lodeIn
 		baseIn, baseOut = baseOut, baseIn
@@ -1739,6 +1755,7 @@ func copyFullSlotAt(r *bytes.Reader, out *[]byte, remap func(int32) int32, versi
 		omenIn, omenOut = omenOut, omenIn
 		fwIn, fwOut = fwOut, fwIn
 		starIn, starOut = starOut, starIn
+		potDecIn, potDecOut = potDecOut, potDecIn
 	}
 	count, err := ReadVarInt(r)
 	if err != nil {
@@ -1852,6 +1869,23 @@ func copyFullSlotAt(r *bytes.Reader, out *[]byte, remap func(int32) int32, versi
 				}
 				*out = AppendVarInt(*out, id)
 				*out = AppendVarInt(*out, dur)
+			}
+		case potDecIn:
+			// pot_decorations: up to four ITEM ids, one per face. The only
+			// component here whose payload is ids rather than values, so the
+			// items inside it go through the same remap as the stack's own.
+			n, err := ReadVarInt(r)
+			if err != nil || n < 0 || n > 4 {
+				return false
+			}
+			*out = AppendVarInt(*out, potDecOut)
+			*out = AppendVarInt(*out, n)
+			for j := int32(0); j < n; j++ {
+				id, err := ReadVarInt(r)
+				if err != nil {
+					return false
+				}
+				*out = AppendVarInt(*out, remap(id))
 			}
 		case fwIn:
 			// fireworks: the rocket's flight duration, then its bursts.

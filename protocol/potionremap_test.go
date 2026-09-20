@@ -341,3 +341,57 @@ func TestFireworkComponentsRenumber(t *testing.T) {
 		}
 	}
 }
+
+// pot_decorations is the one component whose payload is ITEM ids, so the
+// items inside it must be remapped exactly like the stack's own — a
+// pass-through would put the wrong sherd on every face of every pot.
+func TestPotDecorationsRemapTheirItems(t *testing.T) {
+	const shift = 7
+	remap := func(i int32) int32 { return i + shift }
+	faces := []int32{1445, 1025, 1450, 1467} // angler, brick, heart, snort
+	for _, tc := range []struct {
+		version int32
+		wantID  int32
+	}{{770, 65}, {774, 72}, {776, 74}, {777, 76}} {
+		body := AppendVarInt(nil, 1)
+		body = AppendVarInt(body, 319) // decorated_pot
+		body = AppendVarInt(body, 1)
+		body = AppendVarInt(body, 0)
+		body = AppendVarInt(body, componentPotDecorations)
+		body = AppendVarInt(body, int32(len(faces)))
+		for _, f := range faces {
+			body = AppendVarInt(body, f)
+		}
+		var out []byte
+		if !copyFullSlot(bytes.NewReader(body), &out, remap, tc.version, false) {
+			t.Fatalf("v%d: the pot_decorations case is missing", tc.version)
+		}
+		r := bytes.NewReader(out)
+		ReadVarInt(r) // count
+		if got, _ := ReadVarInt(r); got != 319+shift {
+			t.Errorf("v%d: the pot itself is %d, want %d", tc.version, got, 319+shift)
+		}
+		ReadVarInt(r) // add
+		ReadVarInt(r) // remove
+		if cid, _ := ReadVarInt(r); cid != tc.wantID {
+			t.Errorf("v%d: component id %d, want %d", tc.version, cid, tc.wantID)
+		}
+		n, _ := ReadVarInt(r)
+		if int(n) != len(faces) {
+			t.Fatalf("v%d: %d faces, want %d", tc.version, n, len(faces))
+		}
+		for i, want := range faces {
+			if got, _ := ReadVarInt(r); got != want+shift {
+				t.Errorf("v%d face %d: item %d, want %d (remapped)", tc.version, i, got, want+shift)
+			}
+		}
+		// The client's echo comes back canonical, faces included.
+		var back []byte
+		if !copyFullSlot(bytes.NewReader(out), &back, func(i int32) int32 { return i - shift }, tc.version, true) {
+			t.Fatalf("v%d: serverbound copy failed", tc.version)
+		}
+		if !bytes.Equal(back, body) {
+			t.Errorf("v%d: round trip %x, want %x", tc.version, back, body)
+		}
+	}
+}
