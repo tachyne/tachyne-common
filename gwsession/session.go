@@ -1232,7 +1232,9 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 					b.Write(attach.MsgChat, attach.Chat{Text: text})
 				}
 			case render770.SIDUseItem:
-				b.Write(attach.MsgUseItem, attach.UseItem{})
+				if e, ok := render770.ParseUseItem(pkt.Data); ok {
+					b.Write(attach.MsgUseItem, e)
+				}
 			case render770.SIDUseEntity:
 				if e, ok := render770.ParseUseEntity(pkt.Data); ok {
 					b.Write(attach.MsgUseEntity, e)

@@ -41,8 +41,19 @@ func Effect(e attach.Effect) Packet {
 	}
 	b = protocol.AppendVarInt(b, e.Amp)
 	b = protocol.AppendVarInt(b, e.Ticks)
-	b = protocol.AppendU8(b, 0x02) // flags: show particles
-	return Packet{IDEntityEffect, b}
+	// ClientboundUpdateMobEffectPacket's flag byte: 1 ambient, 2 visible
+	// (particles), 4 show icon, 8 blend (the darkness screen fade).
+	flags := byte(0)
+	if e.Ambient {
+		flags |= 0x01
+	}
+	if !e.NoParticles {
+		flags |= 0x02
+	}
+	if !e.NoIcon {
+		flags |= 0x04
+	}
+	return Packet{IDEntityEffect, protocol.AppendU8(b, flags)}
 }
 
 // Hurt renders the hurt animation (red flash + directional camera tilt).

@@ -181,7 +181,12 @@ const (
 	MsgCreativeSlot = 0x3f // gw→w: creative-mode slot set
 )
 
-type UseItem struct{}
+// UseItem is a right-click with a held item — ServerboundUseItemPacket.
+// Hand is InteractionHand: 0 the main hand, 1 the offhand. It rides the
+// frame because the offhand is where a shield lives.
+type UseItem struct {
+	Hand int32 `json:"hand,omitempty"`
+}
 
 type UseEntity struct {
 	Target int32 `json:"target"`
@@ -285,8 +290,15 @@ type Effect struct {
 	EID    int32 `json:"eid"`
 	ID     int32 `json:"id"` // minecraft:mob_effect registry id
 	Amp    int32 `json:"amp,omitempty"`
-	Ticks  int32 `json:"ticks,omitempty"`
+	Ticks  int32 `json:"ticks,omitempty"`  // -1 = infinite (MobEffectInstance.INFINITE_DURATION)
 	Remove bool  `json:"remove,omitempty"` // true = effect ended
+	// MobEffectInstance's own visibility fields. Vanilla's ordinary instance
+	// is visible with an icon and is not ambient, so the two that are
+	// normally true ride as their negations: a frame that carries none of
+	// them renders exactly that default.
+	Ambient     bool `json:"ambient,omitempty"`     // from a beacon or a conduit: fainter particles
+	NoParticles bool `json:"noParticles,omitempty"` // isVisible() == false
+	NoIcon      bool `json:"noIcon,omitempty"`      // showIcon() == false — no HUD icon
 }
 
 type Hurt struct {

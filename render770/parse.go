@@ -90,6 +90,16 @@ func ParseUseEntity(data []byte) (attach.UseEntity, bool) {
 	return attach.UseEntity{Target: target, Attack: mouse == 1}, true
 }
 
+// ParseUseItem decodes use_item: the hand, then a prediction sequence and
+// the look angles the engine has from the move stream already.
+func ParseUseItem(data []byte) (attach.UseItem, bool) {
+	hand, err := protocol.ReadVarInt(bytes.NewReader(data))
+	if err != nil || hand < 0 || hand > 1 {
+		return attach.UseItem{}, false
+	}
+	return attach.UseItem{Hand: hand}, true
+}
+
 // ParseVehicleMove decodes move_vehicle (x, y, z doubles + yaw, pitch).
 func ParseVehicleMove(data []byte) (attach.VehicleMove, bool) {
 	if len(data) < 28 {

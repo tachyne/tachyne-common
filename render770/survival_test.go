@@ -28,8 +28,16 @@ func TestEffectMatchesOracle(t *testing.T) {
 	want = protocol.AppendVarInt(want, 10) // regen
 	want = protocol.AppendVarInt(want, 1)
 	want = protocol.AppendVarInt(want, 600)
-	want = protocol.AppendU8(want, 0x02)
+	want = protocol.AppendU8(want, 0x06) // visible + show icon, vanilla's default instance
 	eq(t, "effect add", Effect(attach.Effect{EID: 5, ID: 10, Amp: 1, Ticks: 600}), IDEntityEffect, want)
+
+	amb := protocol.AppendVarInt(nil, 5)
+	amb = protocol.AppendVarInt(amb, 10)
+	amb = protocol.AppendVarInt(amb, 0)
+	amb = protocol.AppendVarInt(amb, -1)    // infinite, as a beacon's effect is
+	amb = protocol.AppendU8(amb, 0x01|0x04) // ambient, icon, no particles
+	eq(t, "effect ambient", Effect(attach.Effect{EID: 5, ID: 10, Ticks: -1, Ambient: true, NoParticles: true}),
+		IDEntityEffect, amb)
 
 	wantRm := protocol.AppendVarInt(nil, 5)
 	wantRm = protocol.AppendVarInt(wantRm, 10)
