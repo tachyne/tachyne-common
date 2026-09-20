@@ -1191,6 +1191,8 @@ const (
 	componentDyedColor       = 35 // minecraft:dyed_color (varint rgb), canonical
 	componentTrim            = 47 // minecraft:trim (2 holder varints), canonical
 	componentPotionContents  = 42 // minecraft:potion_contents, canonical
+	componentStewEffects     = 44 // minecraft:suspicious_stew_effects, canonical
+	componentRepairCost      = 16 // minecraft:repair_cost (varint), canonical
 	componentBannerPatterns  = 63 // minecraft:banner_patterns (layer list), canonical
 	componentWritableBook    = 45 // minecraft:writable_book_content, canonical
 	componentWrittenBook     = 46 // minecraft:written_book_content, canonical
@@ -1367,6 +1369,27 @@ func potionContentsCompID(version int32) int32 {
 		return 49
 	}
 	return componentPotionContents
+}
+
+// stewEffectsCompID / repairCostCompID: the same per-version renumbering,
+// from the registry reports.
+func stewEffectsCompID(version int32) int32 {
+	switch {
+	case version >= 777:
+		return 55
+	case version >= 775:
+		return 53
+	case version >= 774:
+		return 51
+	}
+	return componentStewEffects
+}
+
+func repairCostCompID(version int32) int32 {
+	if version >= 774 {
+		return 19
+	}
+	return componentRepairCost
 }
 
 func bannerPatternsCompID(version int32) int32 {
@@ -1602,6 +1625,8 @@ func copyFullSlotAt(r *bytes.Reader, out *[]byte, remap func(int32) int32, versi
 	lodeIn, lodeOut := int32(componentLodestone), lodestoneCompID(version)
 	baseIn, baseOut := int32(componentBaseColor), baseColorCompID(version)
 	potIn, potOut := int32(componentPotionContents), potionContentsCompID(version)
+	stewIn, stewOut := int32(componentStewEffects), stewEffectsCompID(version)
+	repairIn, repairOut := int32(componentRepairCost), repairCostCompID(version)
 	if serverbound {
 		lodeIn, lodeOut = lodeOut, lodeIn
 		baseIn, baseOut = baseOut, baseIn
@@ -1617,6 +1642,8 @@ func copyFullSlotAt(r *bytes.Reader, out *[]byte, remap func(int32) int32, versi
 		wbIn, wbOut = wbOut, wbIn
 		wrIn, wrOut = wrOut, wrIn
 		potIn, potOut = potOut, potIn
+		stewIn, stewOut = stewOut, stewIn
+		repairIn, repairOut = repairOut, repairIn
 	}
 	count, err := ReadVarInt(r)
 	if err != nil {
@@ -1693,6 +1720,33 @@ func copyFullSlotAt(r *bytes.Reader, out *[]byte, remap func(int32) int32, versi
 			if !copyPotionContents(r, out) {
 				return false
 			}
+		case stewIn:
+			// suspicious_stew_effects: (effect holder, duration) pairs. The
+			// client only shows them on a creative tooltip, but vanilla syncs
+			// them, so a stew inspected in creative says what it does.
+			n, err := ReadVarInt(r)
+			if err != nil || n < 0 || n > 8 {
+				return false
+			}
+			*out = AppendVarInt(*out, stewOut)
+			*out = AppendVarInt(*out, n)
+			for j := int32(0); j < n; j++ {
+				id, e1 := ReadVarInt(r)
+				dur, e2 := ReadVarInt(r)
+				if e1 != nil || e2 != nil {
+					return false
+				}
+				*out = AppendVarInt(*out, id)
+				*out = AppendVarInt(*out, dur)
+			}
+		case repairIn:
+			// repair_cost: the anvil's prior-work penalty, one varint.
+			val, err := ReadVarInt(r)
+			if err != nil {
+				return false
+			}
+			*out = AppendVarInt(*out, repairOut)
+			*out = AppendVarInt(*out, val)
 		case bannerIn:
 			// banner_patterns: varint layer count + (pattern holder, dye)
 			// varint pairs — pattern ids are our declared order, dye is the

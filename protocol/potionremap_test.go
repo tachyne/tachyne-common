@@ -103,3 +103,64 @@ func TestPotionContentsRejectsTruncated(t *testing.T) {
 		}
 	}
 }
+
+// stewSlot builds a suspicious stew carrying its effect, and repairSlot an
+// item carrying an anvil prior-work penalty — both plain per-version
+// renumberings over a payload that means the same on every client.
+func stewSlot(item int32, effect, dur int32) []byte {
+	b := AppendVarInt(nil, 1)
+	b = AppendVarInt(b, item)
+	b = AppendVarInt(b, 1)
+	b = AppendVarInt(b, 0)
+	b = AppendVarInt(b, componentStewEffects)
+	b = AppendVarInt(b, 1)
+	b = AppendVarInt(b, effect+1) // holder ref
+	return AppendVarInt(b, dur)
+}
+
+func repairSlot(item, cost int32) []byte {
+	b := AppendVarInt(nil, 1)
+	b = AppendVarInt(b, item)
+	b = AppendVarInt(b, 1)
+	b = AppendVarInt(b, 0)
+	b = AppendVarInt(b, componentRepairCost)
+	return AppendVarInt(b, cost)
+}
+
+func TestStewAndRepairCostRenumber(t *testing.T) {
+	for _, tc := range []struct {
+		version              int32
+		wantStew, wantRepair int32
+	}{{770, 44, 16}, {774, 51, 19}, {776, 53, 19}, {777, 55, 19}} {
+		for _, c := range []struct {
+			name string
+			body []byte
+			want int32
+		}{
+			{"suspicious_stew_effects", stewSlot(1108, 22, 7), tc.wantStew},
+			{"repair_cost", repairSlot(1043, 7), tc.wantRepair},
+		} {
+			var out []byte
+			if !copyFullSlot(bytes.NewReader(c.body), &out, func(i int32) int32 { return i }, tc.version, false) {
+				t.Fatalf("v%d %s: the case is missing", tc.version, c.name)
+			}
+			r := bytes.NewReader(out)
+			for i := 0; i < 4; i++ {
+				ReadVarInt(r)
+			}
+			if cid, _ := ReadVarInt(r); cid != c.want {
+				t.Errorf("v%d %s: component id %d, want %d", tc.version, c.name, cid, c.want)
+			}
+			if got := out[len(out)-r.Len():]; !bytes.Equal(got, c.body[indexAfterCompID(c.body):]) {
+				t.Errorf("v%d %s: payload changed", tc.version, c.name)
+			}
+			var back []byte
+			if !copyFullSlot(bytes.NewReader(out), &back, func(i int32) int32 { return i }, tc.version, true) {
+				t.Fatalf("v%d %s: serverbound copy failed", tc.version, c.name)
+			}
+			if !bytes.Equal(back, c.body) {
+				t.Errorf("v%d %s: round trip %x, want %x", tc.version, c.name, back, c.body)
+			}
+		}
+	}
+}
