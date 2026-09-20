@@ -278,3 +278,66 @@ func TestOminousBottleRenumbers(t *testing.T) {
 		}
 	}
 }
+
+// A rocket's flight duration and bursts, and a star's single burst. The
+// colours inside a burst are fixed-width ints, which is the part a walker
+// gets wrong if it assumes varints everywhere.
+func TestFireworkComponentsRenumber(t *testing.T) {
+	burst := func(b []byte) []byte {
+		b = AppendVarInt(b, 2)     // shape: large ball
+		b = AppendVarInt(b, 2)     // two colours
+		b = AppendI32(b, 0xE84A4A) //
+		b = AppendI32(b, 0x4A90E8) //
+		b = AppendVarInt(b, 1)     // one fade colour
+		b = AppendI32(b, 0xF0F0F0) //
+		return append(b, 1, 0)     // trail, no twinkle
+	}
+	for _, tc := range []struct {
+		version              int32
+		wantRocket, wantStar int32
+	}{{770, 60, 59}, {774, 67, 66}, {776, 69, 68}, {777, 71, 70}} {
+		rocket := AppendVarInt(nil, 1)
+		rocket = AppendVarInt(rocket, 1242) // firework_rocket
+		rocket = AppendVarInt(rocket, 1)
+		rocket = AppendVarInt(rocket, 0)
+		rocket = AppendVarInt(rocket, componentFireworks)
+		rocket = AppendVarInt(rocket, 3) // flight duration
+		rocket = AppendVarInt(rocket, 1) // one burst
+		rocket = burst(rocket)
+
+		star := AppendVarInt(nil, 1)
+		star = AppendVarInt(star, 1243) // firework_star
+		star = AppendVarInt(star, 1)
+		star = AppendVarInt(star, 0)
+		star = AppendVarInt(star, componentFireworkStar)
+		star = burst(star)
+
+		for _, c := range []struct {
+			name string
+			body []byte
+			want int32
+		}{{"fireworks", rocket, tc.wantRocket}, {"firework_explosion", star, tc.wantStar}} {
+			var out []byte
+			if !copyFullSlot(bytes.NewReader(c.body), &out, func(i int32) int32 { return i }, tc.version, false) {
+				t.Fatalf("v%d %s: the case is missing", tc.version, c.name)
+			}
+			r := bytes.NewReader(out)
+			for i := 0; i < 4; i++ {
+				ReadVarInt(r)
+			}
+			if cid, _ := ReadVarInt(r); cid != c.want {
+				t.Errorf("v%d %s: component id %d, want %d", tc.version, c.name, cid, c.want)
+			}
+			if got := out[len(out)-r.Len():]; !bytes.Equal(got, c.body[indexAfterCompID(c.body):]) {
+				t.Errorf("v%d %s: payload changed", tc.version, c.name)
+			}
+			var back []byte
+			if !copyFullSlot(bytes.NewReader(out), &back, func(i int32) int32 { return i }, tc.version, true) {
+				t.Fatalf("v%d %s: serverbound copy failed", tc.version, c.name)
+			}
+			if !bytes.Equal(back, c.body) {
+				t.Errorf("v%d %s: round trip %x, want %x", tc.version, c.name, back, c.body)
+			}
+		}
+	}
+}

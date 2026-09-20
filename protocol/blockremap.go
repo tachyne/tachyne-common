@@ -1195,6 +1195,8 @@ const (
 	componentRepairCost      = 16 // minecraft:repair_cost (varint), canonical
 	componentContainer       = 66 // minecraft:container (list of Slots), canonical
 	componentOminousBottle   = 54 // minecraft:ominous_bottle_amplifier (varint 0-4), canonical
+	componentFireworks       = 60 // minecraft:fireworks (flight duration + explosions), canonical
+	componentFireworkStar    = 59 // minecraft:firework_explosion (one star's burst), canonical
 	componentBannerPatterns  = 63 // minecraft:banner_patterns (layer list), canonical
 	componentWritableBook    = 45 // minecraft:writable_book_content, canonical
 	componentWrittenBook     = 46 // minecraft:written_book_content, canonical
@@ -1413,6 +1415,32 @@ func ominousBottleCompID(version int32) int32 {
 	return componentOminousBottle
 }
 
+// fireworksCompID / fireworkStarCompID: a rocket's flight and burst, and a
+// star's own burst, renumber with everything else.
+func fireworksCompID(version int32) int32 {
+	switch {
+	case version >= 777:
+		return 71
+	case version >= 775:
+		return 69
+	case version >= 774:
+		return 67
+	}
+	return componentFireworks
+}
+
+func fireworkStarCompID(version int32) int32 {
+	switch {
+	case version >= 777:
+		return 70
+	case version >= 775:
+		return 68
+	case version >= 774:
+		return 66
+	}
+	return componentFireworkStar
+}
+
 func repairCostCompID(version int32) int32 {
 	if version >= 774 {
 		return 19
@@ -1430,6 +1458,37 @@ func bannerPatternsCompID(version int32) int32 {
 		return 70
 	}
 	return componentBannerPatterns
+}
+
+// copyFireworkExplosion copies one burst: shape, the colours it opens with,
+// the colours it fades to, and the trail/twinkle flags. Colours are
+// fixed-width ints, not varints.
+func copyFireworkExplosion(r *bytes.Reader, out *[]byte) bool {
+	shape, err := ReadVarInt(r)
+	if err != nil {
+		return false
+	}
+	*out = AppendVarInt(*out, shape)
+	for i := 0; i < 2; i++ { // colors, then fadeColors
+		n, err := ReadVarInt(r)
+		if err != nil || n < 0 || n > 32 {
+			return false
+		}
+		*out = AppendVarInt(*out, n)
+		for j := int32(0); j < n; j++ {
+			var rgb [4]byte
+			if _, err := io.ReadFull(r, rgb[:]); err != nil {
+				return false
+			}
+			*out = append(*out, rgb[:]...)
+		}
+	}
+	var flags [2]byte // trail, twinkle
+	if _, err := io.ReadFull(r, flags[:]); err != nil {
+		return false
+	}
+	*out = append(*out, flags[:]...)
+	return true
 }
 
 // copyPotionContents copies a potion_contents payload, verbatim but walked —
@@ -1657,6 +1716,8 @@ func copyFullSlotAt(r *bytes.Reader, out *[]byte, remap func(int32) int32, versi
 	repairIn, repairOut := int32(componentRepairCost), repairCostCompID(version)
 	contIn, contOut := int32(componentContainer), containerCompID(version)
 	omenIn, omenOut := int32(componentOminousBottle), ominousBottleCompID(version)
+	fwIn, fwOut := int32(componentFireworks), fireworksCompID(version)
+	starIn, starOut := int32(componentFireworkStar), fireworkStarCompID(version)
 	if serverbound {
 		lodeIn, lodeOut = lodeOut, lodeIn
 		baseIn, baseOut = baseOut, baseIn
@@ -1676,6 +1737,8 @@ func copyFullSlotAt(r *bytes.Reader, out *[]byte, remap func(int32) int32, versi
 		repairIn, repairOut = repairOut, repairIn
 		contIn, contOut = contOut, contIn
 		omenIn, omenOut = omenOut, omenIn
+		fwIn, fwOut = fwOut, fwIn
+		starIn, starOut = starOut, starIn
 	}
 	count, err := ReadVarInt(r)
 	if err != nil {
@@ -1789,6 +1852,30 @@ func copyFullSlotAt(r *bytes.Reader, out *[]byte, remap func(int32) int32, versi
 				}
 				*out = AppendVarInt(*out, id)
 				*out = AppendVarInt(*out, dur)
+			}
+		case fwIn:
+			// fireworks: the rocket's flight duration, then its bursts.
+			dur, err := ReadVarInt(r)
+			if err != nil {
+				return false
+			}
+			n, err := ReadVarInt(r)
+			if err != nil || n < 0 || n > 8 {
+				return false
+			}
+			*out = AppendVarInt(*out, fwOut)
+			*out = AppendVarInt(*out, dur)
+			*out = AppendVarInt(*out, n)
+			for j := int32(0); j < n; j++ {
+				if !copyFireworkExplosion(r, out) {
+					return false
+				}
+			}
+		case starIn:
+			// firework_explosion: the single burst a star carries.
+			*out = AppendVarInt(*out, starOut)
+			if !copyFireworkExplosion(r, out) {
+				return false
 			}
 		case omenIn:
 			// ominous_bottle_amplifier: the Bad Omen level a captain's bottle
