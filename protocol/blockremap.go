@@ -1194,6 +1194,7 @@ const (
 	componentStewEffects     = 44 // minecraft:suspicious_stew_effects, canonical
 	componentRepairCost      = 16 // minecraft:repair_cost (varint), canonical
 	componentContainer       = 66 // minecraft:container (list of Slots), canonical
+	componentOminousBottle   = 54 // minecraft:ominous_bottle_amplifier (varint 0-4), canonical
 	componentBannerPatterns  = 63 // minecraft:banner_patterns (layer list), canonical
 	componentWritableBook    = 45 // minecraft:writable_book_content, canonical
 	componentWrittenBook     = 46 // minecraft:written_book_content, canonical
@@ -1397,6 +1398,19 @@ func containerCompID(version int32) int32 {
 		return 73
 	}
 	return componentContainer
+}
+
+// ominousBottleCompID: the bottle's Bad Omen level renumbers with the rest.
+func ominousBottleCompID(version int32) int32 {
+	switch {
+	case version >= 777:
+		return 65
+	case version >= 775:
+		return 63
+	case version >= 774:
+		return 61
+	}
+	return componentOminousBottle
 }
 
 func repairCostCompID(version int32) int32 {
@@ -1642,6 +1656,7 @@ func copyFullSlotAt(r *bytes.Reader, out *[]byte, remap func(int32) int32, versi
 	stewIn, stewOut := int32(componentStewEffects), stewEffectsCompID(version)
 	repairIn, repairOut := int32(componentRepairCost), repairCostCompID(version)
 	contIn, contOut := int32(componentContainer), containerCompID(version)
+	omenIn, omenOut := int32(componentOminousBottle), ominousBottleCompID(version)
 	if serverbound {
 		lodeIn, lodeOut = lodeOut, lodeIn
 		baseIn, baseOut = baseOut, baseIn
@@ -1660,6 +1675,7 @@ func copyFullSlotAt(r *bytes.Reader, out *[]byte, remap func(int32) int32, versi
 		stewIn, stewOut = stewOut, stewIn
 		repairIn, repairOut = repairOut, repairIn
 		contIn, contOut = contOut, contIn
+		omenIn, omenOut = omenOut, omenIn
 	}
 	count, err := ReadVarInt(r)
 	if err != nil {
@@ -1774,6 +1790,15 @@ func copyFullSlotAt(r *bytes.Reader, out *[]byte, remap func(int32) int32, versi
 				*out = AppendVarInt(*out, id)
 				*out = AppendVarInt(*out, dur)
 			}
+		case omenIn:
+			// ominous_bottle_amplifier: the Bad Omen level a captain's bottle
+			// carries, one varint.
+			val, err := ReadVarInt(r)
+			if err != nil {
+				return false
+			}
+			*out = AppendVarInt(*out, omenOut)
+			*out = AppendVarInt(*out, val)
 		case repairIn:
 			// repair_cost: the anvil's prior-work penalty, one varint.
 			val, err := ReadVarInt(r)

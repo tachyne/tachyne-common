@@ -242,3 +242,39 @@ func TestContainerContentsRemapInside(t *testing.T) {
 		}
 	}
 }
+
+// The Bad Omen level on a captain's bottle: one varint, per-version id.
+func TestOminousBottleRenumbers(t *testing.T) {
+	for _, tc := range []struct {
+		version int32
+		want    int32
+	}{{770, 54}, {774, 61}, {776, 63}, {777, 65}} {
+		b := AppendVarInt(nil, 1)
+		b = AppendVarInt(b, 1504) // minecraft:ominous_bottle
+		b = AppendVarInt(b, 1)
+		b = AppendVarInt(b, 0)
+		b = AppendVarInt(b, componentOminousBottle)
+		body := AppendVarInt(b, 3)
+		var out []byte
+		if !copyFullSlot(bytes.NewReader(body), &out, func(i int32) int32 { return i }, tc.version, false) {
+			t.Fatalf("v%d: the ominous_bottle_amplifier case is missing", tc.version)
+		}
+		r := bytes.NewReader(out)
+		for i := 0; i < 4; i++ {
+			ReadVarInt(r)
+		}
+		if cid, _ := ReadVarInt(r); cid != tc.want {
+			t.Errorf("v%d: component id %d, want %d", tc.version, cid, tc.want)
+		}
+		if amp, _ := ReadVarInt(r); amp != 3 {
+			t.Errorf("v%d: amplifier %d, want 3", tc.version, amp)
+		}
+		var back []byte
+		if !copyFullSlot(bytes.NewReader(out), &back, func(i int32) int32 { return i }, tc.version, true) {
+			t.Fatalf("v%d: serverbound copy failed", tc.version)
+		}
+		if !bytes.Equal(back, body) {
+			t.Errorf("v%d: round trip %x, want %x", tc.version, back, body)
+		}
+	}
+}
