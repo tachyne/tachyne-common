@@ -1060,7 +1060,9 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 			case attach.MsgDefaultSpawn:
 				var e attach.DefaultSpawn
 				if json.Unmarshal(payload, &e) == nil {
-					p := render770.DefaultSpawnData(e)
+					// Composed at the client's real version: 1.21.9 changed the
+					// body to a GlobalPos and the chain has no rewriter for it.
+					p := render770.DefaultSpawnData(e, clientProto)
 					cc.send(p.ID, p.Body)
 				}
 			case attach.MsgSpawnerData:

@@ -1275,11 +1275,16 @@ type Title struct {
 const MsgDefaultSpawn = 0x78 // w→gw
 
 // DefaultSpawn is the world spawn and the angle a player faces on arriving.
+// Dim is the dimension the spawn point is in: 1.21.9 turned the packet's
+// position into a GlobalPos (vanilla LevelData.RespawnData), so the renderer
+// needs to name the world as well as the block. Empty means the overworld.
 type DefaultSpawn struct {
 	X     int     `json:"x"`
 	Y     int     `json:"y"`
 	Z     int     `json:"z"`
 	Angle float32 `json:"angle,omitempty"`
+	Pitch float32 `json:"pitch,omitempty"`
+	Dim   string  `json:"dim,omitempty"`
 }
 
 // MsgSpawnerData is a mob spawner's update tag (SpawnerBlockEntity's

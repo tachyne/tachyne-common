@@ -10,9 +10,10 @@ import (
 )
 
 // The world spawn is what a plain compass points at. Re-parse the packet
-// rather than trusting the writer: a packed position and an angle.
+// rather than trusting the writer: a packed position and an angle, which is
+// the shape up to and including 1.21.8 (the 773+ shape is in misc_test.go).
 func TestDefaultSpawnData(t *testing.T) {
-	p := DefaultSpawnData(attach.DefaultSpawn{X: -1533, Y: 300, Z: 4175, Angle: 90})
+	p := DefaultSpawnData(attach.DefaultSpawn{X: -1533, Y: 300, Z: 4175, Angle: 90}, 770)
 	if p.ID != IDSetDefaultSpawn {
 		t.Fatalf("packet id %#x, want %#x", p.ID, IDSetDefaultSpawn)
 	}

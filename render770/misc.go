@@ -97,11 +97,31 @@ func CommandTree(e attach.CommandTree) Packet { return Packet{IDCommands, e.Data
 // IDSetDefaultSpawn is the world spawn packet: the compass's north.
 const IDSetDefaultSpawn = 0x5a
 
-// DefaultSpawnData composes set_default_spawn_position: the packed block
-// position and the angle to face.
-func DefaultSpawnData(e attach.DefaultSpawn) Packet {
-	b := protocol.AppendPosition(nil, e.X, e.Y, e.Z)
-	return Packet{IDSetDefaultSpawn, protocol.AppendF32(b, e.Angle)}
+// defaultSpawnGlobalPos is the first protocol whose set_default_spawn_position
+// carries a GlobalPos rather than a bare block position. 1.21.9 rebuilt the
+// packet around LevelData.RespawnData — the dimension the spawn is in, the
+// block, and a yaw AND pitch — so anything from 773 up decodes a different
+// shape. There is no body rewriter for this packet in the chain, which is why
+// it has to be composed at the client's real version: a 26.x client handed the
+// 1.21.5 body throws "Failed to decode packet clientbound/minecraft:
+// set_default_spawn_position" and never finishes joining.
+const defaultSpawnGlobalPos = 773
+
+// DefaultSpawnData composes set_default_spawn_position for the given client
+// protocol version.
+func DefaultSpawnData(e attach.DefaultSpawn, version int32) Packet {
+	if version < defaultSpawnGlobalPos {
+		b := protocol.AppendPosition(nil, e.X, e.Y, e.Z)
+		return Packet{IDSetDefaultSpawn, protocol.AppendF32(b, e.Angle)}
+	}
+	dim := e.Dim
+	if dim == "" {
+		dim = "minecraft:overworld" // the world spawn's home, and vanilla's default
+	}
+	b := protocol.AppendString(nil, dim) // GlobalPos: the dimension key, then the block
+	b = protocol.AppendPosition(b, e.X, e.Y, e.Z)
+	b = protocol.AppendF32(b, e.Angle)
+	return Packet{IDSetDefaultSpawn, protocol.AppendF32(b, e.Pitch)}
 }
 
 // IDRespawn is the clientbound respawn packet (dimension switch / death).
