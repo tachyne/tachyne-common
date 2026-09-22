@@ -108,6 +108,35 @@ func HasRemap(reg IDSpace, version int32) bool {
 	return len(translationTables[reg][version]) > 0
 }
 
+// IDAdded reports whether a CLIENT version's ID is one the canonical registry
+// never had — the serverbound mirror of IDPresent.
+//
+// The reverse table has the same blind spot in the other direction: an id the
+// engine's registry does not contain still falls inside some shift range and
+// comes back as whatever canonical entry sits there. That is how a 26.3
+// client putting poplar planks in its hotbar had the world store redstone
+// ore. Receivers must consult this and DROP such entries rather than unmap
+// them.
+func IDAdded(reg IDSpace, version, id int32) bool {
+	extra, ok := addedIDs[reg][version]
+	if !ok {
+		return false
+	}
+	lo, hi := 0, len(extra)-1
+	for lo <= hi {
+		mid := (lo + hi) / 2
+		switch {
+		case extra[mid] < id:
+			lo = mid + 1
+		case extra[mid] > id:
+			hi = mid - 1
+		default:
+			return true
+		}
+	}
+	return false
+}
+
 // IDPresent reports whether a canonical ID exists at all on a client version.
 //
 // The shift tables can only move an ID, never say "this does not exist here".

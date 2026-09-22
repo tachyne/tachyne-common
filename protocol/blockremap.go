@@ -310,25 +310,36 @@ func unmapHashedSlot(version int32, r *bytes.Reader, out *[]byte) bool {
 	if err != nil {
 		return false
 	}
-	*out = append(*out, has)
 	if has == 0 {
+		*out = append(*out, has)
 		return true
 	}
 	item, err := ReadVarInt(r)
 	if err != nil {
 		return false
 	}
-	*out = AppendVarInt(*out, UnmapID(RegItem, version, item))
-	if !copyVarInt(r, out) { // count
+	// An id the canonical registry never had is dropped, not shifted — see
+	// unmapCreativeSlot. The slot is still parsed all the way through,
+	// because the packet continues after it; only its output is thrown away
+	// and replaced with an empty slot.
+	drop := IDAdded(RegItem, version, item)
+	var buf []byte
+	dst := out
+	if drop {
+		dst = &buf
+	}
+	*dst = append(*dst, has)
+	*dst = AppendVarInt(*dst, UnmapID(RegItem, version, item))
+	if !copyVarInt(r, dst) { // count
 		return false
 	}
 	nAdd, err := ReadVarInt(r)
 	if err != nil || nAdd < 0 || nAdd > 64 {
 		return false
 	}
-	*out = AppendVarInt(*out, nAdd)
+	*dst = AppendVarInt(*dst, nAdd)
 	for i := 0; i < int(nAdd); i++ {
-		if !copyVarInt(r, out) || !copyBytes(r, out, 4) { // component type + i32 hash
+		if !copyVarInt(r, dst) || !copyBytes(r, dst, 4) { // component type + i32 hash
 			return false
 		}
 	}
@@ -336,11 +347,14 @@ func unmapHashedSlot(version int32, r *bytes.Reader, out *[]byte) bool {
 	if err != nil || nRm < 0 || nRm > 64 {
 		return false
 	}
-	*out = AppendVarInt(*out, nRm)
+	*dst = AppendVarInt(*dst, nRm)
 	for i := 0; i < int(nRm); i++ {
-		if !copyVarInt(r, out) {
+		if !copyVarInt(r, dst) {
 			return false
 		}
+	}
+	if drop {
+		*out = append(*out, 0) // an empty slot in place of the one we cannot name
 	}
 	return true
 }
@@ -1143,9 +1157,31 @@ func unmapCreativeSlot(version int32, body []byte) []byte {
 	if !skip(r, 2) { // slot (i16)
 		return body
 	}
+	// An item the canonical registry never had cannot be shifted back — the
+	// reverse table would land it on whatever entry now occupies that id, so
+	// a 26.3 client's poplar planks became redstone ore in the world. The
+	// slot is emptied instead: the engine genuinely has no such item, and the
+	// inventory it pushes back tells the client so.
+	if at := len(body) - r.Len(); addedItemInSlot(version, body[at:]) {
+		return AppendVarInt(append([]byte(nil), body[:at]...), 0) // empty slot
+	}
 	// Serverbound: the client speaks ITS component ids — translate back.
 	return remapTrailingSlot(body, r, func(i int32) int32 { return UnmapID(RegItem, version, i) },
 		version, true)
+}
+
+// addedItemInSlot reports whether a full Slot (VarInt count, VarInt item, …)
+// leads with an item this client version has and the canonical registry does
+// not. A slot it cannot read is left to the remap path, which bails to the
+// original body on the same trouble.
+func addedItemInSlot(version int32, slot []byte) bool {
+	r := bytes.NewReader(slot)
+	count, err := ReadVarInt(r)
+	if err != nil || count <= 0 {
+		return false
+	}
+	item, err := ReadVarInt(r)
+	return err == nil && IDAdded(RegItem, version, item)
 }
 
 // remapWindowItems: VarInt window, VarInt stateId, VarInt count, count Slots, then
