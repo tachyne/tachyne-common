@@ -24,6 +24,17 @@ const IDRecipeBook = 0x43
 const (
 	itemCraftingTable  = 320 // shown as the crafting station in book entries
 	recipeCategoryMisc = 3   // crafting_misc book tab (cosmetic placement)
+
+	// SlotDisplay any_fuel is registry index 1 in every served version — the
+	// fuel slot of a furnace display is this, never a concrete item.
+	slotDisplayAnyFuel = 1
+
+	// RecipeDisplay type ids (recipe_display registry order, unchanged
+	// through 26.2): crafting_shapeless 0, crafting_shaped 1, furnace 2,
+	// stonecutter 3, smithing 4.
+	recipeDisplayShapeless = 0
+	recipeDisplayShaped    = 1
+	recipeDisplayFurnace   = 2
 )
 
 // RecipeBook renders recipe_book_add for the given client protocol version.
@@ -43,12 +54,12 @@ func RecipeBook(rb attach.RecipeBook, version int32) Packet {
 		sd = slotDisplayIDs{item: 4, itemStack: 5, templateForm: true}
 	}
 
-	n := len(rb.Shaped) + len(rb.Shapeless)
+	n := len(rb.Shaped) + len(rb.Shapeless) + len(rb.Cooking)
 	b := protocol.AppendVarInt(nil, int32(n))
 	for i := range rb.Shaped {
 		r := &rb.Shaped[i]
 		b = protocol.AppendVarInt(b, r.ID) // displayId (engine-assigned, stable)
-		b = protocol.AppendVarInt(b, 1)    // RecipeDisplay: crafting_shaped
+		b = protocol.AppendVarInt(b, recipeDisplayShaped)
 		b = protocol.AppendVarInt(b, r.W)
 		b = protocol.AppendVarInt(b, r.H)
 		b = protocol.AppendVarInt(b, int32(len(r.Cells)))
@@ -57,19 +68,36 @@ func RecipeBook(rb attach.RecipeBook, version int32) Packet {
 		}
 		b = appendSlotDisplay(b, sd, rid(r.Result), int(r.Count)) // result (with count)
 		b = appendSlotDisplay(b, sd, rid(itemCraftingTable), 1)   // crafting station
-		b = appendBookEntryTail(b, ingredientInstances(r.Cells), rid, r.Result, r.Notify, r.Highlight)
+		b = appendBookEntryTail(b, ingredientInstances(r.Cells), rid, r.Result, recipeCategoryMisc, r.Notify, r.Highlight)
 	}
 	for i := range rb.Shapeless {
 		r := &rb.Shapeless[i]
 		b = protocol.AppendVarInt(b, r.ID) // displayId
-		b = protocol.AppendVarInt(b, 0)    // crafting_shapeless
+		b = protocol.AppendVarInt(b, recipeDisplayShapeless)
 		b = protocol.AppendVarInt(b, int32(len(r.Ingredients)))
 		for _, c := range r.Ingredients {
 			b = appendSlotDisplay(b, sd, rid(c), 1)
 		}
 		b = appendSlotDisplay(b, sd, rid(r.Result), int(r.Count))
 		b = appendSlotDisplay(b, sd, rid(itemCraftingTable), 1)
-		b = appendBookEntryTail(b, ingredientInstances(r.Ingredients), rid, r.Result, r.Notify, r.Highlight)
+		b = appendBookEntryTail(b, ingredientInstances(r.Ingredients), rid, r.Result, recipeCategoryMisc, r.Notify, r.Highlight)
+	}
+	// Cooking entries (vanilla FurnaceRecipeDisplay): one ingredient, the
+	// implicit any-fuel slot, the result, the cooker's item as the station,
+	// then the cook duration and the experience the recipe banks. These are
+	// what fills the furnace/blast-furnace/smoker books — without them those
+	// three tabs of the green book sit empty on every client.
+	for i := range rb.Cooking {
+		r := &rb.Cooking[i]
+		b = protocol.AppendVarInt(b, r.ID)
+		b = protocol.AppendVarInt(b, recipeDisplayFurnace)
+		b = appendSlotDisplay(b, sd, rid(r.Ingredient), 1)
+		b = protocol.AppendVarInt(b, slotDisplayAnyFuel)
+		b = appendSlotDisplay(b, sd, rid(r.Result), int(r.Count))
+		b = appendSlotDisplay(b, sd, rid(r.Station), 1)
+		b = protocol.AppendVarInt(b, r.Cook)
+		b = protocol.AppendF32(b, r.XP)
+		b = appendBookEntryTail(b, []int32{r.Ingredient}, rid, r.Result, r.Category, r.Notify, r.Highlight)
 	}
 	b = protocol.AppendBool(b, rb.Replace)
 	return Packet{IDRecipeBook, b}
@@ -124,17 +152,17 @@ func appendSlotDisplay(b []byte, sd slotDisplayIDs, item int32, count int) []byt
 }
 
 // appendBookEntryTail writes the entry fields after the display: the group,
-// misc category, the ingredient id-sets (lets the book's "craftable" filter
+// the book category, the ingredient id-sets (lets the book's "craftable" filter
 // work), and empty flags. rid translates item ids to the client's id space.
 // Entries sharing a group collapse into one book tile (the client cycles the
 // variants), so grouping by result folds the per-wood-type recipe variants
 // (stick from oak/spruce/… planks) into a single stick entry. The group id is
 // opaque to the client; the canonical result item id is a stable, unique
 // choice. optvarint: 0 = none, else id+1.
-func appendBookEntryTail(b []byte, ingredients []int32, rid func(int32) int32, group int32, notify, highlight bool) []byte {
-	b = protocol.AppendVarInt(b, group+1)            // group (optvarint, by result)
-	b = protocol.AppendVarInt(b, recipeCategoryMisc) // book tab
-	b = protocol.AppendBool(b, true)                 // craftingRequirements present
+func appendBookEntryTail(b []byte, ingredients []int32, rid func(int32) int32, group, category int32, notify, highlight bool) []byte {
+	b = protocol.AppendVarInt(b, group+1)  // group (optvarint, by result)
+	b = protocol.AppendVarInt(b, category) // book tab
+	b = protocol.AppendBool(b, true)       // craftingRequirements present
 	b = protocol.AppendVarInt(b, int32(len(ingredients)))
 	for _, id := range ingredients {
 		// IDSet holding one direct id: varint(count+1) then the ids.

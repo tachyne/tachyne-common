@@ -611,6 +611,7 @@ type RecipeBook struct {
 	Replace   bool              `json:"replace,omitempty"`
 	Shaped    []ShapedRecipe    `json:"shaped,omitempty"`
 	Shapeless []ShapelessRecipe `json:"shapeless,omitempty"`
+	Cooking   []CookingRecipe   `json:"cooking,omitempty"`
 }
 
 // ShapedRecipe is a WxH row-major pattern (Cells has W*H entries, 0 = empty).
@@ -635,6 +636,26 @@ type ShapelessRecipe struct {
 	Count       int32   `json:"count"`
 	Notify      bool    `json:"notify,omitempty"`
 	Highlight   bool    `json:"hl,omitempty"`
+}
+
+// CookingRecipe is one furnace/blast-furnace/smoker/campfire recipe as the
+// book shows it (vanilla FurnaceRecipeDisplay): a single ingredient, the
+// implicit any-fuel slot, the result, the cooker that makes it, the cook
+// duration and the experience it banks. Station is the cooker's ITEM id (the
+// icon the book draws beside the entry) and Category is the recipe_book_category
+// registry index that files the entry under its tab (furnace_food, smoker_food,
+// campfire, …) — both canonical-770 values the renderer remaps.
+type CookingRecipe struct {
+	ID         int32   `json:"id"`
+	Ingredient int32   `json:"ing"`
+	Result     int32   `json:"result"`
+	Count      int32   `json:"count"`
+	Cook       int32   `json:"cook"`
+	XP         float32 `json:"xp"`
+	Station    int32   `json:"station"`
+	Category   int32   `json:"cat"`
+	Notify     bool    `json:"notify,omitempty"`
+	Highlight  bool    `json:"hl,omitempty"`
 }
 
 // MsgResync (w→gw): re-request the current chunk window with Force set — the
