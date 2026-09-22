@@ -1312,3 +1312,25 @@ type SpawnerData struct {
 	PlayerRange       int16 `json:"player_range,omitempty"`
 	SpawnRange        int16 `json:"spawn_range,omitempty"`
 }
+
+// MsgStatus answers Hello{Purpose:"status"} with the server-list roster and
+// closes. The count has to come from the world: a gateway sees only its own
+// sessions, and a client pings whichever gateway matches its protocol, so a
+// gateway answering from its own books reports 0 whenever the players online
+// arrived through a different one.
+const MsgStatus = 0x7b // w→gw
+
+// Status is the roster behind the server-list ping. Sample is the handful of
+// players vanilla shows on the hover card (ServerStatus.Players.sample).
+type Status struct {
+	Online int            `json:"online"`
+	Max    int            `json:"max"`
+	Sample []StatusPlayer `json:"sample,omitempty"`
+}
+
+// StatusPlayer is one entry of the hover card: the name the list draws and
+// the id the schema requires beside it.
+type StatusPlayer struct {
+	Name string `json:"name"`
+	ID   string `json:"id"`
+}

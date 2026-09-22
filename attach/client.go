@@ -83,3 +83,66 @@ func (b *Backend) Swap(nw net.Conn) {
 	b.mu.Unlock()
 	old.Close()
 }
+
+// QueryStatus asks a world pod for the server-list roster: dial, Hello with
+// Purpose "status", read the one Status frame, close. It opens no session and
+// gives the world no player, so it is safe to call from the status path where
+// nobody has logged in. The deadlines are short — a server-list ping must not
+// hang on a world that is busy.
+func QueryStatus(addr, token, gateway string) (Status, error) {
+	c, err := net.DialTimeout("tcp", addr, 2*time.Second)
+	if err != nil {
+		return Status{}, fmt.Errorf("attach dial %s: %w", addr, err)
+	}
+	defer c.Close()
+	c.SetDeadline(time.Now().Add(3 * time.Second))
+	if err := WriteJSON(c, MsgHello, Hello{Token: token, Gateway: gateway, Purpose: "status"}); err != nil {
+		return Status{}, fmt.Errorf("%w: hello: %v", ErrRefused, err)
+	}
+	typ, payload, err := ReadFrame(c)
+	if err != nil || typ != MsgStatus {
+		return Status{}, fmt.Errorf("%w: status: typ=%#x err=%v", ErrRefused, typ, err)
+	}
+	var st Status
+	if err := json.Unmarshal(payload, &st); err != nil {
+		return Status{}, fmt.Errorf("%w: status decode: %v", ErrRefused, err)
+	}
+	return st, nil
+}
+
+// StatusCache is a gateway's view of the world's roster, refreshed on demand
+// and shared by every server-list ping that gateway answers. A server list
+// re-pings every few seconds and a client may hold dozens of entries, so the
+// world is asked at most once per StatusTTL rather than once per ping.
+type StatusCache struct {
+	Backend string // world pod attach address
+	Token   string // attach token
+	Gateway string // this gateway's name, for the world's logs
+
+	mu   sync.Mutex
+	at   time.Time
+	st   Status
+	have bool
+}
+
+// StatusTTL bounds how stale an advertised roster may be.
+const StatusTTL = 3 * time.Second
+
+// Get returns the roster, refreshing it from the world when stale. A world
+// that cannot be reached leaves the last good answer standing — and, if
+// there has never been one, reports an empty server rather than failing the
+// ping, since a server-list entry that will not draw is worse than a stale
+// count. The second return says whether the answer is a live one.
+func (s *StatusCache) Get() (Status, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.have && time.Since(s.at) < StatusTTL {
+		return s.st, true
+	}
+	st, err := QueryStatus(s.Backend, s.Token, s.Gateway)
+	if err != nil {
+		return s.st, false
+	}
+	s.st, s.at, s.have = st, time.Now(), true
+	return st, true
+}

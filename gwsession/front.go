@@ -9,9 +9,11 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/tachyne/tachyne-common/access"
+	"github.com/tachyne/tachyne-common/attach"
 	"github.com/tachyne/tachyne-common/protocol"
 	"github.com/tachyne/tachyne-common/proxyproto"
 )
@@ -62,7 +64,14 @@ type Server struct {
 	MinProto    int32  // accepted client protocol range (a single-version gateway sets Min == Max)
 	MaxProto    int32
 	ViewCap     int32 // max honored render distance in chunks (0 = default; capped at the attach limit 32)
+
+	roster     attach.StatusCache // cached server-list roster, asked of the world
+	rosterOnce sync.Once
+	rosterWarn sync.Once
 }
+
+// emptyUUID is the all-zero id the sample entries carry.
+const emptyUUID = "00000000-0000-0000-0000-000000000000"
 
 // sessionConfig parameterizes the shared session pipeline with this gateway's
 // pinning.
@@ -177,14 +186,27 @@ type statusJSON struct {
 		Protocol int32  `json:"protocol"`
 	} `json:"version"`
 	Players struct {
-		Max    int `json:"max"`
-		Online int `json:"online"`
+		Max    int          `json:"max"`
+		Online int          `json:"online"`
+		Sample []sampleName `json:"sample,omitempty"`
 	} `json:"players"`
 	Description struct {
 		Text string `json:"text"`
 	} `json:"description"`
 	EnforcesSecureChat bool `json:"enforcesSecureChat"`
 }
+
+// sampleName is one entry of the list's hover card. The id is required by
+// the schema; the client only draws the name, so a zero uuid is honest for a
+// roster the gateway did not authenticate itself.
+type sampleName struct {
+	Name string `json:"name"`
+	ID   string `json:"id"`
+}
+
+// statusMaxPlayers is the slot count advertised to the server list. Nothing
+// enforces it — the world has no join cap — so it is a display figure.
+const statusMaxPlayers = 100
 
 // status serves the server-list ping. A client inside the accepted range is
 // answered with its own protocol (a multi-version gateway is compatible
@@ -205,7 +227,28 @@ func (s *Server) status(br *bufio.Reader, c net.Conn, clientProto int32) {
 			if clientProto >= s.MinProto && clientProto <= s.MaxProto {
 				st.Version.Protocol = clientProto
 			}
-			st.Players.Max = 100
+			// The roster comes from the world: this gateway sees only the
+			// clients pinned to its own protocol range, while the players
+			// online may all have arrived through a different one.
+			s.rosterOnce.Do(func() {
+				s.roster.Backend, s.roster.Token, s.roster.Gateway = s.Backend, s.AttachToken, s.Name
+			})
+			ros, live := s.roster.Get()
+			if !live {
+				s.rosterWarn.Do(func() { log.Printf("status: world roster unavailable, advertising the last known count") })
+			}
+			st.Players.Max = statusMaxPlayers
+			if ros.Max > 0 {
+				st.Players.Max = ros.Max
+			}
+			st.Players.Online = ros.Online
+			for _, pl := range ros.Sample {
+				id := pl.ID
+				if id == "" {
+					id = emptyUUID
+				}
+				st.Players.Sample = append(st.Players.Sample, sampleName{Name: pl.Name, ID: id})
+			}
 			st.Description.Text = s.MOTD
 			payload, err := json.Marshal(st)
 			if err != nil {
