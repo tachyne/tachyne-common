@@ -1071,3 +1071,43 @@ func slicesEqual(a, b []int32) bool {
 	}
 	return true
 }
+
+// A client whose content ids equal the canonical ones — a 26.3 client once
+// 26.3 is canonical — has no id tables at all, but its packets still carry
+// the 770 layout the renderer writes: component ids must still be
+// renumbered. The walk used to be gated on the tables being non-empty,
+// which would have left such a client with 770 component ids.
+func TestLayoutIsRewrittenWithoutIDTables(t *testing.T) {
+	saved := translationTables[RegItem][777]
+	translationTables[RegItem][777] = nil
+	defer func() { translationTables[RegItem][777] = saved }()
+	if HasRemap(RegItem, 777) {
+		t.Fatal("fixture: 777 still has an item table")
+	}
+	slot := AppendVarInt(nil, 1)                     // count
+	slot = AppendVarInt(slot, 898)                   // an item; no table, so it passes as is
+	slot = AppendVarInt(slot, 1)                     // one component added
+	slot = AppendVarInt(slot, 0)                     // none removed
+	slot = AppendVarInt(slot, componentEnchantments) // 770 numbering
+	slot = AppendVarInt(slot, 1)                     // one enchantment
+	slot = AppendVarInt(slot, 0)                     // id
+	slot = AppendVarInt(slot, 5)                     // level
+	body := AppendVarInt(nil, 0)                     // window
+	body = AppendVarInt(body, 3)                     // stateId
+	body = AppendI16(body, 36)                       // slot
+	body = append(body, slot...)
+	out, _ := remapClientboundIDs(777, canonSetSlot, body)
+	r := bytes.NewReader(out)
+	ReadVarInt(r)
+	ReadVarInt(r)
+	skip(r, 2)
+	ReadVarInt(r) // count
+	if item, _ := ReadVarInt(r); item != 898 {
+		t.Fatalf("item = %d, want 898 unchanged", item)
+	}
+	ReadVarInt(r)
+	ReadVarInt(r)
+	if cid, _ := ReadVarInt(r); cid != enchCompID(777) {
+		t.Errorf("enchantments component id = %d, want %d: the layout was not rewritten", cid, enchCompID(777))
+	}
+}

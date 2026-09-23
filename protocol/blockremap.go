@@ -40,52 +40,40 @@ const (
 )
 
 // remapClientboundIDs rewrites version-specific registry IDs in a clientbound play
-// packet, dispatching by canonical (770) packet ID. Returns body unchanged when no
-// registry applies for this client version.
+// packet, dispatching by canonical (770) packet ID.
+//
+// Nothing here is gated on whether a client's id TABLES are empty (HasRemap):
+// the same walk carries the layout that travels with the ids — component ids,
+// entity-data serializers, the 26.x fluid count in chunk sections — which a
+// client needs even when its content ids equal the canonical ones, as a 26.3
+// client's do once 26.3 is canonical. RemapID is the identity where there is
+// no table.
 func remapClientboundIDs(version, id int32, body []byte) ([]byte, bool) {
 	switch id {
 	case canonChunkData:
-		if HasRemap(RegBlockState, version) || blockEntityTypesShift(version) {
-			return remapChunkBlocks(version, body), false
-		}
+		return remapChunkBlocks(version, body), false
 	case canonBlockEntityData:
 		if blockEntityTypesShift(version) {
 			return remapBlockEntityData(version, body)
 		}
 	case canonBlockUpdate:
-		if HasRemap(RegBlockState, version) {
-			return remapBlockUpdate(version, body), false
-		}
+		return remapBlockUpdate(version, body), false
 	case canonSpawnEntity:
-		if HasRemap(RegEntity, version) {
-			return remapSpawnEntityType(version, body), false
-		}
+		return remapSpawnEntityType(version, body), false
 	case canonUpdateAttributes:
-		if HasRemap(RegAttribute, version) {
-			return remapUpdateAttributes(version, body), false
-		}
+		return remapUpdateAttributes(version, body), false
 	case canonSetSlot:
-		if HasRemap(RegItem, version) {
-			return remapSetSlot(version, body), false
-		}
+		return remapSetSlot(version, body), false
 	case canonWindowItems:
-		if HasRemap(RegItem, version) {
-			return remapWindowItems(version, body), false
-		}
+		return remapWindowItems(version, body), false
 	case canonEntityMetadata:
-		if HasRemap(RegItem, version) { // item ids inside item-entity metadata (incl. 770 now)
-			return remapEntityMeta(version, body), false
-		}
+		return remapEntityMeta(version, body), false
 	case canonSetCursorItem:
-		if HasRemap(RegItem, version) {
-			r := bytes.NewReader(body) // body is a single Slot
-			return remapTrailingSlot(body, r, func(i int32) int32 { return RemapID(RegItem, version, i) },
-				version, false), false
-		}
+		r := bytes.NewReader(body) // body is a single Slot
+		return remapTrailingSlot(body, r, func(i int32) int32 { return RemapID(RegItem, version, i) },
+			version, false), false
 	case canonSetEquipment:
-		if HasRemap(RegItem, version) {
-			return remapEquipment(version, body), false
-		}
+		return remapEquipment(version, body), false
 	case canonEntityVelocity:
 		// 1.21.9 (773) changed the velocity encoding from vec3i16 (3×i16 in
 		// 1/8000 block/tick) to the low-precision vector ("lpVec3"). Sending the
@@ -125,13 +113,11 @@ func remapClientboundIDs(version, id int32, body []byte) ([]byte, bool) {
 			return rewriteSetTime26x(body), false
 		}
 	case canonWorldEvent:
-		if HasRemap(RegBlockState, version) {
-			return remapWorldEvent(version, body), false
-		}
+		return remapWorldEvent(version, body), false
 	case canonBlockEvent:
 		// position (8) + action + param, then the block id the client checks
 		// the position against before it animates anything.
-		if HasRemap(RegBlock, version) && len(body) > 10 {
+		if len(body) > 10 {
 			r := bytes.NewReader(body[10:])
 			id, err := ReadVarInt(r)
 			if err != nil {
@@ -145,9 +131,7 @@ func remapClientboundIDs(version, id int32, body []byte) ([]byte, bool) {
 			return remapWorldParticles(version, body), false
 		}
 	case canonUpdateAdvancements:
-		if HasRemap(RegItem, version) {
-			return remapAdvancementIcons(version, body), false
-		}
+		return remapAdvancementIcons(version, body), false
 	case canonMerchantOffers:
 		// Item ids AND the result's component ids (an enchanted book's
 		// enchantments component renumbers at 774+), so every translated
@@ -265,10 +249,10 @@ func rewriteSetTime26x(body []byte) []byte {
 // unmapServerboundIDs rewrites client-version IDs back to canonical in a serverbound
 // play packet. The packet ID here is already canonical (the chain renumbered it).
 func unmapServerboundIDs(version, id int32, body []byte) []byte {
-	if id == canonSetCreativeSlot && HasRemap(RegItem, version) {
+	if id == canonSetCreativeSlot {
 		return unmapCreativeSlot(version, body)
 	}
-	if id == canonWindowClick && HasRemap(RegItem, version) {
+	if id == canonWindowClick {
 		return unmapWindowClick(version, body)
 	}
 	return body
@@ -466,10 +450,8 @@ func remapChunkBlocks(version int32, body []byte) []byte {
 	}
 	col := body[colAt : colAt+int(colLen)]
 	newCol := col
-	if HasRemap(RegBlockState, version) {
-		if newCol = remapSections(version, col); newCol == nil {
-			return body // parse failure — leave the chunk untouched
-		}
+	if newCol = remapSections(version, col); newCol == nil {
+		return body // parse failure — leave the chunk untouched
 	}
 	tail := body[colAt+int(colLen):] // block entities + light
 	if blockEntityTypesShift(version) {
