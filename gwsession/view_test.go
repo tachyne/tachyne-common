@@ -1,6 +1,10 @@
 package gwsession
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/tachyne/tachyne-common/protocol"
+)
 
 // TestEffectiveView pins the honored render-distance policy: the client's
 // slider is honored up to the deployment cap; 0 (no Client Information) falls
@@ -39,17 +43,17 @@ func TestConfigViewCap(t *testing.T) {
 	}
 }
 
-// TestMetaPolicyEntityIDs pins the canonical (1.21.11 / proto 774) entity-type
-// ids the metadata policies key on. These are duplicated from the engine's
-// generated registry (tachyne-world internal/server/entityids_gen.go) because
-// this module cannot import the engine; if a canonical retarget shifts the
-// registry, THIS TEST is the tripwire. Regression: after the 770→774 retarget
-// they still held 1.21.5-era values — 111 had become a sheep (silently
+// TestMetaPolicyEntityIDs: the entity types the metadata policies key on are
+// named (protocol.CanonicalEntity) and must land on the entity a 26.2 client
+// calls by that name. They were numbers once, and after the 770→774
+// retarget still held 1.21.5-era values — 111 had become a sheep (silently
 // mis-shifted meta on 26.2) and real magma cubes went unshifted, which
 // type-mismatch-disconnected every 26.2 client the moment one spawned.
 func TestMetaPolicyEntityIDs(t *testing.T) {
-	if typeSlime != 117 || typeMagmaCube != 80 || typeCopperGolem != 28 {
-		t.Fatalf("meta-policy ids drifted from canonical 1.21.11: slime=%d magma=%d golem=%d (want 117/80/28)",
-			typeSlime, typeMagmaCube, typeCopperGolem)
+	for name, canon := range map[string]int32{"slime": typeSlime, "magma_cube": typeMagmaCube, "copper_golem": typeCopperGolem, "sheep": typeSheep} {
+		want, ok := protocol.ClientEntity(776, name)
+		if got := protocol.RemapID(protocol.RegEntity, 776, canon); !ok || got != want {
+			t.Errorf("%s: canonical %d reaches 26.2 as %d, want %d", name, canon, got, want)
+		}
 	}
 }

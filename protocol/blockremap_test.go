@@ -6,24 +6,34 @@ import (
 	"testing"
 )
 
+// Canonical ids by name (the canonical version moves); the 1.21.5 (770)
+// ids they are checked against are that client's, fixed for good.
+var (
+	lanternState = CanonicalBlockState("lantern")
+	diamondItem  = CanonicalItem("diamond")
+	playerEntity = CanonicalEntity("player")
+	glassState   = CanonicalBlockState("glass")
+	cowEntity    = CanonicalEntity("cow")
+)
+
 func TestRemapBlockState(t *testing.T) {
-	// canonical is 1.21.11 (774); lantern 20638 -> 770 (1.21.5) 19529
-	if got := RemapID(RegBlockState, 770, 20638); got != 19529 {
-		t.Errorf("RemapBlockState(770, lantern 20638) = %d, want 19529", got)
+	// the canonical lantern -> 770 (1.21.5) 19529
+	if got := RemapID(RegBlockState, 770, lanternState); got != 19529 {
+		t.Errorf("RemapBlockState(770, lantern lanternState) = %d, want 19529", got)
 	}
-	// glass (562) is unchanged across the shift
-	if got := RemapID(RegBlockState, 770, 562); got != 562 {
-		t.Errorf("RemapBlockState(770, glass 562) = %d, want 562", got)
+	// glass is 562 on 1.21.5 as well
+	if got := RemapID(RegBlockState, 770, glassState); got != 562 {
+		t.Errorf("RemapBlockState(770, glass) = %d, want 562", got)
 	}
-	// 774 itself is the canonical id version — identity
-	if got := RemapID(RegBlockState, 774, 20638); got != 20638 {
-		t.Errorf("RemapBlockState(774, ...) should be identity, got %d", got)
+	// the canonical protocol itself is the identity
+	if got := RemapID(RegBlockState, CanonicalProtocol, lanternState); got != lanternState {
+		t.Errorf("RemapBlockState(canonical, ...) should be identity, got %d", got)
 	}
 }
 
 func TestRemapBlockUpdate(t *testing.T) {
 	pos := make([]byte, 8)
-	body := append(pos, AppendVarInt(nil, 20638)...) // lantern (1.21.11)
+	body := append(pos, AppendVarInt(nil, lanternState)...) // the canonical lantern
 	out := remapBlockUpdate(770, body)
 	r := bytes.NewReader(out[8:])
 	got, _ := ReadVarInt(r)
@@ -37,14 +47,14 @@ func TestRemapChunkPalettes(t *testing.T) {
 	// (single palette) and one mixed (indirect palette of glass + lantern).
 	uniform := make([]uint32, 4096)
 	for i := range uniform {
-		uniform[i] = 20638 // lantern (1.21.11)
+		uniform[i] = uint32(lanternState)
 	}
 	mixed := make([]uint32, 4096)
 	for i := range mixed {
 		if i%2 == 0 {
-			mixed[i] = 562 // glass
+			mixed[i] = uint32(glassState)
 		} else {
-			mixed[i] = 20638 // lantern (1.21.11)
+			mixed[i] = uint32(lanternState)
 		}
 	}
 	var col []byte
@@ -63,14 +73,14 @@ func TestRemapChunkPalettes(t *testing.T) {
 	if bytes.Equal(out, body) {
 		t.Fatal("chunk was not remapped")
 	}
-	// Re-read: cx/cz unchanged, then walk sections and confirm lantern -> 20638.
+	// Re-read: cx/cz unchanged, then walk sections and confirm the lantern.
 	r := bytes.NewReader(out)
 	skip(r, 8)
 	ReadVarInt(r) // heightmaps count 0
 	colLen, _ := ReadVarInt(r)
 	newCol := make([]byte, colLen)
 	r.Read(newCol)
-	// section 1: i16 count, bits u8 (0 single), palette varint == 20638
+	// section 1: i16 count, bits u8 (0 single), palette varint == the lantern
 	sr := bytes.NewReader(newCol)
 	skip(sr, 2)           // block count
 	b, _ := sr.ReadByte() // bits
@@ -87,14 +97,14 @@ func TestRemapChunkPalettes(t *testing.T) {
 }
 
 func TestRemapEntityType(t *testing.T) {
-	if got := RemapID(RegEntity, 770, 30); got != 28 { // cow 30 (1.21.11) -> 28 (1.21.5)
-		t.Errorf("RemapEntityType(770, cow 30) = %d, want 28", got)
+	if got := RemapID(RegEntity, 770, cowEntity); got != 28 { // the canonical cow -> 28 (1.21.5)
+		t.Errorf("RemapEntityType(770, cow) = %d, want 28", got)
 	}
-	if got := RemapID(RegEntity, 770, 155); got != 148 { // player 155 -> 148
-		t.Errorf("RemapEntityType(770, player 155) = %d, want 148", got)
+	if got := RemapID(RegEntity, 770, playerEntity); got != 148 { // the canonical player -> 148
+		t.Errorf("RemapEntityType(770, player) = %d, want 148", got)
 	}
-	if got := RemapID(RegEntity, 774, 30); got != 30 { // canonical: identity
-		t.Errorf("RemapEntityType(774, ...) should be identity, got %d", got)
+	if got := RemapID(RegEntity, CanonicalProtocol, cowEntity); got != cowEntity { // canonical: identity
+		t.Errorf("RemapEntityType(canonical, ...) should be identity, got %d", got)
 	}
 }
 
@@ -102,7 +112,7 @@ func TestRemapSpawnEntityType(t *testing.T) {
 	// spawn_entity: entityId, uuid(16), type, x,y,z, angles(3), objectData, vel(6)
 	body := AppendVarInt(nil, 7) // entityId
 	body = append(body, make([]byte, 16)...)
-	body = AppendVarInt(body, 30)            // type = cow (1.21.11)
+	body = AppendVarInt(body, cowEntity)     // type = cow
 	body = append(body, make([]byte, 24)...) // x,y,z
 	body = append(body, 1, 2, 3)             // angles
 	body = AppendVarInt(body, 0)             // objectData
@@ -129,15 +139,15 @@ func slotBytes(item int32) []byte {
 }
 
 func TestItemRoundTrip(t *testing.T) {
-	// diamond 898 (1.21.11) -> 845 (1.21.5) on 770; UnmapID must invert it.
-	if got := RemapID(RegItem, 770, 898); got != 845 {
-		t.Errorf("RemapID(item, 770, diamond 898) = %d, want 845", got)
+	// the canonical diamond -> 845 (1.21.5) on 770; UnmapID must invert it.
+	if got := RemapID(RegItem, 770, diamondItem); got != 845 {
+		t.Errorf("RemapID(item, 770, diamond diamondItem) = %d, want 845", got)
 	}
-	if got := UnmapID(RegItem, 770, 845); got != 898 {
-		t.Errorf("UnmapID(item, 770, 845) = %d, want 898", got)
+	if got := UnmapID(RegItem, 770, 845); got != diamondItem {
+		t.Errorf("UnmapID(item, 770, 845) = %d, want diamondItem", got)
 	}
 	// Property: round-trips for a spread of item ids.
-	for _, id := range []int32{1, 898, 913, 1100, 1400} {
+	for _, id := range []int32{1, diamondItem, 913, 1100, 1400} {
 		if UnmapID(RegItem, 770, RemapID(RegItem, 770, id)) != id {
 			t.Errorf("item %d did not round-trip through 770", id)
 		}
@@ -145,10 +155,10 @@ func TestItemRoundTrip(t *testing.T) {
 }
 
 func TestRemapSetSlotItem(t *testing.T) {
-	body := AppendVarInt(nil, 0)           // window
-	body = AppendVarInt(body, 1)           // stateId
-	body = AppendI16(body, 3)              // slot
-	body = append(body, slotBytes(898)...) // diamond (1.21.11)
+	body := AppendVarInt(nil, 0)                   // window
+	body = AppendVarInt(body, 1)                   // stateId
+	body = AppendI16(body, 3)                      // slot
+	body = append(body, slotBytes(diamondItem)...) // the canonical diamond
 	out := remapSetSlot(770, body)
 	r := bytes.NewReader(out)
 	ReadVarInt(r)
@@ -161,25 +171,25 @@ func TestRemapSetSlotItem(t *testing.T) {
 }
 
 func TestUnmapCreativeSlot(t *testing.T) {
-	// Client (770/1.21.5) sends diamond as its id 845; we must store canonical 898.
+	// Client (770/1.21.5) sends diamond as its id 845; we must store the canonical diamond.
 	body := AppendI16(nil, 36)             // slot
 	body = append(body, slotBytes(845)...) // diamond in 1.21.5 ids
 	out := unmapCreativeSlot(770, body)
 	r := bytes.NewReader(out)
 	skip(r, 2)
 	ReadVarInt(r) // count
-	if item, _ := ReadVarInt(r); item != 898 {
-		t.Errorf("creative slot unmapped to %d, want canonical 898", item)
+	if item, _ := ReadVarInt(r); item != diamondItem {
+		t.Errorf("creative slot unmapped to %d, want canonical diamondItem", item)
 	}
 }
 
 func TestRemapWindowItems(t *testing.T) {
-	body := AppendVarInt(nil, 0)                 // window
-	body = AppendVarInt(body, 1)                 // stateId
-	body = AppendVarInt(body, 2)                 // 2 slots
-	body = append(body, slotBytes(898)...)       // diamond (1.21.11)
-	body = append(body, AppendVarInt(nil, 0)...) // empty slot (count 0)
-	body = append(body, AppendVarInt(nil, 0)...) // carried: empty
+	body := AppendVarInt(nil, 0)                   // window
+	body = AppendVarInt(body, 1)                   // stateId
+	body = AppendVarInt(body, 2)                   // 2 slots
+	body = append(body, slotBytes(diamondItem)...) // the canonical diamond
+	body = append(body, AppendVarInt(nil, 0)...)   // empty slot (count 0)
+	body = append(body, AppendVarInt(nil, 0)...)   // carried: empty
 	out := remapWindowItems(770, body)
 	r := bytes.NewReader(out)
 	ReadVarInt(r) // window
@@ -197,7 +207,7 @@ func TestRemapWindowItemsWithDamageComponent(t *testing.T) {
 	// pass the component through byte-for-byte — not bail and leave the whole
 	// packet with canonical item ids (which renders as the wrong items on 26.x).
 	damaged := AppendVarInt(nil, 1)              // count
-	damaged = AppendVarInt(damaged, 898)         // diamond (1.21.11 canonical id, stand-in tool)
+	damaged = AppendVarInt(damaged, diamondItem) // the canonical diamond
 	damaged = AppendVarInt(damaged, 1)           // 1 component to add
 	damaged = AppendVarInt(damaged, 0)           // 0 to remove
 	damaged = AppendVarInt(damaged, 3)           // minecraft:damage
@@ -274,7 +284,7 @@ func TestRemapEntityMetaItemStack(t *testing.T) {
 	body := AppendVarInt(nil, 5)
 	body = append(body, 8)
 	body = AppendVarInt(body, 7)
-	body = append(body, slotBytes(898)...) // diamond, canonical (1.21.11)
+	body = append(body, slotBytes(diamondItem)...) // the canonical diamond
 	body = append(body, 0xff)
 	out := remapEntityMeta(770, body)
 	r := bytes.NewReader(out)
@@ -310,13 +320,13 @@ func TestRemapEntityMetaCarryState(t *testing.T) {
 		return v
 	}
 
-	// 770 (1.21.5): the carried block state remaps (lantern 20638 → 19529).
-	if got := readState(remapEntityMeta(770, carry(20638))); got != 19529 {
+	// 770 (1.21.5): the carried block state remaps (the lantern → 19529).
+	if got := readState(remapEntityMeta(770, carry(lanternState))); got != 19529 {
 		t.Fatalf("carried state for 770 = %d, want 19529", got)
 	}
 	// 774 (canonical): identity — the state is untouched.
-	if got := readState(remapEntityMeta(774, carry(20638))); got != 20638 {
-		t.Fatalf("carried state for 774 = %d, want 20638", got)
+	if got := readState(remapEntityMeta(774, carry(lanternState))); got != lanternState {
+		t.Fatalf("carried state for 774 = %d, want lanternState", got)
 	}
 	// Empty (not carrying) is 0 on every version — never run through the remap.
 	for _, v := range []int32{770, 774, 776} {
@@ -330,11 +340,11 @@ func TestRemapEquipmentItems(t *testing.T) {
 	// set_equipment: eid + topBitSet-terminated (i8 slot, Slot) — a helmet in
 	// slot 5 and a mainhand diamond, both needing item-id remap on 773.
 	body := AppendVarInt(nil, 4)
-	body = append(body, 0x80|0)            // mainhand, more follow
-	body = append(body, slotBytes(898)...) // diamond (1.21.11)
-	body = append(body, 5)                 // head, last entry
-	body = AppendVarInt(body, 1)           // count
-	body = AppendVarInt(body, 898)
+	body = append(body, 0x80|0)                    // mainhand, more follow
+	body = append(body, slotBytes(diamondItem)...) // the canonical diamond
+	body = append(body, 5)                         // head, last entry
+	body = AppendVarInt(body, 1)                   // count
+	body = AppendVarInt(body, diamondItem)
 	body = AppendVarInt(body, 1) // 1 component: worn helmet with damage
 	body = AppendVarInt(body, 0)
 	body = AppendVarInt(body, 3)  // minecraft:damage
@@ -1085,7 +1095,7 @@ func TestLayoutIsRewrittenWithoutIDTables(t *testing.T) {
 		t.Fatal("fixture: 777 still has an item table")
 	}
 	slot := AppendVarInt(nil, 1)                     // count
-	slot = AppendVarInt(slot, 898)                   // an item; no table, so it passes as is
+	slot = AppendVarInt(slot, diamondItem)           // an item; no table, so it passes as is
 	slot = AppendVarInt(slot, 1)                     // one component added
 	slot = AppendVarInt(slot, 0)                     // none removed
 	slot = AppendVarInt(slot, componentEnchantments) // 770 numbering
@@ -1102,8 +1112,8 @@ func TestLayoutIsRewrittenWithoutIDTables(t *testing.T) {
 	ReadVarInt(r)
 	skip(r, 2)
 	ReadVarInt(r) // count
-	if item, _ := ReadVarInt(r); item != 898 {
-		t.Fatalf("item = %d, want 898 unchanged", item)
+	if item, _ := ReadVarInt(r); item != diamondItem {
+		t.Fatalf("item = %d, want diamondItem unchanged", item)
 	}
 	ReadVarInt(r)
 	ReadVarInt(r)

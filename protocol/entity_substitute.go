@@ -75,17 +75,6 @@ var entitySubstitutions = func() map[int32]entitySub {
 	return m
 }()
 
-// CanonicalEntity is the canonical id of the named entity type (no
-// namespace). It panics on an unknown name: a table naming an entity the
-// canonical registry lacks is a bug, not a lookup miss.
-func CanonicalEntity(name string) int32 {
-	id, ok := canonicalEntityIDs[name]
-	if !ok {
-		panic("protocol.CanonicalEntity: no entity " + name)
-	}
-	return id
-}
-
 // substituteEntityType returns the canonical entity-type id to actually feed to
 // the range-shift for a given client version: the fallback when the client
 // predates the entity, else the id unchanged.

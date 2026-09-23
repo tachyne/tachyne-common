@@ -63,8 +63,9 @@ func TestAbsentIDsSubstituteRatherThanPassThrough(t *testing.T) {
 // Entity substitution has to COVER every absent id, or the invariant above
 // only passes because the test happens to mirror an incomplete table.
 func TestEverySubstitutedEntityResolvesInsideTheRegistry(t *testing.T) {
-	absent := []int32{20, 28, 58, 83, 88, 97, 152}
-	for _, id := range absent {
+	// Every canonical entity 1.21.5 lacks, as the generated tables say — not a
+	// hand-kept list of them.
+	for _, id := range absentIDs[RegEntity][770] {
 		if substituteEntityType(770, id) == id {
 			t.Errorf("canonical entity %d has no 770 substitute", id)
 		}

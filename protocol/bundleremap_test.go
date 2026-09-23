@@ -49,7 +49,7 @@ func readSlotItems(t *testing.T, r *bytes.Reader) (int32, int32, []int32) {
 // bundle are remapped too. A bundle full of diamonds sent to a 770 client must
 // contain 770 diamonds, not canonical ones.
 func TestBundleContentsRemapsWhatIsInside(t *testing.T) {
-	const canonDiamond, wireDiamond = 898, 845 // 1.21.11 -> 1.21.5
+	canonDiamond, wireDiamond := CanonicalItem("diamond"), int32(845) // canonical -> 1.21.5
 	body := bundleSlot(canonDiamond, canonDiamond, canonDiamond)
 
 	var out []byte
@@ -90,7 +90,7 @@ func TestBundleComponentIDPerVersion(t *testing.T) {
 
 // Serverbound, the pair swaps: a client's id comes in and canonical goes out.
 func TestBundleComponentSwapsDirectionServerbound(t *testing.T) {
-	const canonDiamond = 898
+	canonDiamond := CanonicalItem("diamond")
 	body := AppendVarInt(nil, 1)
 	body = AppendVarInt(body, RemapID(RegItem, 776, canonDiamond))
 	body = AppendVarInt(body, 1)
