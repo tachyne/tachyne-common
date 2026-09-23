@@ -488,8 +488,11 @@ func remapChunkBlocks(version int32, body []byte) []byte {
 // Block-entity TYPE ids are canonical 1.21.11 (block_entity_type registry
 // order, ViaVersion's mapping-1.21.11): 47 types shared with 1.21.5, then
 // shelf (40) inserted before brushable_block and copper_golem_statue (48)
-// appended. 26.2 dropped bed (24) — beds lost their block entity — so
-// everything from conduit on sits one lower there. A client of 1.21.5-1.21.8
+// appended. 26.2 dropped bed (25, right after shulker_box at 24) — beds lost
+// their block entity — so everything from conduit (26) on sits one lower
+// there. (Until 2026-09-23 this dropped 24 instead: shulker boxes reached
+// 26.x clients without their block entity, and beds were sent as shulker
+// boxes.) A client of 1.21.5-1.21.8
 // has no shelf or statue type and one of 26.2 has no bed type: those entries
 // are dropped from chunks, and a block_entity_data for them is swallowed.
 
@@ -508,9 +511,9 @@ func blockEntityTypeFor(version, typ int32) (int32, bool) {
 		return typ - 1, true
 	case version >= 776: // 26.2
 		switch {
-		case typ < 24:
+		case typ < 25:
 			return typ, true
-		case typ == 24:
+		case typ == 25: // bed
 			return 0, false
 		}
 		return typ - 1, true

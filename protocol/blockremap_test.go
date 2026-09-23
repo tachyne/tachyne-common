@@ -963,11 +963,12 @@ func TestBlockEntityTypesPerVersion(t *testing.T) {
 		b = NBTInt(b, "x", 7)       // …with one tag
 		return NBTEnd(b)
 	}
-	tail := AppendVarInt(nil, 4)
+	tail := AppendVarInt(nil, 5)
 	tail = append(tail, entry(33)...) // campfire
 	tail = append(tail, entry(40)...) // shelf
 	tail = append(tail, entry(41)...) // brushable_block
-	tail = append(tail, entry(24)...) // bed
+	tail = append(tail, entry(25)...) // bed
+	tail = append(tail, entry(24)...) // shulker_box — the same id on every version
 	tail = append(tail, 0xAA, 0xBB)   // light stand-in
 	types := func(b []byte) []int32 {
 		r := bytes.NewReader(b)
@@ -987,12 +988,25 @@ func TestBlockEntityTypesPerVersion(t *testing.T) {
 		return out
 	}
 	got := types(remapChunkBlockEntities(770, tail))
-	if len(got) != 3 || got[0] != 33 || got[1] != 40 || got[2] != 24 {
-		t.Errorf("770 types = %v, want [33 40 24] (shelf dropped, brushable 41→40)", got)
+	if want := []int32{33, 40, 25, 24}; !slicesEqual(got, want) {
+		t.Errorf("770 types = %v, want %v (shelf dropped, brushable 41→40)", got, want)
 	}
 	got = types(remapChunkBlockEntities(776, tail))
-	if len(got) != 3 || got[0] != 32 || got[1] != 39 || got[2] != 40 {
-		t.Errorf("776 types = %v, want [32 39 40] (bed dropped, the rest one lower)", got)
+	if want := []int32{32, 39, 40, 24}; !slicesEqual(got, want) {
+		t.Errorf("776 types = %v, want %v (bed dropped, conduit on one lower, shulker box kept)", got, want)
+	}
+	// Alone, so a dropped shulker box and a bed renumbered to 24 cannot
+	// pass for each other (which is how the bug hid in the list above).
+	one := func(typ int32) []byte {
+		b := AppendVarInt(nil, 1)
+		b = append(b, entry(typ)...)
+		return append(b, 0xAA, 0xBB)
+	}
+	if got := types(remapChunkBlockEntities(776, one(24))); !slicesEqual(got, []int32{24}) {
+		t.Errorf("26.2 shulker box = %v, want [24]: a shulker box is drawn through its block entity", got)
+	}
+	if got := types(remapChunkBlockEntities(776, one(25))); len(got) != 0 {
+		t.Errorf("26.2 bed = %v, want dropped: 26.2 has no bed block entity", got)
 	}
 	if _, ok := blockEntityTypeFor(774, 40); !ok {
 		t.Error("1.21.11 knows the shelf as itself")
@@ -1044,4 +1058,16 @@ func TestArmadilloStateMeta(t *testing.T) {
 	if !bytes.Equal(remapEntityMeta(770, body), body) {
 		t.Fatal("a 1.21.5 client gets it untouched")
 	}
+}
+
+func slicesEqual(a, b []int32) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
