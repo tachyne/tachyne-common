@@ -3,61 +3,61 @@
 package protocol
 
 // SmithingUpgradeTemplate is the netherite upgrade template item.
-const SmithingUpgradeTemplate = 1426
+const SmithingUpgradeTemplate = 1579
 
 // SmithingTransform maps a transform base item to its upgraded result.
 var SmithingTransform = map[int32]int32{
-	936:  941,
-	937:  942,
-	938:  943,
-	939:  944,
-	940:  945,
-	970:  978,
-	971:  979,
-	972:  980,
-	973:  981,
-	1258: 1259,
-	1301: 1302,
-	1335: 1336,
+	1050: 1055,
+	1051: 1056,
+	1052: 1057,
+	1053: 1058,
+	1054: 1059,
+	1084: 1092,
+	1085: 1093,
+	1086: 1094,
+	1087: 1095,
+	1409: 1410,
+	1452: 1453,
+	1487: 1488,
 }
 
 // SmithingTrimTemplate maps a trim template item to its trim_pattern id
 // (OUR declared alphabetical registry order, identical on every version).
 var SmithingTrimTemplate = map[int32]int32{
-	1427: 8,
-	1428: 2,
-	1429: 1,
-	1430: 17,
-	1431: 15,
-	1432: 3,
-	1433: 14,
-	1434: 13,
-	1435: 11,
-	1436: 7,
-	1437: 12,
-	1438: 16,
-	1439: 9,
-	1440: 10,
-	1441: 6,
-	1442: 5,
-	1443: 4,
-	1444: 0,
+	1580: 8,
+	1581: 2,
+	1582: 1,
+	1583: 17,
+	1584: 15,
+	1585: 3,
+	1586: 14,
+	1587: 13,
+	1588: 11,
+	1589: 7,
+	1590: 12,
+	1591: 16,
+	1592: 9,
+	1593: 10,
+	1594: 6,
+	1595: 5,
+	1596: 4,
+	1597: 0,
 }
 
 // SmithingTrimMaterial maps an addition item to its trim_material id.
 var SmithingTrimMaterial = map[int32]int32{
-	902:  0,
-	906:  1,
-	898:  2,
-	899:  3,
-	908:  4,
-	904:  5,
-	900:  6,
-	909:  7,
-	901:  8,
-	717:  9,
-	1246: 10,
+	1016: 0,
+	1020: 1,
+	1012: 2,
+	1013: 3,
+	1022: 4,
+	1018: 5,
+	1014: 6,
+	1023: 7,
+	1015: 8,
+	824:  9,
+	1397: 10,
 }
 
 // SmithingTrimmable lists the trimmable armor items.
-var SmithingTrimmable = []int32{887, 954, 955, 956, 957, 958, 959, 960, 961, 962, 963, 964, 965, 966, 967, 968, 969, 970, 971, 972, 973, 974, 975, 976, 977, 978, 979, 980, 981}
+var SmithingTrimmable = []int32{1001, 1068, 1069, 1070, 1071, 1072, 1073, 1074, 1075, 1076, 1077, 1078, 1079, 1080, 1081, 1082, 1083, 1084, 1085, 1086, 1087, 1088, 1089, 1090, 1091, 1092, 1093, 1094, 1095}

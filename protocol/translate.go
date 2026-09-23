@@ -105,7 +105,7 @@ func TranslatorFor(version int32) Translator {
 
 // MinServed is the oldest client protocol any gateway serves — policy, not
 // capability: the translation chain can speak older versions than this.
-const MinServed = 770
+const MinServed = 776
 
 // ServedVersions is SupportedVersions from MinServed up.
 func ServedVersions() []int32 {
