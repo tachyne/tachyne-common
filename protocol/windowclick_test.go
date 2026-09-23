@@ -5,10 +5,10 @@ import "testing"
 // TestUnmapWindowClick776 proves a 26.2 client's click (item ids in the 776
 // space) is rewritten to canonical 770 ids, byte-exact around the rewrite.
 func TestUnmapWindowClick776(t *testing.T) {
-	// Find an item whose id actually shifts between 770 and 776.
+	// Find an item 26.2 has whose id differs from the canonical one.
 	var canon, shifted int32 = -1, -1
 	for id := int32(0); id < 2000; id++ {
-		if m := RemapID(RegItem, 776, id); m != id {
+		if m := RemapID(RegItem, 776, id); m != id && IDPresent(RegItem, 776, id) {
 			canon, shifted = id, m
 			break
 		}

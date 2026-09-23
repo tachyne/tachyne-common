@@ -2,29 +2,15 @@ package protocol
 
 import "bytes"
 
-// Attribute registry (canonical 1.21.11 order). update_attributes carries
-// registry ids, which shift between served versions (26.2 inserts eight;
-// 1.21.5 lacks three), so the renderer writes canonical ids and
-// remapClientboundIDs rewrites them per client version.
-var attributeIDs = map[string]int32{
-	"minecraft:armor": 0, "minecraft:armor_toughness": 1, "minecraft:attack_damage": 2,
-	"minecraft:attack_knockback": 3, "minecraft:attack_speed": 4, "minecraft:block_break_speed": 5,
-	"minecraft:block_interaction_range": 6, "minecraft:burning_time": 7, "minecraft:camera_distance": 8,
-	"minecraft:explosion_knockback_resistance": 9, "minecraft:entity_interaction_range": 10,
-	"minecraft:fall_damage_multiplier": 11, "minecraft:flying_speed": 12, "minecraft:follow_range": 13,
-	"minecraft:gravity": 14, "minecraft:jump_strength": 15, "minecraft:knockback_resistance": 16,
-	"minecraft:luck": 17, "minecraft:max_absorption": 18, "minecraft:max_health": 19,
-	"minecraft:mining_efficiency": 20, "minecraft:movement_efficiency": 21, "minecraft:movement_speed": 22,
-	"minecraft:oxygen_bonus": 23, "minecraft:safe_fall_distance": 24, "minecraft:scale": 25,
-	"minecraft:sneaking_speed": 26, "minecraft:spawn_reinforcements": 27, "minecraft:step_height": 28,
-	"minecraft:submerged_mining_speed": 29, "minecraft:sweeping_damage_ratio": 30, "minecraft:tempt_range": 31,
-	"minecraft:water_movement_efficiency": 32, "minecraft:waypoint_transmit_range": 33,
-	"minecraft:waypoint_receive_range": 34,
-}
+// update_attributes carries attribute registry ids, which shift between
+// served versions, so the renderer writes canonical ids
+// (canonicalAttributeIDs, generated from the canonical registry) and
+// remapClientboundIDs rewrites them per client version. The table was
+// hand-kept in 1.21.11's order once; 26.3 renumbers nearly every entry.
 
 // AttributeID is the canonical registry id of an attribute name.
 func AttributeID(name string) (int32, bool) {
-	id, ok := attributeIDs[name]
+	id, ok := canonicalAttributeIDs[name]
 	return id, ok
 }
 

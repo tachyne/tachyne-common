@@ -324,12 +324,12 @@ func TestRemapEntityMetaCarryState(t *testing.T) {
 	if got := readState(remapEntityMeta(770, carry(lanternState))); got != 19529 {
 		t.Fatalf("carried state for 770 = %d, want 19529", got)
 	}
-	// 774 (canonical): identity — the state is untouched.
-	if got := readState(remapEntityMeta(774, carry(lanternState))); got != lanternState {
-		t.Fatalf("carried state for 774 = %d, want lanternState", got)
+	// The canonical protocol: identity — the state is untouched.
+	if got := readState(remapEntityMeta(CanonicalProtocol, carry(lanternState))); got != lanternState {
+		t.Fatalf("carried state for the canonical protocol = %d, want %d", got, lanternState)
 	}
 	// Empty (not carrying) is 0 on every version — never run through the remap.
-	for _, v := range []int32{770, 774, 776} {
+	for _, v := range []int32{770, CanonicalProtocol, 776} {
 		if got := readState(remapEntityMeta(v, carry(0))); got != 0 {
 			t.Fatalf("empty carry state for %d = %d, want 0", v, got)
 		}

@@ -10,16 +10,16 @@ import (
 func TestUpdateAttributesRemap(t *testing.T) {
 	body := AppendVarInt(nil, 3)
 	body = AppendVarInt(body, 3)
-	body = AppendVarInt(body, 19) // max_health
+	body = AppendVarInt(body, attr("max_health"))
 	body = AppendF64(body, 20)
 	body = AppendVarInt(body, 1)
 	body = AppendString(body, "tachyne:x")
 	body = AppendF64(body, 1)
 	body = AppendVarInt(body, 2)
-	body = AppendVarInt(body, 8) // camera_distance: absent in 1.21.5
+	body = AppendVarInt(body, attr("camera_distance")) // absent in 1.21.5
 	body = AppendF64(body, 4)
 	body = AppendVarInt(body, 0)
-	body = AppendVarInt(body, 22) // movement_speed
+	body = AppendVarInt(body, attr("movement_speed"))
 	body = AppendF64(body, 0.1)
 	body = AppendVarInt(body, 0)
 
@@ -27,7 +27,7 @@ func TestUpdateAttributesRemap(t *testing.T) {
 		version         int32
 		maxHealth, move int32
 		count           int32
-	}{{770, 18, 21, 2}, {774, 19, 22, 3}, {776, 23, 26, 3}} {
+	}{{770, 18, 21, 2}, {CanonicalProtocol, attr("max_health"), attr("movement_speed"), 3}, {776, 23, 26, 3}} {
 		got, drop := remapClientboundIDs(c.version, canonUpdateAttributes, body)
 		if drop {
 			t.Fatalf("v%d: dropped", c.version)

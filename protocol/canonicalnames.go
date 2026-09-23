@@ -52,3 +52,15 @@ func ClientEntity(version int32, name string) (int32, bool) {
 	}
 	return id, ok
 }
+
+// ClientItems is a 26.2 or 26.3 client's own item ids by name ("minecraft:"
+// prefixed), or nil for any other version.
+func ClientItems(version int32) map[string]int32 {
+	switch {
+	case version >= 777:
+		return item263ID
+	case version == 776:
+		return item26xID
+	}
+	return nil
+}

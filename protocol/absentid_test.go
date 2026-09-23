@@ -39,9 +39,9 @@ func TestRemappedIDsStayInsideTheClientRegistry(t *testing.T) {
 // Absent entries must become the fallback rather than passing through, and
 // present ones must be untouched by the new branch.
 func TestAbsentIDsSubstituteRatherThanPassThrough(t *testing.T) {
-	// 1.21.11 items that 1.21.5 has no concept of resolve to air.
+	// Canonical items that 1.21.5 has no concept of resolve to air.
 	absent := 0
-	for id := int32(0); id <= 1504; id++ {
+	for id := int32(0); id < int32(len(canonicalItemIDs)); id++ {
 		if !IDPresent(RegItem, 770, id) {
 			absent++
 			if got := RemapID(RegItem, 770, id); got != 0 {
@@ -52,10 +52,16 @@ func TestAbsentIDsSubstituteRatherThanPassThrough(t *testing.T) {
 	if absent == 0 {
 		t.Fatal("no absent items found — this test would prove nothing")
 	}
-	// 26.2 is a superset, so nothing is absent and nothing is substituted.
-	for id := int32(0); id <= 1504; id++ {
-		if !IDPresent(RegItem, 776, id) {
-			t.Errorf("item %d reported absent on 776, which is a superset", id)
+	// On a 26.x client an item is absent exactly when that client's own
+	// registry lacks its name — none while the canonical version was older
+	// than 26.2, 26.3's additions once 26.3 is canonical.
+	for _, v := range []int32{776, 777} {
+		client := ClientItems(v)
+		for name, id := range canonicalItemIDs {
+			_, has := client["minecraft:"+name]
+			if got := IDPresent(RegItem, v, id); got != has {
+				t.Errorf("proto %d: %s present=%v, but the client's registry has it=%v", v, name, got, has)
+			}
 		}
 	}
 }
@@ -63,14 +69,23 @@ func TestAbsentIDsSubstituteRatherThanPassThrough(t *testing.T) {
 // Entity substitution has to COVER every absent id, or the invariant above
 // only passes because the test happens to mirror an incomplete table.
 func TestEverySubstitutedEntityResolvesInsideTheRegistry(t *testing.T) {
-	// Every canonical entity 1.21.5 lacks, as the generated tables say — not a
-	// hand-kept list of them.
-	for _, id := range absentIDs[RegEntity][770] {
-		if substituteEntityType(770, id) == id {
-			t.Errorf("canonical entity %d has no 770 substitute", id)
+	// Every canonical entity a client lacks, as the generated tables say — not
+	// a hand-kept list of them — needs a stand-in that the client does have.
+	checked := 0
+	for version, absent := range absentIDs[RegEntity] {
+		for _, id := range absent {
+			sub := substituteEntityType(version, id)
+			if sub == id {
+				t.Errorf("proto %d: canonical entity %d has no stand-in", version, id)
+				continue
+			}
+			if !IDPresent(RegEntity, version, sub) {
+				t.Errorf("proto %d: entity %d stands in as %d, which that client lacks too", version, id, sub)
+			}
+			checked++
 		}
-		if got := RemapID(RegEntity, 770, substituteEntityType(770, id)); got >= 150 {
-			t.Errorf("entity %d substituted to %d, outside 770's registry", id, got)
-		}
+	}
+	if checked == 0 {
+		t.Fatal("no absent entities on any version — this test would prove nothing")
 	}
 }

@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 )
 
@@ -13,12 +14,23 @@ import (
 // so 26.3's poplar_planks (72) came back as canonical 72, which is redstone
 // ore, and the world stored that. These ids have to be dropped instead.
 const (
-	poplarPlanks263 = 72  // 26.3 item id; canonical 72 is redstone_ore
-	redstoneOre263  = 101 // 26.3 item id for redstone_ore; canonical 72
-	canonRedstone   = 72
+	poplarPlanks263 = 72  // 26.3 item id (a 26.3 client's own numbering)
+	redstoneOre263  = 101 // 26.3 item id for redstone_ore
 )
 
+// While the canonical registry lacks poplar, the tests below replay the
+// report; once the canonical version has it, no served client carries
+// content the engine lacks and they have nothing to test.
+func requireCanonicalLacksPoplar(t *testing.T) {
+	t.Helper()
+	if _, ok := canonicalItemIDs["poplar_planks"]; ok {
+		t.Skip("the canonical registry has poplar: no served client carries content the engine lacks")
+	}
+}
+
 func TestIDAddedMarksContentTheEngineNeverHad(t *testing.T) {
+	requireCanonicalLacksPoplar(t)
+	canonRedstone := CanonicalItem("redstone_ore")
 	if !IDAdded(RegItem, 777, poplarPlanks263) {
 		t.Error("26.3 poplar_planks should be flagged as having no canonical counterpart")
 	}
@@ -26,7 +38,7 @@ func TestIDAddedMarksContentTheEngineNeverHad(t *testing.T) {
 		t.Error("26.3 redstone_ore exists canonically — it must not be dropped")
 	}
 	// The canonical registry is itself never "added".
-	if IDAdded(RegItem, 774, poplarPlanks263) {
+	if IDAdded(RegItem, CanonicalProtocol, poplarPlanks263) {
 		t.Error("the canonical version has no added ids")
 	}
 	// Sanity: the id that caused the report really does collide the way the
@@ -41,6 +53,8 @@ func TestIDAddedMarksContentTheEngineNeverHad(t *testing.T) {
 // The creative slot is the path the player used: picking poplar out of the
 // 26.3 creative menu and dropping it in the hotbar.
 func TestUnmapCreativeSlotDropsContentTheEngineNeverHad(t *testing.T) {
+	requireCanonicalLacksPoplar(t)
+	canonRedstone := CanonicalItem("redstone_ore")
 	body := AppendI16(nil, 36) // hotbar slot
 	body = append(body, slotBytes(poplarPlanks263)...)
 
@@ -74,6 +88,8 @@ func TestUnmapCreativeSlotDropsContentTheEngineNeverHad(t *testing.T) {
 // The same hazard reaches the world through a container click, whose hashed
 // slots carry item ids too.
 func TestUnmapWindowClickDropsContentTheEngineNeverHad(t *testing.T) {
+	requireCanonicalLacksPoplar(t)
+	canonRedstone := CanonicalItem("redstone_ore")
 	hashed := func(item int32) []byte {
 		b := []byte{1}            // has item
 		b = AppendVarInt(b, item) // id
@@ -133,10 +149,9 @@ func TestUnmapWindowClickDropsContentTheEngineNeverHad(t *testing.T) {
 // A shift table that is subtly wrong breaks one of them. An item that exists
 // on only one side is not a numbering error — it is the case IDPresent (out)
 // and IDAdded (in) exist to catch, and it must be flagged rather than shifted.
-// canonItemCount is 1.21.11's item registry size (ids 0..canonItemCount-1),
-// from the vanilla registries report the translation tables are generated
-// from. It grows only when the canonical version does.
-const canonItemCount = 1505
+// canonItemCount is the canonical item registry's size (ids
+// 0..canonItemCount-1), which grows only when the canonical version does.
+var canonItemCount = len(canonicalItemIDs)
 
 func TestItemIDsRoundTripOnEveryServedVersion(t *testing.T) {
 	// The registry has to be walked to its real end and no further: an id
@@ -172,20 +187,24 @@ func TestItemIDsRoundTripOnEveryServedVersion(t *testing.T) {
 	}
 }
 
-// The families that actually bite on the versions we serve. A regeneration
-// that quietly lost the added set would leave these silently shifting again.
-func TestKnownNewContentIsFlagged(t *testing.T) {
-	// 26.3's poplar wood set is seventeen items; these are three of them, at
-	// ids that collide with real canonical entries.
-	for _, id := range []int32{72 /*planks*/, 172 /*log*/, 898 /*door*/} {
-		if !IDAdded(RegItem, 777, id) {
-			t.Errorf("26.3 item %d is new content and must be flagged, not shifted", id)
+// Whatever the canonical version, a served client's item is flagged "added"
+// exactly when the canonical registry lacks its name — so it is dropped
+// rather than shifted onto some other item. (26.3's poplar was the case that
+// bit: canonical 72 was redstone ore.)
+func TestIDAddedIsWhatTheCanonicalRegistryLacks(t *testing.T) {
+	for _, v := range []int32{776, 777} {
+		flagged := 0
+		for name, id := range ClientItems(v) {
+			_, canon := canonicalItemIDs[strings.TrimPrefix(name, "minecraft:")]
+			if got := IDAdded(RegItem, v, id); got == canon {
+				t.Errorf("proto %d: %s (client %d) added=%v, but canonical has it=%v", v, name, id, got, canon)
+			}
+			if !canon {
+				flagged++
+			}
 		}
-	}
-	if n := len(addedIDs[RegItem][777]); n < 100 {
-		t.Errorf("26.3 carries %d unknown items, expected the full new-content set", n)
-	}
-	if n := len(addedIDs[RegItem][776]); n == 0 {
-		t.Error("26.2 carries new content too and must not be empty")
+		if flagged != len(addedIDs[RegItem][v]) {
+			t.Errorf("proto %d: %d client items lack a canonical name, the table flags %d", v, flagged, len(addedIDs[RegItem][v]))
+		}
 	}
 }
