@@ -24,7 +24,9 @@ func ConfigRegistryPacketsFor(v int32, overworldHeight int32) [][]byte {
 	var out [][]byte
 	for _, reg := range SyncedRegistries {
 		entries := reg.Entries
-		if !inlineOK {
+		if reg.ID == "minecraft:worldgen/biome" {
+			entries = biomeEntriesFor(v, reg.Entries)
+		} else if !inlineOK {
 			if ex := extra26xEntries[reg.ID]; len(ex) > 0 {
 				entries = append(append([]string(nil), reg.Entries...), ex...)
 			}
@@ -160,12 +162,18 @@ var fluid26xID = map[string]int32{
 // SyncedRegistries entries (+ the 26.x-added entries appended, exactly as
 // sendRegistries does) plus the extra 26.x registries. enchantment is never
 // declared, so it is absent here (its tags stay empty).
-func dynamic26xIndex() map[string]map[string]int32 {
+func dynamic26xIndex() map[string]map[string]int32 { return dynamic26xIndexFor(776) }
+
+// dynamic26xIndexFor is dynamic26xIndex for one client version: a version's
+// own additions (26.3's dappled forest) have ids only on it.
+func dynamic26xIndexFor(v int32) map[string]map[string]int32 {
 	idx := map[string]map[string]int32{}
 	for _, reg := range SyncedRegistries {
 		m := map[string]int32{}
 		entries := reg.Entries
-		if ex := extra26xEntries[reg.ID]; len(ex) > 0 {
+		if reg.ID == "minecraft:worldgen/biome" {
+			entries = biomeEntriesFor(v, reg.Entries)
+		} else if ex := extra26xEntries[reg.ID]; len(ex) > 0 {
 			entries = append(append([]string(nil), reg.Entries...), ex...)
 		}
 		for i, e := range entries {
@@ -301,7 +309,7 @@ func tags26x(version int32) []byte {
 		return b
 	}
 	full := version >= 776
-	dyn := dynamic26xIndex()
+	dyn := dynamic26xIndexFor(version)
 	// The tag set and the static-registry ids are the client's own version's:
 	// 26.3 (777) inserted blocks, items and entities ahead of the 26.2 ids and
 	// references tags 26.2 never had.

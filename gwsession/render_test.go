@@ -207,7 +207,7 @@ func TestTrimmedLightSections(t *testing.T) {
 	// One torch high up: block section 60 must be included.
 	body.BlockLight[60*4096+123] = 14
 
-	pkt := chunkPacket(h, body)
+	pkt := chunkPacket(h, body, 776)
 	r := bytes.NewReader(pkt)
 	// Skip cx, cz, heightmap, col, block entities.
 	r.Seek(8, 1)

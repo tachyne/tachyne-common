@@ -483,7 +483,7 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 					j.out.err = err
 				} else {
 					j.out.dim, j.out.cx, j.out.cz = h.Dim, h.CX, h.CZ
-					j.out.pkt = chunkPacket(h, body)
+					j.out.pkt = chunkPacket(h, body, clientProto)
 				}
 				close(j.out.done)
 			}

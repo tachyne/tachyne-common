@@ -187,7 +187,7 @@ func sectionHasLight(levels []uint8) bool {
 // chunkPacket renders one domain chunk into Chunk Data and Update Light. All
 // sizes derive from the chunk's own section count (attach ChunkHeader), so a
 // tall earth overworld and a vanilla-height nether render from one path.
-func chunkPacket(h attach.ChunkHeader, body *attach.ChunkBody) []byte {
+func chunkPacket(h attach.ChunkHeader, body *attach.ChunkBody, clientProto int32) []byte {
 	sections := h.SectionCount()
 	lightSections := sections + 2 // one below + one above the world
 	var col []byte
@@ -196,7 +196,7 @@ func chunkPacket(h attach.ChunkHeader, body *attach.ChunkBody) []byte {
 		if sec < len(h.Biomes) && h.Biomes[sec] != "" {
 			biome = h.Biomes[sec]
 		}
-		col = protocol.AppendSection(col, body.BlockStates[sec*4096:(sec+1)*4096], protocol.BiomeID(biome))
+		col = protocol.AppendSection(col, body.BlockStates[sec*4096:(sec+1)*4096], protocol.BiomeIDFor(clientProto, biome))
 	}
 
 	b := protocol.AppendI32(nil, h.CX)
