@@ -22,6 +22,34 @@ type idRange struct {
 	Delta    int32
 }
 
+// absentStateRun is a run of canonical block states a client version does not
+// have, and what it is shown instead: state s as canonical state s+Delta (a
+// stand-in of the same shape), or air.
+type absentStateRun struct {
+	Lo, Hi uint32
+	Delta  int32
+	Air    bool
+}
+
+// absentState finds the run holding a canonical block state on a version.
+func absentState(version, state int32) (absentStateRun, bool) {
+	runs := absentStates[version]
+	u := uint32(state)
+	lo, hi := 0, len(runs)-1
+	for lo <= hi {
+		mid := (lo + hi) / 2
+		switch r := runs[mid]; {
+		case u < r.Lo:
+			hi = mid - 1
+		case u > r.Hi:
+			lo = mid + 1
+		default:
+			return r, true
+		}
+	}
+	return absentStateRun{}, false
+}
+
 // reverseTables[registry][version] inverts translationTables for serverbound
 // (client → canonical) translation. Built once at init.
 var reverseTables = map[IDSpace]map[int32][]idRange{}
@@ -90,6 +118,14 @@ var absentFallback = map[IDSpace]int32{
 // all. Callers wanting to handle the gap themselves — dropping the entry, or
 // substituting something cleverer — should test IDPresent first.
 func RemapID(reg IDSpace, version, id int32) int32 {
+	if reg == RegBlockState {
+		if r, ok := absentState(version, id); ok {
+			if r.Air {
+				return absentFallback[RegBlockState]
+			}
+			id += r.Delta // the stand-in, which then shifts like any other state
+		}
+	}
 	if !IDPresent(reg, version, id) {
 		if sub, ok := absentFallback[reg]; ok {
 			return sub
@@ -145,6 +181,11 @@ func IDAdded(reg IDSpace, version, id int32) bool {
 // is no decode error to catch it; the client simply renders the wrong thing.
 // Senders must consult this and DROP such entries.
 func IDPresent(reg IDSpace, version, id int32) bool {
+	if reg == RegBlockState {
+		if _, ok := absentState(version, id); ok {
+			return false
+		}
+	}
 	gone, ok := absentIDs[reg][version]
 	if !ok {
 		return true

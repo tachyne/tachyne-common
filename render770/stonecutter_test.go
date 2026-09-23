@@ -48,11 +48,21 @@ func TestUpdateRecipesReparse(t *testing.T) {
 				t.Fatalf("v%d row %d: holder-set header %d", version, i, hs)
 			}
 			in, _ := protocol.ReadVarInt(br)
-			if got := protocol.UnmapID(protocol.RegItem, version, in); got != r.In {
+			// A row naming an item the client lacks stays (the buttons must line
+			// up with the engine's list) with that item as air.
+			if !protocol.IDPresent(protocol.RegItem, version, r.In) {
+				if in != 0 {
+					t.Fatalf("v%d row %d: absent input sent as %d", version, i, in)
+				}
+			} else if got := protocol.UnmapID(protocol.RegItem, version, in); got != r.In {
 				t.Fatalf("v%d row %d: input %d unmaps to %d, want %d", version, i, in, got, r.In)
 			}
 			typ, _ := protocol.ReadVarInt(br)
 			switch {
+			case !protocol.IDPresent(protocol.RegItem, version, r.Out):
+				if typ != 0 {
+					t.Fatalf("v%d row %d: absent output has display type %d, want 0 (empty)", version, i, typ)
+				}
 			case r.Count == 1:
 				if typ != sdItem {
 					t.Fatalf("v%d row %d: display type %d, want %d", version, i, typ, sdItem)
@@ -92,6 +102,20 @@ func TestUpdateRecipesReparse(t *testing.T) {
 		}
 		if br.Len() != 0 {
 			t.Fatalf("v%d: %d trailing bytes", version, br.Len())
+		}
+	}
+}
+
+// A stonecutter input a served client lacks would go out as air, and vanilla's
+// Ingredient refuses air ("Ingredient can't contain air") — the client drops
+// the connection decoding update_recipes. Outputs may be absent (they render
+// as an empty display); inputs may not.
+func TestStonecutterInputsExistOnServedClients(t *testing.T) {
+	for _, v := range protocol.ServedVersions() {
+		for i, r := range protocol.StonecuttingRecipes {
+			if !protocol.IDPresent(protocol.RegItem, v, r.In) {
+				t.Errorf("v%d row %d: input %d is absent on the client", v, i, r.In)
+			}
 		}
 	}
 }

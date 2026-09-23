@@ -54,9 +54,38 @@ func RecipeBook(rb attach.RecipeBook, version int32) Packet {
 		sd = slotDisplayIDs{item: 4, itemStack: 5, templateForm: true}
 	}
 
-	n := len(rb.Shaped) + len(rb.Shapeless) + len(rb.Cooking)
+	// An entry naming an item the client's version lacks is not sent: the
+	// item would go out as air, and the client refuses an ingredient of air
+	// ("Ingredient can't contain air") by dropping the connection. It could
+	// neither hold that item nor craft the recipe anyway.
+	has := func(ids ...int32) bool {
+		for _, id := range ids {
+			if id != 0 && !protocol.IDPresent(protocol.RegItem, version, id) {
+				return false
+			}
+		}
+		return true
+	}
+	var shaped, shapeless, cooking []int
+	for i, r := range rb.Shaped {
+		if has(r.Cells...) && has(r.Result) {
+			shaped = append(shaped, i)
+		}
+	}
+	for i, r := range rb.Shapeless {
+		if has(r.Ingredients...) && has(r.Result) {
+			shapeless = append(shapeless, i)
+		}
+	}
+	for i, r := range rb.Cooking {
+		if has(r.Ingredient, r.Result, r.Station) {
+			cooking = append(cooking, i)
+		}
+	}
+
+	n := len(shaped) + len(shapeless) + len(cooking)
 	b := protocol.AppendVarInt(nil, int32(n))
-	for i := range rb.Shaped {
+	for _, i := range shaped {
 		r := &rb.Shaped[i]
 		b = protocol.AppendVarInt(b, r.ID) // displayId (engine-assigned, stable)
 		b = protocol.AppendVarInt(b, recipeDisplayShaped)
@@ -70,7 +99,7 @@ func RecipeBook(rb attach.RecipeBook, version int32) Packet {
 		b = appendSlotDisplay(b, sd, rid(itemCraftingTable), 1)   // crafting station
 		b = appendBookEntryTail(b, ingredientInstances(r.Cells), rid, r.Result, recipeCategoryMisc, r.Notify, r.Highlight)
 	}
-	for i := range rb.Shapeless {
+	for _, i := range shapeless {
 		r := &rb.Shapeless[i]
 		b = protocol.AppendVarInt(b, r.ID) // displayId
 		b = protocol.AppendVarInt(b, recipeDisplayShapeless)
@@ -87,7 +116,7 @@ func RecipeBook(rb attach.RecipeBook, version int32) Packet {
 	// then the cook duration and the experience the recipe banks. These are
 	// what fills the furnace/blast-furnace/smoker books — without them those
 	// three tabs of the green book sit empty on every client.
-	for i := range rb.Cooking {
+	for _, i := range cooking {
 		r := &rb.Cooking[i]
 		b = protocol.AppendVarInt(b, r.ID)
 		b = protocol.AppendVarInt(b, recipeDisplayFurnace)

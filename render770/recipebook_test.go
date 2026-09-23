@@ -28,12 +28,13 @@ func readVarInt(b []byte) (int32, int) {
 // changes the encoding (a stack count of 2 uses item_stack type 3 at 770, 5 at
 // 775+). It is a structural smoke test, not a full byte oracle.
 func TestRecipeBookShape(t *testing.T) {
+	planks, stick := protocol.CanonicalItem("oak_planks"), protocol.CanonicalItem("stick")
 	rb := attach.RecipeBook{
 		Shaped: []attach.ShapedRecipe{
-			{W: 1, H: 2, Cells: []int32{5, 5}, Result: 280, Count: 4}, // planks -> sticks
+			{W: 1, H: 2, Cells: []int32{planks, planks}, Result: stick, Count: 4}, // planks -> sticks
 		},
 		Shapeless: []attach.ShapelessRecipe{
-			{Ingredients: []int32{5}, Result: 5, Count: 1},
+			{Ingredients: []int32{planks}, Result: planks, Count: 1},
 		},
 	}
 	p770 := RecipeBook(rb, 770)
@@ -60,10 +61,11 @@ func TestRecipeBookShape(t *testing.T) {
 // vanilla ClientboundRecipeBookAddPacket.Entry), the frame-level replace
 // bool, and the settings packet's 4×(open,filter) pairs.
 func TestRecipeBookFlagsAndReplace(t *testing.T) {
+	planks, stick := protocol.CanonicalItem("oak_planks"), protocol.CanonicalItem("stick")
 	rb := attach.RecipeBook{
 		Replace: false,
 		Shaped: []attach.ShapedRecipe{
-			{ID: 7, W: 1, H: 1, Cells: []int32{5}, Result: 280, Count: 1,
+			{ID: 7, W: 1, H: 1, Cells: []int32{planks}, Result: stick, Count: 1,
 				Notify: true, Highlight: true},
 		},
 	}
@@ -224,5 +226,30 @@ func TestCookingEntriesShiftWithVersion(t *testing.T) {
 	}
 	if p775.Body[3] != 4 {
 		t.Fatalf("775 ingredient slot type = %d, want 4", p775.Body[3])
+	}
+}
+
+// An entry naming an item the client lacks is left out: sent, the item would
+// be air, and the client drops the connection on an ingredient of air. Poplar
+// is 26.3's: a 26.2 client gets only the oak entry, a 26.3 client both.
+func TestRecipeBookSkipsItemsTheClientLacks(t *testing.T) {
+	item := protocol.CanonicalItem
+	rb := attach.RecipeBook{
+		Shaped: []attach.ShapedRecipe{
+			{ID: 1, W: 1, H: 2, Cells: []int32{item("oak_planks"), item("oak_planks")}, Result: item("stick"), Count: 4},
+			{ID: 2, W: 1, H: 1, Cells: []int32{item("poplar_log")}, Result: item("poplar_planks"), Count: 4},
+		},
+		Shapeless: []attach.ShapelessRecipe{
+			{ID: 3, Ingredients: []int32{item("white_wool")}, Result: item("white_wool_slab"), Count: 6},
+		},
+		Cooking: []attach.CookingRecipe{
+			{ID: 4, Ingredient: item("poplar_log"), Result: item("charcoal"), Count: 1, Station: item("furnace")},
+		},
+	}
+	if n := RecipeBook(rb, 776).Body[0]; n != 1 {
+		t.Errorf("26.2 got %d entries, want 1 (oak sticks only)", n)
+	}
+	if n := RecipeBook(rb, 777).Body[0]; n != 4 {
+		t.Errorf("26.3 got %d entries, want 4", n)
 	}
 }
