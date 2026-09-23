@@ -28,7 +28,7 @@ func BiomeID(name string) int32 {
 // older client is shown the stand-in: a 26.2 client does not have dappled
 // forest, and a biome its built-in pack lacks cannot be declared to it.
 var biomesAdded = []struct {
-	since          int32
+	since         int32
 	name, standIn string
 }{
 	{777, "minecraft:dappled_forest", "minecraft:forest"},

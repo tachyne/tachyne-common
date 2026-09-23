@@ -78,9 +78,22 @@ func TestLevelParticles777(t *testing.T) {
 	got := rewriteLevelParticles777(StatePlay, body)
 	want := AppendVarInt(nil, 68)
 	want = append(want, body[:2+24+12]...)
-	want = append(want, 0x3e, 0, 0, 0, 0x3e, 0, 0, 0, 0x3e, 0, 0, 0, 0, 0, 0, 9, 0)
+	// 26.3's STREAM_CODEC: particle, bool, bool, 3 doubles, 3 float
+	// offsets, 3 float max speeds, VAR_INT count, VarInt randomization.
+	want = append(want, 0x3e, 0, 0, 0, 0x3e, 0, 0, 0, 0x3e, 0, 0, 0, 9, 0)
 	if !bytes.Equal(got, want) {
 		t.Fatalf("particles:\n got %x\nwant %x", got, want)
+	}
+	// A count past one VarInt byte.
+	big := append([]byte(nil), body...)
+	copy(big[2+24+16:], []byte{0, 0, 1, 0x2c}) // 300
+	got = rewriteLevelParticles777(StatePlay, big)
+	want = AppendVarInt(nil, 68)
+	want = append(want, body[:2+24+12]...)
+	want = append(want, 0x3e, 0, 0, 0, 0x3e, 0, 0, 0, 0x3e, 0, 0, 0)
+	want = append(AppendVarInt(want, 300), 0)
+	if !bytes.Equal(got, want) {
+		t.Fatalf("particles, count 300:\n got %x\nwant %x", got, want)
 	}
 }
 

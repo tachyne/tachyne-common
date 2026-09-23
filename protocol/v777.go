@@ -197,21 +197,25 @@ func rewriteEntityPositionSync777(_ State, body []byte) []byte {
 
 // rewriteLevelParticles777: bool, bool, 3 f64, 3 f32 offsets, f32 speed,
 // i32 count, particle varint + payload → particle + payload, bool, bool,
-// position, offsets, speed ×3, count, randomization type 0.
+// position, offsets, speed ×3, count, randomization type 0. 26.3 reads the
+// count as a VarInt (26.2 still an int): copying the four bytes left the
+// client three over, and it dropped the connection on the first particle.
 func rewriteLevelParticles777(_ State, body []byte) []byte {
 	const prefix = 2 + 24 + 12 + 4 + 4
 	if len(body) < prefix+1 {
 		return body
 	}
 	out := make([]byte, 0, len(body)+10)
-	out = append(out, body[prefix:]...)        // particle id + payload
-	out = append(out, body[:2+24+12]...)       // flags, position, offsets
-	speed := body[2+24+12 : 2+24+12+4]         //
-	out = append(out, speed...)                // x max speed
-	out = append(out, speed...)                // y
-	out = append(out, speed...)                // z
-	out = append(out, body[2+24+16:prefix]...) // count
-	return AppendVarInt(out, 0)                // RandomizationType.DEFAULT
+	out = append(out, body[prefix:]...)  // particle id + payload
+	out = append(out, body[:2+24+12]...) // flags, position, offsets
+	speed := body[2+24+12 : 2+24+12+4]   //
+	out = append(out, speed...)          // x max speed
+	out = append(out, speed...)          // y
+	out = append(out, speed...)          // z
+	c := body[2+24+16 : prefix]
+	count := int32(uint32(c[0])<<24 | uint32(c[1])<<16 | uint32(c[2])<<8 | uint32(c[3]))
+	out = AppendVarInt(out, count) // count: VarInt in 26.3
+	return AppendVarInt(out, 0)    // RandomizationType.DEFAULT
 }
 
 // rewriteAnimateActions777 renumbers the animate actions that stayed in
