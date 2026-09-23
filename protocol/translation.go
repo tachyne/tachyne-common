@@ -127,6 +127,11 @@ func RemapID(reg IDSpace, version, id int32) int32 {
 		}
 	}
 	if !IDPresent(reg, version, id) {
+		if reg == RegItem {
+			if sub, ok := absentItemStandIns[version][id]; ok {
+				return shift(translationTables[reg][version], sub) // shown as its stand-in
+			}
+		}
 		if sub, ok := absentFallback[reg]; ok {
 			return sub
 		}

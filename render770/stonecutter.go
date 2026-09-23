@@ -59,7 +59,13 @@ func UpdateRecipes(version int32) Packet {
 		// Ingredient: a holder set in explicit-list form (count+1, then ids).
 		b = protocol.AppendVarInt(b, 2)
 		b = protocol.AppendVarInt(b, rid(r.In))
-		b = appendSlotDisplay(b, sd, rid(r.Out), int(r.Count))
+		// An output the client lacks shows empty, not as its stand-in: the
+		// row would claim to cut white concrete into a quartz slab.
+		out := rid(r.Out)
+		if !protocol.IDPresent(protocol.RegItem, version, r.Out) {
+			out = 0
+		}
+		b = appendSlotDisplay(b, sd, out, int(r.Count))
 	}
 	return Packet{IDUpdateRecipes, b}
 }

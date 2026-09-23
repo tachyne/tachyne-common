@@ -47,8 +47,12 @@ func TestAbsentIDsSubstituteRatherThanPassThrough(t *testing.T) {
 	for id := int32(0); id < int32(len(canonicalItemIDs)); id++ {
 		if !IDPresent(RegItem, 770, id) {
 			absent++
-			if got := RemapID(RegItem, 770, id); got != 0 {
-				t.Errorf("absent item %d became %d, want air", id, got)
+			want := int32(0) // air, unless it has a stand-in
+			if sub, ok := absentItemStandIns[770][id]; ok {
+				want = RemapID(RegItem, 770, sub)
+			}
+			if got := RemapID(RegItem, 770, id); got != want {
+				t.Errorf("absent item %d became %d, want %d", id, got, want)
 			}
 		}
 	}
@@ -97,8 +101,12 @@ func TestEverySubstitutedEntityResolvesInsideTheRegistry(t *testing.T) {
 func absentItemOn(t *testing.T) (int32, int32) {
 	t.Helper()
 	for _, v := range ServedVersions() {
-		if ids := absentIDs[RegItem][v]; len(ids) > 0 {
-			return v, ids[0]
+		// One with no stand-in: those go out as air (the stand-ins have
+		// their own test, TestAbsentItemsShowAStandIn).
+		for _, id := range absentIDs[RegItem][v] {
+			if _, sub := absentItemStandIns[v][id]; !sub {
+				return v, id
+			}
 		}
 	}
 	t.Skip("no served version lacks an item")

@@ -44,3 +44,24 @@ func TestAbsentBlocksShowAStandIn(t *testing.T) {
 		t.Error("26.3 must see poplar planks as themselves")
 	}
 }
+
+// An item a client lacks is shown as its stand-in where there is one — an
+// explorer map as a filled map (the map id travels with it, so it is the
+// same map), a poplar plank as a birch one — and as air otherwise.
+func TestAbsentItemsShowAStandIn(t *testing.T) {
+	ci := CanonicalItem
+	for item, stand := range map[string]string{
+		"buried_treasure_map": "filled_map", "ocean_monument_map": "filled_map",
+		"poplar_planks": "birch_planks", "white_wool_slab": "quartz_slab", "poplar_boat": "birch_boat",
+	} {
+		if IDPresent(RegItem, 776, ci(item)) {
+			t.Errorf("%s reported present on 26.2", item)
+		}
+		if got, want := RemapID(RegItem, 776, ci(item)), RemapID(RegItem, 776, ci(stand)); got != want {
+			t.Errorf("%s shows as %d, want %s (%d)", item, got, stand, want)
+		}
+		if RemapID(RegItem, 777, ci(item)) != ci(item) {
+			t.Errorf("26.3 must see %s as itself", item)
+		}
+	}
+}
