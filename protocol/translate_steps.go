@@ -142,6 +142,14 @@ func init() {
 		cbUp: map[State]map[int32]bodyFn{
 			StateConfiguration: {cfgKnownPacksID: rewriteKnownPacksVersion("1.21.6")},
 		},
+		// 1.21.6 dropped PRESS_SHIFT_KEY and RELEASE_SHIFT_KEY from the front
+		// of player_command's actions (the shift key moved to player_input),
+		// so every later client's action number is two below 1.21.5's: its
+		// START_FALL_FLYING (6) read as a riding-jump release, its leave-bed
+		// (0) as a crouch, its stop-sprint (2) as leave-bed.
+		sbDown: map[State]map[int32]bodyFn{
+			StatePlay: {sbPlayerCommand770: rewritePlayerCommand771to770},
+		},
 	}
 	stepBody[772] = bodyRewriters{
 		cbUp: map[State]map[int32]bodyFn{
@@ -206,4 +214,24 @@ func appendLoginSessionID(_ State, body []byte) []byte {
 		return body
 	}
 	return append(append([]byte(nil), body...), body[:16]...)
+}
+
+// sbPlayerCommand770 is the canonical (770) serverbound player_command id.
+const sbPlayerCommand770 = 0x28
+
+// rewritePlayerCommand771to770: entity id, action, jump boost — the action
+// renumbered to 1.21.5's, where the two shift-key actions still came first.
+func rewritePlayerCommand771to770(_ State, body []byte) []byte {
+	r := bytes.NewReader(body)
+	eid, err := ReadVarInt(r)
+	if err != nil {
+		return body
+	}
+	action, err := ReadVarInt(r)
+	if err != nil {
+		return body
+	}
+	out := AppendVarInt(nil, eid)
+	out = AppendVarInt(out, action+2)
+	return append(out, body[len(body)-r.Len():]...)
 }

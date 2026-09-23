@@ -238,3 +238,31 @@ func TestDimensionClockBinding(t *testing.T) {
 		t.Fatal("26.2 End dimension_type missing clock/timelines")
 	}
 }
+
+// A 26.x client's player_command reaches the canonical wire with 1.21.5's
+// action numbers: START_FALL_FLYING is 6 on the wire from 1.21.6 on and 8 in
+// 1.21.5, STOP_SLEEPING 0 and 2.
+func TestPlayerCommandActionsRenumbered(t *testing.T) {
+	for _, v := range []int32{776, 777} {
+		tr := TranslatorFor(v)
+		for _, c := range []struct{ upper, canon int32 }{{6, 8}, {0, 2}, {1, 3}, {2, 4}} {
+			// find this version's id for player_command by translating the canonical one up and back
+			var upperID int32 = -1
+			for id := int32(0); id < 0x80; id++ {
+				if cid, _, drop := tr.Serverbound(StatePlay, id, AppendVarInt(AppendVarInt(AppendVarInt(nil, 7), 0), 0)); !drop && cid == sbPlayerCommand770 {
+					upperID = id
+					break
+				}
+			}
+			if upperID < 0 {
+				t.Fatalf("v%d: no serverbound id maps to player_command", v)
+			}
+			body := AppendVarInt(AppendVarInt(AppendVarInt(nil, 7), c.upper), 0)
+			_, out, _ := tr.Serverbound(StatePlay, upperID, body)
+			want := AppendVarInt(AppendVarInt(AppendVarInt(nil, 7), c.canon), 0)
+			if string(out) != string(want) {
+				t.Errorf("v%d action %d: got %x, want %x", v, c.upper, out, want)
+			}
+		}
+	}
+}
