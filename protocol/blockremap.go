@@ -1738,6 +1738,62 @@ func ReadSlot770(r *bytes.Reader) (item, count int32, ok bool) {
 }
 
 func copyFullSlotAt(r *bytes.Reader, out *[]byte, remap func(int32) int32, version int32, serverbound bool, depth int) bool {
+	// An item this client does not have maps to air, but a slot of air with a
+	// count still carries the item's components — which may be ones the client
+	// cannot decode. Such a slot goes out empty: the whole stack is consumed
+	// and nothing of it is written but a zero count.
+	start := len(*out)
+	absent := slotAbsent(r, remap, serverbound)
+	if !copyFullSlotBody(r, out, remap, version, serverbound, depth) {
+		return false
+	}
+	if absent {
+		*out = append((*out)[:start], 0) // VarInt 0: an empty slot
+	}
+	return true
+}
+
+// slotAbsent peeks at the stack r is positioned on: whether it holds an item
+// this client lacks (one the clientbound remap sends to air). r is left where
+// it was.
+func slotAbsent(r *bytes.Reader, remap func(int32) int32, serverbound bool) bool {
+	if serverbound {
+		return false
+	}
+	at := r.Size() - int64(r.Len())
+	defer r.Seek(at, io.SeekStart)
+	count, err := ReadVarInt(r)
+	if err != nil || count <= 0 {
+		return false
+	}
+	item, err := ReadVarInt(r)
+	return err == nil && item != 0 && remap(item) == 0
+}
+
+// copyNestedSlots copies the n stacks of a bundle's or a container's contents.
+// 26.x decodes those as item templates, which cannot be empty, so a stack the
+// client lacks is left out of the list rather than sent empty.
+func copyNestedSlots(r *bytes.Reader, out *[]byte, n int32, remap func(int32) int32, version int32, serverbound bool, depth int) bool {
+	var items []byte
+	kept := int32(0)
+	for j := int32(0); j < n; j++ {
+		absent := slotAbsent(r, remap, serverbound)
+		var one []byte
+		if !copyFullSlotBody(r, &one, remap, version, serverbound, depth) {
+			return false
+		}
+		if absent {
+			continue
+		}
+		items = append(items, one...)
+		kept++
+	}
+	*out = AppendVarInt(*out, kept)
+	*out = append(*out, items...)
+	return true
+}
+
+func copyFullSlotBody(r *bytes.Reader, out *[]byte, remap func(int32) int32, version int32, serverbound bool, depth int) bool {
 	// Component-id translation pairs for this direction: canonical (770) ids on
 	// the server side, the client version's ids on the wire side.
 	enchIn, enchOut := int32(componentEnchantments), enchCompID(version)
@@ -1872,11 +1928,8 @@ func copyFullSlotAt(r *bytes.Reader, out *[]byte, remap func(int32) int32, versi
 				return false
 			}
 			*out = AppendVarInt(*out, contOut)
-			*out = AppendVarInt(*out, n)
-			for j := int32(0); j < n; j++ {
-				if !copyFullSlotAt(r, out, remap, version, serverbound, depth+1) {
-					return false
-				}
+			if !copyNestedSlots(r, out, n, remap, version, serverbound, depth+1) {
+				return false
 			}
 		case stewIn:
 			// suspicious_stew_effects: (effect holder, duration) pairs. The
@@ -2111,11 +2164,8 @@ func copyFullSlotAt(r *bytes.Reader, out *[]byte, remap func(int32) int32, versi
 				return false
 			}
 			*out = AppendVarInt(*out, bundleOut)
-			*out = AppendVarInt(*out, n)
-			for j := int32(0); j < n; j++ {
-				if !copyFullSlotAt(r, out, remap, version, serverbound, depth+1) {
-					return false
-				}
+			if !copyNestedSlots(r, out, n, remap, version, serverbound, depth+1) {
+				return false
 			}
 		default:
 			return false

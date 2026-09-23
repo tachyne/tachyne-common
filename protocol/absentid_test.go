@@ -1,6 +1,9 @@
 package protocol
 
-import "testing"
+import (
+	"bytes"
+	"testing"
+)
 
 // registrySize is each client version's registry length, from the vanilla
 // datagen reports. An ID at or beyond this cannot be decoded by that client.
@@ -87,5 +90,72 @@ func TestEverySubstitutedEntityResolvesInsideTheRegistry(t *testing.T) {
 	}
 	if checked == 0 {
 		t.Fatal("no absent entities on any version — this test would prove nothing")
+	}
+}
+
+// absentItemOn picks a served version with items it lacks, and one of them.
+func absentItemOn(t *testing.T) (int32, int32) {
+	t.Helper()
+	for _, v := range ServedVersions() {
+		if ids := absentIDs[RegItem][v]; len(ids) > 0 {
+			return v, ids[0]
+		}
+	}
+	t.Skip("no served version lacks an item")
+	return 0, 0
+}
+
+// A stack of an item the client lacks goes out as an empty slot — not air
+// with a count, which would still carry the item's components.
+func TestAbsentItemSlotGoesOutEmpty(t *testing.T) {
+	v, id := absentItemOn(t)
+	slot := AppendVarInt(nil, 3)                     // count
+	slot = AppendVarInt(slot, id)                    // an item the client lacks
+	slot = AppendVarInt(slot, 1)                     // one component
+	slot = AppendVarInt(slot, 0)                     // none removed
+	slot = AppendVarInt(slot, componentEnchantments) // …with a payload
+	slot = AppendVarInt(slot, 1)
+	slot = AppendVarInt(slot, 0)
+	slot = AppendVarInt(slot, 2)
+	var out []byte
+	r := bytes.NewReader(append(slot, 0x55)) // a marker after the slot
+	if !copyFullSlotAt(r, &out, func(i int32) int32 { return RemapID(RegItem, v, i) }, v, false, 0) {
+		t.Fatal("the slot did not parse")
+	}
+	if len(out) != 1 || out[0] != 0 {
+		t.Errorf("proto %d: absent item %d went out as %x, want one empty slot (00)", v, id, out)
+	}
+	if next, _ := r.ReadByte(); next != 0x55 {
+		t.Errorf("the whole stack was not consumed: next byte %#x", next)
+	}
+}
+
+// Inside a bundle the client decodes stacks that cannot be empty, so a stack
+// it lacks is left out of the list and the list is one shorter.
+func TestAbsentItemLeftOutOfABundle(t *testing.T) {
+	v, id := absentItemOn(t)
+	present := int32(1)            // stone: every version has it
+	bundle := AppendVarInt(nil, 1) // count
+	bundle = AppendVarInt(bundle, CanonicalItem("bundle"))
+	bundle = AppendVarInt(bundle, 1) // one component
+	bundle = AppendVarInt(bundle, 0)
+	bundle = AppendVarInt(bundle, componentBundleContents)
+	bundle = AppendVarInt(bundle, 2) // two stacks
+	bundle = append(bundle, slotBytes(id)...)
+	bundle = append(bundle, slotBytes(present)...)
+	var out []byte
+	if !copyFullSlotAt(bytes.NewReader(bundle), &out, func(i int32) int32 { return RemapID(RegItem, v, i) }, v, false, 0) {
+		t.Fatal("the bundle did not parse")
+	}
+	r := bytes.NewReader(out)
+	for i := 0; i < 5; i++ { // count, item, added, removed, component id
+		ReadVarInt(r)
+	}
+	if n, _ := ReadVarInt(r); n != 1 {
+		t.Fatalf("proto %d: bundle holds %d stacks, want 1 (the absent item left out)", v, n)
+	}
+	ReadVarInt(r) // count
+	if got, _ := ReadVarInt(r); got != RemapID(RegItem, v, present) {
+		t.Errorf("the kept stack is item %d, want %d", got, RemapID(RegItem, v, present))
 	}
 }
