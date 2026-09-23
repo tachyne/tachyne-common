@@ -118,7 +118,15 @@ func walkAdvancementIcons(body []byte, iconFn func(r *bytes.Reader, out *[]byte)
 // remapAdvancementIcons is the registry pass: icon item ids canonical → the
 // client version's. Uses copyFullSlot, the shared Slot copier.
 func remapAdvancementIcons(version int32, body []byte) []byte {
-	remap := func(i int32) int32 { return RemapID(RegItem, version, i) }
+	// An icon cannot be empty (26.x decodes it as an item template), so an
+	// item the client lacks shows as a barrier, the usual "unknown" icon.
+	barrier := CanonicalItem("barrier")
+	remap := func(i int32) int32 {
+		if !IDPresent(RegItem, version, i) {
+			i = barrier
+		}
+		return RemapID(RegItem, version, i)
+	}
 	return walkAdvancementIcons(body, func(r *bytes.Reader, out *[]byte) bool {
 		return copyFullSlot(r, out, remap, version, false)
 	})

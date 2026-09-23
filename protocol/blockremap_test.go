@@ -807,9 +807,9 @@ func TestMapIDRenumbered(t *testing.T) {
 // TestTrimBannerRenumbered pins the trim + banner_patterns component-id
 // renumbering across the 774/776 boundaries; values pass through verbatim.
 func TestTrimBannerRenumbered(t *testing.T) {
-	slot := AppendVarInt(nil, 1)   // count
-	slot = AppendVarInt(slot, 941) // an armor item, canonical
-	slot = AppendVarInt(slot, 2)   // two components
+	slot := AppendVarInt(nil, 1) // count
+	slot = AppendVarInt(slot, CanonicalItem("iron_chestplate"))
+	slot = AppendVarInt(slot, 2) // two components
 	slot = AppendVarInt(slot, 0)
 	slot = AppendVarInt(slot, 47) // trim, canonical
 	slot = AppendVarInt(slot, 6)  // material holder (iron+1)

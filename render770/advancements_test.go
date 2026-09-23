@@ -17,6 +17,12 @@ import (
 	"github.com/tachyne/tachyne-common/protocol"
 )
 
+// The icons, by name: canonical ids move with the canonical version.
+var (
+	slabItem = protocol.CanonicalItem("red_sandstone_slab")
+	pickItem = protocol.CanonicalItem("wooden_pickaxe")
+)
+
 func rdString(t *testing.T, r *bytes.Reader) string {
 	t.Helper()
 	s, err := protocol.ReadString(r)
@@ -100,7 +106,7 @@ func testTree() attach.AdvTree {
 			ID: "minecraft:story/root", Reqs: [][]string{{"crafting_table"}},
 			HasDisplay: true, Title: "advancements.story.root.title",
 			Desc:       "advancements.story.root.description",
-			Icon:       attach.ItemStack{ID: 294, Count: 1},
+			Icon:       attach.ItemStack{ID: slabItem, Count: 1},
 			Background: "gui/advancements/backgrounds/stone",
 			ShowToast:  false, Announce: false,
 		},
@@ -109,7 +115,7 @@ func testTree() attach.AdvTree {
 			Reqs:       [][]string{{"get_stone"}, {"also_this", "or_this"}},
 			HasDisplay: true, Title: "advancements.story.mine_stone.title",
 			Desc:      "advancements.story.mine_stone.description",
-			Icon:      attach.ItemStack{ID: 913, Count: 1},
+			Icon:      attach.ItemStack{ID: pickItem, Count: 1},
 			ShowToast: true, Announce: true, X: 1, Y: 1.75,
 		},
 		{ID: "minecraft:invisible/helper", Parent: "minecraft:story/root",
@@ -197,12 +203,12 @@ func TestAdvancementsInitReparse770(t *testing.T) {
 	}
 	nodes, reqs, progress := reparseUpdateAdvancements(t, pkt.Body, false)
 	root := nodes["minecraft:story/root"]
-	if root.item != 294 || root.count != 1 || !root.hasBG ||
+	if root.item != slabItem || root.count != 1 || !root.hasBG ||
 		root.background != "gui/advancements/backgrounds/stone" {
 		t.Fatalf("root display: %+v", root)
 	}
 	ms := nodes["minecraft:story/mine_stone"]
-	if ms.item != 913 || ms.x != 1 || ms.y != 1.75 || ms.hasBG {
+	if ms.item != pickItem || ms.x != 1 || ms.y != 1.75 || ms.hasBG {
 		t.Fatalf("mine_stone display: %+v", ms)
 	}
 	if _, ok := nodes["minecraft:invisible/helper"]; ok {
@@ -238,13 +244,13 @@ func TestAdvancementsChainTo776(t *testing.T) {
 		t.Fatalf("776 id = 0x%x, want 0x82", id)
 	}
 	nodes, _, progress := reparseUpdateAdvancements(t, body, true)
-	want294 := protocol.RemapID(protocol.RegItem, 776, 294)
-	want913 := protocol.RemapID(protocol.RegItem, 776, 913)
-	if nodes["minecraft:story/root"].item != want294 {
-		t.Fatalf("root icon %d, want %d", nodes["minecraft:story/root"].item, want294)
+	wantSlab := protocol.RemapID(protocol.RegItem, 776, slabItem)
+	wantPick := protocol.RemapID(protocol.RegItem, 776, pickItem)
+	if nodes["minecraft:story/root"].item != wantSlab {
+		t.Fatalf("root icon %d, want %d", nodes["minecraft:story/root"].item, wantSlab)
 	}
-	if nodes["minecraft:story/mine_stone"].item != want913 {
-		t.Fatalf("mine_stone icon %d, want %d", nodes["minecraft:story/mine_stone"].item, want913)
+	if nodes["minecraft:story/mine_stone"].item != wantPick {
+		t.Fatalf("mine_stone icon %d, want %d", nodes["minecraft:story/mine_stone"].item, wantPick)
 	}
 	if progress["minecraft:story/mine_stone"]["get_stone"] != 1752200000000 {
 		t.Fatal("progress corrupted by the chain")
@@ -272,7 +278,7 @@ func TestAdvancementsAddReparse(t *testing.T) {
 		t.Fatalf("%s lost its display", id)
 	}
 	d := rdDisplay(t, r, false)
-	if d.item != 913 {
+	if d.item != pickItem {
 		t.Fatalf("icon %d", d.item)
 	}
 	ng := rdVarInt(t, r)
@@ -291,5 +297,33 @@ func TestAdvancementsAddReparse(t *testing.T) {
 	}
 	if !rdBool(t, r) || r.Len() != 0 {
 		t.Fatalf("trailer wrong (%d left)", r.Len())
+	}
+}
+
+// An icon whose item the client lacks cannot go out empty — 26.x decodes
+// icons as item templates, which cannot be — so it shows a barrier, and the
+// rest of the packet still parses.
+func TestAdvancementIconTheClientLacksIsABarrier(t *testing.T) {
+	const v = 776
+	absent := int32(-1)
+	for id := int32(1); id < 5000; id++ {
+		if !protocol.IDPresent(protocol.RegItem, v, id) {
+			absent = id
+			break
+		}
+	}
+	if absent < 0 {
+		t.Skip("26.2 has every canonical item")
+	}
+	tree := testTree()
+	tree.Nodes[0].Icon = attach.ItemStack{ID: absent, Count: 1}
+	pkt := AdvancementsInit(tree, testProgress())
+	_, body, drop := protocol.TranslatorFor(v).Clientbound(protocol.StatePlay, pkt.ID, pkt.Body)
+	if drop {
+		t.Fatal("packet dropped")
+	}
+	nodes, _, _ := reparseUpdateAdvancements(t, body, true)
+	if want := protocol.RemapID(protocol.RegItem, v, protocol.CanonicalItem("barrier")); nodes["minecraft:story/root"].item != want {
+		t.Errorf("absent icon became %d, want the barrier %d", nodes["minecraft:story/root"].item, want)
 	}
 }
