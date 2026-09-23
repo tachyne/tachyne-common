@@ -22,13 +22,15 @@ func TestUpdateAttributesBytes(t *testing.T) {
 	}
 	want := protocol.AppendVarInt(nil, 7)
 	want = protocol.AppendVarInt(want, 2)
-	want = protocol.AppendVarInt(want, 19) // max_health
+	maxHealth, _ := protocol.AttributeID("minecraft:max_health")
+	want = protocol.AppendVarInt(want, maxHealth)
 	want = protocol.AppendF64(want, 20)
 	want = protocol.AppendVarInt(want, 1)
 	want = protocol.AppendString(want, "effect:health_boost")
 	want = protocol.AppendF64(want, 4)
 	want = protocol.AppendVarInt(want, 0)
-	want = protocol.AppendVarInt(want, 22) // movement_speed
+	speed, _ := protocol.AttributeID("minecraft:movement_speed")
+	want = protocol.AppendVarInt(want, speed)
 	want = protocol.AppendF64(want, 0.1)
 	want = protocol.AppendVarInt(want, 0)
 	if !bytes.Equal(p.Body, want) {
