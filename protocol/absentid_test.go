@@ -72,8 +72,8 @@ func TestEverySubstitutedEntityResolvesInsideTheRegistry(t *testing.T) {
 	// Every canonical entity a client lacks, as the generated tables say — not
 	// a hand-kept list of them — needs a stand-in that the client does have.
 	checked := 0
-	for version, absent := range absentIDs[RegEntity] {
-		for _, id := range absent {
+	for _, version := range ServedVersions() {
+		for _, id := range absentIDs[RegEntity][version] {
 			sub := substituteEntityType(version, id)
 			if sub == id {
 				t.Errorf("proto %d: canonical entity %d has no stand-in", version, id)

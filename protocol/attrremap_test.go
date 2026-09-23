@@ -37,7 +37,10 @@ func TestAttributeIDsRemapPerVersion(t *testing.T) {
 // The 1.21.x versions between canonical and 770 share the canonical registry,
 // so they must be identity rather than accidentally inheriting 770's shift.
 func TestAttributeIDsIdenticalOnNearbyVersions(t *testing.T) {
-	for _, v := range []int32{771, 772, 773, 775} {
+	for _, v := range ServedVersions() {
+		if v < 771 || v > 775 {
+			continue
+		}
 		if js := attr("jump_strength"); RemapID(RegAttribute, v, js) != js {
 			got := RemapID(RegAttribute, v, js)
 			t.Errorf("proto %d shifted jump_strength to %d, want it unchanged", v, got)

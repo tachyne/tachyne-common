@@ -103,6 +103,21 @@ func TranslatorFor(version int32) Translator {
 	return chainFor(version) // id-remap (+ layout steps for >770), or nil if out of range
 }
 
+// MinServed is the oldest client protocol any gateway serves — policy, not
+// capability: the translation chain can speak older versions than this.
+const MinServed = 770
+
+// ServedVersions is SupportedVersions from MinServed up.
+func ServedVersions() []int32 {
+	var out []int32
+	for _, v := range SupportedVersions() {
+		if v >= MinServed {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
 // SupportedVersions lists every protocol version the server can serve: Target, the
 // translated chain range (Target+1..MaxTranslated), and any hand-registered
 // override. Useful for diagnostics / the login rejection message.
