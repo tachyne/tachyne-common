@@ -577,18 +577,30 @@ func TestWorldParticlesRemap(t *testing.T) {
 // unswimmable on 26.x (live bug).
 func TestChunkFluidCount26x(t *testing.T) {
 	// Section A: all water (single-valued palette). Section B: stone with two
-	// water blocks and one lava (indirect palette).
+	// water blocks, one lava and one seagrass (indirect palette). Section C:
+	// stone and one seagrass — no water block at all, and still a fluid: the
+	// count is every state whose FluidState is not empty, as vanilla's is.
+	water := uint32(CanonicalBlockState("water"))
+	lava := uint32(CanonicalBlockState("lava"))
+	seagrass := uint32(CanonicalBlockState("seagrass"))
+	stone := uint32(CanonicalBlockState("stone"))
 	var states [4096]uint32
 	for i := range states {
-		states[i] = 86 // water source
+		states[i] = water
 	}
 	col := AppendSection(nil, states[:], 0)
 	for i := range states {
-		states[i] = 1 // stone
+		states[i] = stone
 	}
-	states[7] = 86    // water
-	states[99] = 101  // flowing water
-	states[512] = 110 // lava
+	states[7] = water
+	states[99] = water
+	states[512] = lava
+	states[700] = seagrass
+	col = AppendSection(col, states[:], 0)
+	for i := range states {
+		states[i] = stone
+	}
+	states[1000] = seagrass
 	col = AppendSection(col, states[:], 0)
 
 	body := AppendI32(nil, 0)    // cx
@@ -625,8 +637,11 @@ func TestChunkFluidCount26x(t *testing.T) {
 		t.Fatalf("all-water section: blocks=%d fluids=%d, want 4096/4096", b1, f1)
 	}
 	b2, f2 := readSection()
-	if b2 != 4096 || f2 != 3 {
-		t.Fatalf("mixed section: blocks=%d fluids=%d, want 4096/3", b2, f2)
+	if b2 != 4096 || f2 != 4 {
+		t.Fatalf("mixed section: blocks=%d fluids=%d, want 4096/4", b2, f2)
+	}
+	if _, f3 := readSection(); f3 != 1 {
+		t.Fatalf("seagrass-only section: fluids=%d, want 1 (a waterlogged block holds water)", f3)
 	}
 	// Pre-26.x clients must NOT get the field: same body at 773 keeps sections
 	// at blockCount + containers only.

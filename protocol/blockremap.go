@@ -610,10 +610,16 @@ func remapSections(version int32, col []byte) []byte {
 // containers, 64 for biome containers. Our encoder only emits single-valued (0
 // bits) and indirect (palette + longs) containers, never direct, so a non-zero
 // bits value always carries a palette.
-// isFluidState reports whether a CANONICAL (770) block state is a fluid —
-// water 86-101 or lava 102-117. Used to compute the 26.x per-section fluid
-// count, which the client's fluid layer (rendering + swim physics) requires.
-func isFluidState(v uint32) bool { return v >= 86 && v <= 117 }
+// isFluidState reports whether a CANONICAL block state holds a fluid, as the
+// 26.x per-section fluid count (LevelChunkSection.fluidCount) counts it:
+// every state whose FluidState is not empty — water and lava, and every
+// waterlogged block, kelp and seagrass. The client's fluid layer (rendering
+// and swim physics) is built from it. (This was water 86-101 and lava 102-117
+// by hand: the 1.21.11 ids, which 26.3 moves, and blind to waterlogged blocks,
+// so a section holding only those reported no fluid.)
+func isFluidState(v uint32) bool {
+	return int(v/64) < len(canonicalFluidStates) && canonicalFluidStates[v/64]&(1<<(v%64)) != 0
+}
 
 func processContainer(r *bytes.Reader, out *[]byte, entryCount int, remap func(uint32) uint32) bool {
 	return processContainerFluids(r, out, entryCount, remap, nil)
