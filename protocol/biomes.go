@@ -69,6 +69,22 @@ func BiomeIDFor(v int32, name string) int32 {
 			}
 		}
 	}
+	// A biome 26.x appended to the shared list (extra26xEntries): its place
+	// after the shared ones. It fell through to plains, so every Java client
+	// was told a sulfur cave was plains.
+	for _, e := range extra26xEntries["minecraft:worldgen/biome"] {
+		if e != name {
+			continue
+		}
+		if v < 775 {
+			return BiomeIDFor(v, "minecraft:dripstone_caves") // no such biome before 26.x
+		}
+		for i, n := range biomeEntriesFor(v, sharedBiomes()) {
+			if n == name {
+				return int32(i)
+			}
+		}
+	}
 	return BiomePlainsID
 }
 
