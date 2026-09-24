@@ -185,5 +185,9 @@ func EntityStatus(e attach.EntityStatus) Packet {
 
 // Swing renders the main-hand arm-swing animation.
 func Swing(e attach.Swing) Packet {
-	return Packet{IDSwing, protocol.AppendU8(protocol.AppendVarInt(nil, e.EID), 0)}
+	action := byte(0) // SWING_MAIN_HAND
+	if e.Hand == 1 {
+		action = 3 // SWING_OFF_HAND
+	}
+	return Packet{IDSwing, protocol.AppendU8(protocol.AppendVarInt(nil, e.EID), action)}
 }

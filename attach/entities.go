@@ -592,7 +592,20 @@ type EntityStatus struct {
 }
 
 type Swing struct {
-	EID int32 `json:"eid"`
+	EID  int32 `json:"eid"`
+	Hand int32 `json:"hand,omitempty"` // 0 main hand, 1 off hand
+}
+
+// MsgSwingAction (gw→w): the player swung an arm — at air, at a block it is
+// mining or placing against, at a mob (ServerboundSwingPacket →
+// ServerGamePacketListenerImpl.handleAnimate → LivingEntity.swing). The
+// engine shows it to everyone watching; the swinger's own client has
+// already drawn it.
+const MsgSwingAction = 0x7c // gw→w
+
+// SwingAction is the arm a player swung.
+type SwingAction struct {
+	Hand int32 `json:"hand"` // 0 main hand, 1 off hand
 }
 
 // MsgRecipeBook (w→gw): the full recipe list for the green crafting book, sent

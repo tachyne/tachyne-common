@@ -37,6 +37,7 @@ const (
 	SIDSetBeacon      = 0x32 // set_beacon_effect (the menu's confirm click)
 	SIDCreativeSlot   = 0x36
 	SIDSignUpdate     = 0x3a // update_sign (sign edit GUI result)
+	SIDSwing          = 0x3b // swing (the arm, either hand)
 	SIDUseItem        = 0x3f
 )
 
@@ -100,6 +101,15 @@ func ParseUseItem(data []byte) (attach.UseItem, bool) {
 	}
 	seq, _ := protocol.ReadVarInt(r) // the block-prediction sequence
 	return attach.UseItem{Hand: hand, Seq: seq}, true
+}
+
+// ParseSwing decodes swing: the hand as a VarInt (InteractionHand).
+func ParseSwing(data []byte) (attach.SwingAction, bool) {
+	hand, err := protocol.ReadVarInt(bytes.NewReader(data))
+	if err != nil || hand < 0 || hand > 1 {
+		return attach.SwingAction{}, false
+	}
+	return attach.SwingAction{Hand: hand}, true
 }
 
 // ParseVehicleMove decodes move_vehicle (x, y, z doubles + yaw, pitch).

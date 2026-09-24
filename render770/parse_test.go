@@ -1,6 +1,7 @@
 package render770
 
 import (
+	"bytes"
 	"testing"
 
 	attach "github.com/tachyne/tachyne-common/attach"
@@ -158,5 +159,29 @@ func TestCreativeSlotPaintingVariant(t *testing.T) {
 	plain = protocol.AppendVarInt(plain, 0)
 	if e, ok := ParseCreativeSlot(plain, 776); !ok || e.PaintingVariant != "" {
 		t.Fatalf("plain painting: ok=%v variant=%q", ok, e.PaintingVariant)
+	}
+}
+
+// swing: the hand is one VarInt; anything but 0 or 1 is refused.
+func TestParseSwing(t *testing.T) {
+	for _, tc := range []struct {
+		data []byte
+		hand int32
+		ok   bool
+	}{{[]byte{0}, 0, true}, {[]byte{1}, 1, true}, {[]byte{2}, 0, false}, {nil, 0, false}} {
+		got, ok := ParseSwing(tc.data)
+		if ok != tc.ok || (ok && got.Hand != tc.hand) {
+			t.Errorf("ParseSwing(%v) = %+v, %v; want hand %d, %v", tc.data, got, ok, tc.hand, tc.ok)
+		}
+	}
+}
+
+// animate: entity id then the action, 0 for the main hand and 3 for the off hand.
+func TestSwingRendersEachHand(t *testing.T) {
+	if p := Swing(attach.Swing{EID: 9}); p.ID != IDSwing || !bytes.Equal(p.Body, []byte{9, 0}) {
+		t.Errorf("main hand: %#x % x", p.ID, p.Body)
+	}
+	if p := Swing(attach.Swing{EID: 9, Hand: 1}); !bytes.Equal(p.Body, []byte{9, 3}) {
+		t.Errorf("off hand: % x", p.Body)
 	}
 }

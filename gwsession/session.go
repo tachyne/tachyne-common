@@ -1272,6 +1272,10 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 				if e, ok := render770.ParseUseItem(pkt.Data); ok {
 					b.Write(attach.MsgUseItem, e)
 				}
+			case render770.SIDSwing:
+				if e, ok := render770.ParseSwing(pkt.Data); ok {
+					b.Write(attach.MsgSwingAction, e)
+				}
 			case render770.SIDUseEntity:
 				if e, ok := render770.ParseUseEntity(pkt.Data); ok {
 					b.Write(attach.MsgUseEntity, e)
