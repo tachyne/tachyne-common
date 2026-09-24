@@ -781,6 +781,7 @@ const (
 	metaTypeBlockPos      = 10
 	metaTypeOptBlockPos   = 11
 	metaTypeOptBlockState = 15 // Optional<BlockState>: a single VarInt, 0 = empty
+	metaTypeOptUInt       = 20 // OptionalInt: VarInt value+1, 0 = empty; → 19 for clients ≥773
 	metaTypePose          = 21 // → 20 for clients ≥773
 )
 
@@ -820,7 +821,7 @@ func remapEntityMeta(version int32, body []byte) []byte {
 		// (it tracks eid→type from spawn packets).
 		out = append(out, idx)
 		wireType := typ
-		if (typ == metaTypePose || typ == VillagerDataSerializer770) && version >= 773 {
+		if (typ == metaTypePose || typ == VillagerDataSerializer770 || typ == metaTypeOptUInt) && version >= 773 {
 			wireType = typ - 1 // COMPOUND_TAG (16) left the serializer list in 1.21.6
 		}
 		if typ == ArmadilloStateSerializer770 {
@@ -841,7 +842,7 @@ func remapEntityMeta(version int32, body []byte) []byte {
 				return body
 			}
 			out = append(out, b)
-		case metaTypeVarInt, metaTypePose, ArmadilloStateSerializer770:
+		case metaTypeVarInt, metaTypePose, ArmadilloStateSerializer770, metaTypeOptUInt:
 			v, err := ReadVarInt(r)
 			if err != nil {
 				return body
