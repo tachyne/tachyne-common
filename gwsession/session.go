@@ -596,6 +596,12 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 					p := render770.PlayerInfoAdd(e)
 					cc.send(p.ID, p.Body)
 				}
+			case attach.MsgPlayerInfoMode:
+				var e attach.PlayerInfoMode
+				if json.Unmarshal(payload, &e) == nil {
+					p := render770.PlayerInfoMode(e)
+					cc.send(p.ID, p.Body)
+				}
 			case attach.MsgPlayerGone:
 				var e attach.PlayerGone
 				if json.Unmarshal(payload, &e) == nil {

@@ -53,7 +53,7 @@ func oracleSync(eid int32, x, y, z float64, yaw, pitch float32, onGround bool) [
 	return protocol.AppendBool(b, onGround)
 }
 
-func oraclePlayerInfoAdd(uuid [16]byte, name string, props []attach.Property) []byte {
+func oraclePlayerInfoAdd(uuid [16]byte, name string, props []attach.Property, mode int32) []byte {
 	b := protocol.AppendU8(nil, 0x01|0x04|0x08|0x10)
 	b = protocol.AppendVarInt(b, 1)
 	b = append(b, uuid[:]...)
@@ -67,7 +67,7 @@ func oraclePlayerInfoAdd(uuid [16]byte, name string, props []attach.Property) []
 			b = protocol.AppendString(b, pr.Signature)
 		}
 	}
-	b = protocol.AppendVarInt(b, 1)
+	b = protocol.AppendVarInt(b, mode)
 	b = protocol.AppendVarInt(b, 1)
 	b = protocol.AppendVarInt(b, 0)
 	return b
@@ -165,9 +165,11 @@ func TestPlayerInfoAndRemove(t *testing.T) {
 	uuid := [16]byte{9, 9}
 	props := []attach.Property{{Name: "textures", Value: "abc", Signature: "sig"}}
 	eq(t, "info no props", PlayerInfoAdd(attach.PlayerInfo{UUID: uuid, Name: "Steve"}),
-		IDPlayerInfo, oraclePlayerInfoAdd(uuid, "Steve", nil))
-	eq(t, "info with skin", PlayerInfoAdd(attach.PlayerInfo{UUID: uuid, Name: "Steve", Props: props}),
-		IDPlayerInfo, oraclePlayerInfoAdd(uuid, "Steve", props))
+		IDPlayerInfo, oraclePlayerInfoAdd(uuid, "Steve", nil, 0))
+	eq(t, "info with skin", PlayerInfoAdd(attach.PlayerInfo{UUID: uuid, Name: "Steve", Props: props, Gamemode: 3}),
+		IDPlayerInfo, oraclePlayerInfoAdd(uuid, "Steve", props, 3))
+	eq(t, "info mode", PlayerInfoMode(attach.PlayerInfoMode{UUID: uuid, Gamemode: 3}),
+		IDPlayerInfo, append(append([]byte{0x04, 1}, uuid[:]...), 3))
 	eq(t, "player remove", PlayerRemove(attach.PlayerGone{UUID: uuid}),
 		IDPlayerRemove, append(protocol.AppendVarInt(nil, 1), uuid[:]...))
 

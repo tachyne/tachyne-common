@@ -14,9 +14,22 @@ const (
 )
 
 type PlayerInfo struct {
-	UUID  [16]byte   `json:"uuid"`
-	Name  string     `json:"name"`
-	Props []Property `json:"props,omitempty"` // game-profile properties (textures = skin)
+	UUID     [16]byte   `json:"uuid"`
+	Name     string     `json:"name"`
+	Props    []Property `json:"props,omitempty"` // game-profile properties (textures = skin)
+	Gamemode int32      `json:"gamemode"`        // 0 survival, 1 creative, 2 adventure, 3 spectator
+}
+
+// MsgPlayerInfoMode (w→gw): a listed player's game mode changed —
+// ClientboundPlayerInfoUpdatePacket's UPDATE_GAME_MODE, which every client
+// needs to draw that player right (a spectator is see-through and greyed
+// in the tab list).
+const MsgPlayerInfoMode = 0x7d
+
+// PlayerInfoMode is one player's new game mode.
+type PlayerInfoMode struct {
+	UUID     [16]byte `json:"uuid"`
+	Gamemode int32    `json:"gamemode"`
 }
 
 // Property is one game-profile property (the "textures" blob carries skins).

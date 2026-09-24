@@ -86,6 +86,8 @@ func (v *EntityView) Render(ev any) (Packet, bool) {
 		return v.Remove(e), true
 	case attach.PlayerInfo:
 		return PlayerInfoAdd(e), true
+	case attach.PlayerInfoMode:
+		return PlayerInfoMode(e), true
 	case attach.PlayerGone:
 		return PlayerRemove(e), true
 	case attach.Chat:
@@ -268,10 +270,18 @@ func PlayerInfoAdd(e attach.PlayerInfo) Packet {
 			b = protocol.AppendString(b, pr.Signature)
 		}
 	}
-	b = protocol.AppendVarInt(b, 1) // gamemode = creative
-	b = protocol.AppendVarInt(b, 1) // listed = true
-	b = protocol.AppendVarInt(b, 0) // latency = 0 ms
+	b = protocol.AppendVarInt(b, e.Gamemode) // the player's own game mode
+	b = protocol.AppendVarInt(b, 1)          // listed = true
+	b = protocol.AppendVarInt(b, 0)          // latency = 0 ms
 	return Packet{IDPlayerInfo, b}
+}
+
+// PlayerInfoMode renders player_info_update with UPDATE_GAME_MODE alone.
+func PlayerInfoMode(e attach.PlayerInfoMode) Packet {
+	b := protocol.AppendU8(nil, 0x04)
+	b = protocol.AppendVarInt(b, 1) // one entry
+	b = append(b, e.UUID[:]...)
+	return Packet{IDPlayerInfo, protocol.AppendVarInt(b, e.Gamemode)}
 }
 
 // PlayerRemove renders a tab-list remove.
