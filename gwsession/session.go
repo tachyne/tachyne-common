@@ -192,6 +192,9 @@ type clientConn struct {
 	// (substitution drops for old clients, cube-mob/copper-golem fixups for
 	// 26.2): set_entity_data carries no type, so the session must remember it.
 	entTypes map[int32]int32
+	// menus maps an open window id → its canonical menu type, for the
+	// window data a client version does not have (windowDataFits).
+	menus map[int32]int32
 }
 
 func (cc *clientConn) send(id int32, data []byte) error {
@@ -257,7 +260,7 @@ func Run(cfg Config, br *bufio.Reader, c net.Conn, name string, uuid [16]byte, u
 	}
 	c.SetDeadline(time.Time{})
 	log.Printf("%s: %q entering play (spawn %.1f,%.1f,%.1f)", c.RemoteAddr(), name, welcome.Spawn.X, welcome.Spawn.Y, welcome.Spawn.Z)
-	return play(cfg, br, &clientConn{c: c, tr: tr, entTypes: map[int32]int32{}}, w, name, uuidStr, roles, welcome, clientView, clientProto)
+	return play(cfg, br, &clientConn{c: c, tr: tr, entTypes: map[int32]int32{}, menus: map[int32]int32{}}, w, name, uuidStr, roles, welcome, clientView, clientProto)
 }
 
 // loginDisconnect sends a clientbound Login Disconnect with a JSON text reason.
@@ -794,6 +797,7 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 			case attach.MsgWindowOpen:
 				var e attach.WindowOpen
 				if json.Unmarshal(payload, &e) == nil {
+					cc.menus[e.ID] = e.Menu
 					p := render770.WindowOpen(e)
 					cc.send(p.ID, p.Body)
 				}
@@ -811,7 +815,7 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 				}
 			case attach.MsgWindowData:
 				var e attach.WindowData
-				if json.Unmarshal(payload, &e) == nil {
+				if json.Unmarshal(payload, &e) == nil && windowDataFits(clientProto, cc.menus[e.ID], e.Prop) {
 					p := render770.WindowData(e)
 					cc.send(p.ID, p.Body)
 				}
@@ -1417,3 +1421,14 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 func f64(b []byte) float64 { return math.Float64frombits(binary.BigEndian.Uint64(b[:8])) }
 
 func f32(b []byte) float32 { return math.Float32frombits(binary.BigEndian.Uint32(b[:4])) }
+
+// menuBrewingStand is the canonical minecraft:menu id of the brewing stand.
+const menuBrewingStand = 11
+
+// windowDataFits reports whether a client's menu has the data slot at all.
+// 26.3's brewing stand added DATA_TOTAL_BREW_TIME (2) and
+// DATA_TOTAL_FUEL_USES (3); a 26.2 client's has two slots and throws on a
+// third, which disconnects it.
+func windowDataFits(clientProto, menu, prop int32) bool {
+	return !(menu == menuBrewingStand && prop >= 2 && clientProto < 777)
+}
