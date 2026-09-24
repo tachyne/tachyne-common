@@ -57,6 +57,7 @@ type Server struct {
 	MOTD         string         // server-list description
 	SID          int            // this gateway's ordinal (StatefulSet pod name)
 	Access       *access.Client // authorization service; nil = open mode (dev only)
+	Auth         *Authenticator // online mode (Mojang session auth); nil = offline, as vanilla's online-mode=false
 
 	Name        string // gateway name stamped into the attach Hello, e.g. "gw-java-770"
 	VersionName string // human-readable release name, e.g. "1.21.5"
@@ -287,11 +288,27 @@ func (s *Server) login(br *bufio.Reader, c net.Conn, hs *handshake, remote strin
 		return
 	}
 	name, err := protocol.ReadString(pkt.Body())
-	if err != nil || name == "" {
-		return
+	if err != nil || !validPlayerName(name) {
+		return // vanilla: "Invalid characters in username" — a protocol error
 	}
-	uuid := offlineUUIDBytes(name)
-	uuidStr := OfflineUUID(name)
+	prof := Profile{UUID: offlineUUIDBytes(name), Name: name}
+	if s.Auth != nil {
+		// Online mode: the account proves itself before anything else is
+		// asked of it, and from here on the connection is encrypted.
+		ec, ebr, p, err := s.Auth.Login(br, c, name)
+		c, br = ec, ebr
+		if err != nil {
+			var ae *authError
+			if errors.As(err, &ae) {
+				loginDisconnect(c, ae.reason)
+			}
+			log.Printf("%s: login %q not authenticated: %v", remote, name, err)
+			return
+		}
+		prof = p
+		log.Printf("%s: UUID of player %s is %s", remote, prof.Name, prof.UUIDString())
+	}
+	name, uuid, uuidStr := prof.Name, prof.UUID, prof.UUIDString()
 
 	// Authorization gate (tachyne-access). Fail closed: no verdict, no entry.
 	roles := []string{}
@@ -315,9 +332,23 @@ func (s *Server) login(br *bufio.Reader, c net.Conn, hs *handshake, remote strin
 		return
 	}
 	log.Printf("%s: login %q allowed (roles %v) — attaching to %s", remote, name, roles, s.Backend)
-	if err := Run(s.sessionConfig(), br, c, name, uuid, uuidStr, roles, hs.proto); err != nil {
+	if err := Run(s.sessionConfig(), br, c, name, uuid, uuidStr, roles, prof.Props, hs.proto); err != nil {
 		log.Printf("%s: session %q ended: %v", c.RemoteAddr(), name, err)
 	}
+}
+
+// validPlayerName is StringUtil.isValidPlayerName: at most 16 characters,
+// none of them a control character, a space or beyond ASCII.
+func validPlayerName(name string) bool {
+	if name == "" || len(name) > 16 {
+		return false
+	}
+	for i := 0; i < len(name); i++ {
+		if name[i] <= 32 || name[i] >= 127 {
+			return false
+		}
+	}
+	return true
 }
 
 // offlineUUIDBytes is the vanilla offline-mode UUIDv3 of "OfflinePlayer:<name>".

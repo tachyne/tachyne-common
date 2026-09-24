@@ -31,11 +31,12 @@ func newCFB8(block cipher.Block, iv []byte, decrypt bool) *cfb8 {
 func (c *cfb8) XORKeyStream(dst, src []byte) {
 	for i := range src {
 		c.block.Encrypt(c.scratch[:], c.iv[:])
-		out := src[i] ^ c.scratch[0]
+		in := src[i] // read before dst is written: dst and src may be the same buffer
+		out := in ^ c.scratch[0]
 		dst[i] = out
 		fed := out
 		if c.decrypt {
-			fed = src[i] // ciphertext feeds the register on decrypt
+			fed = in // ciphertext feeds the register on decrypt
 		}
 		copy(c.iv[:15], c.iv[1:])
 		c.iv[15] = fed

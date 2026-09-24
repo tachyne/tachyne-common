@@ -119,6 +119,9 @@ type Hello struct {
 	UUID    string   `json:"uuid"`
 	Roles   []string `json:"roles"`
 	Edition string   `json:"edition"`
+	// Props are the authenticated game profile's properties (online mode's
+	// "textures": the skin other players see). Empty offline.
+	Props []Property `json:"props,omitempty"`
 	// Purpose selects the session role for a sharded world (empty == "" behaves
 	// as a normal owning/login session, back-compatible):
 	//   ""/"login" — the player's home session on the owning pod

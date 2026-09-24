@@ -45,3 +45,19 @@ func TestCFB8RoundTrip(t *testing.T) {
 		t.Fatalf("round trip failed: %q", pt)
 	}
 }
+
+// EncryptedConn.Read decrypts in place (dst and src are the same buffer):
+// the ciphertext byte must feed the register before it is overwritten. It
+// used to read the plaintext back instead, and every byte after the first
+// came out wrong.
+func TestCFB8InPlaceDecrypt(t *testing.T) {
+	secret := []byte("0123456789abcdef")
+	block, _ := aes.NewCipher(secret)
+	msg := []byte("Failed to verify username! — through the cipher")
+	buf := make([]byte, len(msg))
+	newCFB8(block, secret, false).XORKeyStream(buf, msg)
+	newCFB8(block, secret, true).XORKeyStream(buf, buf)
+	if !bytes.Equal(buf, msg) {
+		t.Fatalf("in-place decrypt gave %q", buf)
+	}
+}

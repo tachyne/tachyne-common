@@ -219,13 +219,16 @@ func (cc *clientConn) sendRaw(id int32, data []byte) error {
 // Run bridges one authorized client to the world over the attach protocol.
 // clientProto is the client's negotiated version; the world is always rendered
 // as canonical 770 and translated to it per connection.
-func Run(cfg Config, br *bufio.Reader, c net.Conn, name string, uuid [16]byte, uuidStr string, roles []string, clientProto int32) error {
+//
+// props are the game profile's properties from online-mode auth (the
+// textures); nil offline.
+func Run(cfg Config, br *bufio.Reader, c net.Conn, name string, uuid [16]byte, uuidStr string, roles []string, props []attach.Property, clientProto int32) error {
 	tr := protocol.TranslatorFor(clientProto)
 	// Attach to the world FIRST — if there is no world, disconnect at login
 	// cleanly instead of mid-join.
 	w, welcome, err := attach.DialSession(cfg.Backend, attach.Hello{
 		Token: cfg.AttachToken, Gateway: fmt.Sprintf("%s/%d", cfg.Name, cfg.SID),
-		Name: name, UUID: uuidStr, Roles: roles, Edition: "java",
+		Name: name, UUID: uuidStr, Roles: roles, Edition: "java", Props: props,
 	})
 	if err != nil {
 		if errors.Is(err, attach.ErrRefused) {
@@ -244,7 +247,7 @@ func Run(cfg Config, br *bufio.Reader, c net.Conn, name string, uuid [16]byte, u
 	// Login Success → client acks → Configuration → Play.
 	ls := append([]byte(nil), uuid[:]...)
 	ls = protocol.AppendString(ls, name)
-	ls = protocol.AppendVarInt(ls, 0)
+	ls = appendProfileProps(ls, props) // the textures: the client's own skin, as the session service signed it
 	lsID, lsB, _ := tr.Clientbound(protocol.StateLogin, loginSuccess, ls)
 	if err := protocol.WriteCompressed(c, lsID, lsB, compressThreshold); err != nil {
 		return err
@@ -265,6 +268,21 @@ func Run(cfg Config, br *bufio.Reader, c net.Conn, name string, uuid [16]byte, u
 
 // loginDisconnect sends a clientbound Login Disconnect with a JSON text reason.
 // The packet's layout is stable across protocol versions.
+// appendProfileProps is a GameProfile's property map on the wire: a count,
+// then name, value and an optional signature for each.
+func appendProfileProps(b []byte, props []attach.Property) []byte {
+	b = protocol.AppendVarInt(b, int32(len(props)))
+	for _, pr := range props {
+		b = protocol.AppendString(b, pr.Name)
+		b = protocol.AppendString(b, pr.Value)
+		b = protocol.AppendBool(b, pr.Signature != "")
+		if pr.Signature != "" {
+			b = protocol.AppendString(b, pr.Signature)
+		}
+	}
+	return b
+}
+
 func loginDisconnect(c net.Conn, msg string) {
 	reason, _ := json.Marshal(map[string]string{"text": msg})
 	protocol.WritePacket(c, 0x00, protocol.AppendString(nil, string(reason)))
