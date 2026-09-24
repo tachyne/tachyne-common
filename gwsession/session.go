@@ -46,6 +46,10 @@ type Config struct {
 	AttachToken  string
 	SID          int   // this gateway's ordinal (Hello stamp)
 	ViewCap      int32 // max honored render distance in chunks; 0 = defaultViewCap
+	// Online is online mode (the front door authenticated the player): the
+	// join packet then tells the client the server is online and enforces
+	// secure chat, so it shows no "chat messages can't be verified" toast.
+	Online bool
 }
 
 // viewCap resolves the deployment's render-distance ceiling: the client's
@@ -433,7 +437,7 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 	// belong to the reader goroutines; the pacer must not race on them.
 	spawnCX, spawnCZ := ccx, ccz
 
-	cc.send(playClientLogin, joinPacket(welcome.EID, welcome.Gamemode, viewDist.Load(), welcome.Death))
+	cc.send(playClientLogin, joinPacket(welcome.EID, welcome.Gamemode, viewDist.Load(), welcome.Death, cfg.Online))
 	cc.send(playClientGameEvent, []byte{13, 0, 0, 0, 0})
 	cc.send(playClientCenterChunk, protocol.AppendVarInt(protocol.AppendVarInt(nil, ccx), ccz))
 	tp := render770.Time(attach.Time{Time: welcome.Time})

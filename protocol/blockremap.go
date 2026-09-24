@@ -85,26 +85,21 @@ func remapClientboundIDs(version, id int32, body []byte) ([]byte, bool) {
 		}
 	case canonJoinGame:
 		// 26.2 (proto 776) INSERTED onlineMode(bool) before the trailing
-		// enforcesSecureChat(bool) in Join. We write onlineMode=false (offline →
-		// the client sends UNSIGNED chat, which it can, and we accept) but
-		// enforcesSecureChat=TRUE, so the client TRUSTS our system-chat relays:
-		// no "messages can't be verified" toast, and clients with "Only Show
-		// Secure Chat" enabled no longer hide other players' messages. This is
-		// the standard offline-server/proxy trick — we can't sign chat (no Mojang
-		// session keys), so we make the client not demand verification. (Kept to
-		// 776+ only: 770-772 have no onlineMode field, and claiming enforcement
-		// to a client with no way to signal offline could break their sending.)
+		// enforcesSecureChat(bool) in Join. The canonical packet's last byte
+		// carries the gateway's online mode and both fields take it, as vanilla
+		// sets them (usesAuthentication / enforceSecureProfile). Online, the
+		// client trusts the server and shows no "chat messages can't be
+		// verified" toast; chat reaches it as [name] system messages, which it
+		// shows whatever its secure-chat setting. (Offline stays false/false:
+		// enforcement there once hid other players' "<name>" system lines, and
+		// an offline client has no keys to meet it with.)
 		if version >= 776 {
 			n := len(body)
 			out := make([]byte, 0, n+1)
+			online := body[n-1]              // the canonical enforcesSecureChat byte: the gateway's online mode
 			out = append(out, body[:n-1]...) // everything before the 770 enforcesSecureChat byte
-			out = append(out, 0x00)          // onlineMode = false (offline; client sends unsigned)
-			out = append(out, 0x00)          // enforcesSecureChat = false — the STANDARD offline value.
-			// NB: we tried enforcesSecureChat=true to hide the "can't be verified"
-			// toast, but that made clients STRICTLY hide other players' unsigned
-			// "<name>" messages regardless of the "Only Show Secure Chat" toggle.
-			// false restores the vanilla offline behaviour (toast shown, but chat
-			// visible when the client's Only-Show-Secure-Chat is off).
+			out = append(out, online)        // onlineMode (vanilla: usesAuthentication)
+			out = append(out, online)        // enforcesSecureChat: online = yes, offline = the standard false
 			return out, false
 		}
 	case canonUpdateTime:

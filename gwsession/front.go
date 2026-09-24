@@ -82,6 +82,7 @@ func (s *Server) sessionConfig() Config {
 		Backend: s.Backend, WorldPattern: s.WorldPattern,
 		AttachToken: s.AttachToken, SID: s.SID,
 		ViewCap: s.ViewCap,
+		Online:  s.Auth != nil,
 	}
 }
 
@@ -251,6 +252,7 @@ func (s *Server) status(br *bufio.Reader, c net.Conn, clientProto int32) {
 				st.Players.Sample = append(st.Players.Sample, sampleName{Name: pl.Name, ID: id})
 			}
 			st.Description.Text = s.MOTD
+			st.EnforcesSecureChat = s.Auth != nil // no "chat not verified" mark in the server list
 			payload, err := json.Marshal(st)
 			if err != nil {
 				return

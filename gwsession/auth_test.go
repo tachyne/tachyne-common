@@ -227,3 +227,23 @@ func TestValidPlayerName(t *testing.T) {
 		}
 	}
 }
+
+// An online gateway says so in the server list: secure chat is enforced, so
+// the client marks nothing as unverifiable.
+func TestOnlineStatusEnforcesSecureChat(t *testing.T) {
+	addr := onlineServer(t, &fakeSessions{})
+	c, br := dialHandshake(t, addr, 777, intentStatus)
+	protocol.WritePacket(c, statusPktResponse, nil)
+	pkt, err := protocol.ReadPacket(br)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, _ := protocol.ReadString(pkt.Body())
+	var st statusJSON
+	if err := json.Unmarshal([]byte(payload), &st); err != nil {
+		t.Fatal(err)
+	}
+	if !st.EnforcesSecureChat {
+		t.Error("an online gateway's status does not enforce secure chat")
+	}
+}

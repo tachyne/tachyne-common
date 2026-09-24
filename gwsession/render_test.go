@@ -14,7 +14,7 @@ import (
 // composition (an extraction once dropped a single AppendString and broke
 // every real client). Walks the exact 770 Login (play) layout.
 func TestJoinPacketReparse(t *testing.T) {
-	b := joinPacket(77, 1, 6, nil)
+	b := joinPacket(77, 1, 6, nil, false)
 	r := bytes.NewReader(b)
 
 	i32 := func(what string) int32 {
