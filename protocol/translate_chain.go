@@ -76,7 +76,9 @@ func (s idRemap) down(state State, id int32, body []byte) (int32, []byte, bool) 
 		lid = x
 	}
 	if rw := stepBody[s.upper].sbDown[state][lid]; rw != nil {
-		body = rw(state, body)
+		if body = rw(state, body); body == nil {
+			return lid, nil, true // the rewriter drops it: nothing below this version has it
+		}
 	}
 	return lid, body, false
 }

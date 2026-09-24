@@ -196,3 +196,33 @@ func TestConfigRegistries777(t *testing.T) {
 		t.Error("the base and 26.x registries still go to both")
 	}
 }
+
+// 26.3 inserted CHANGE_DESTROY_DIRECTION at 1: every later player action
+// arrives one higher and must come down one, and the new action is dropped.
+func TestPlayerAction777(t *testing.T) {
+	tail := AppendVarInt(append(AppendPosition(nil, 1, 64, -2), 1), 9) // pos, face, sequence
+	for in, want := range map[int32]int32{0: 0, 2: 1, 3: 2, 4: 3, 5: 4, 6: 5, 7: 6, 8: 7} {
+		out := rewritePlayerAction777(StatePlay, append(AppendVarInt(nil, in), tail...))
+		r := bytes.NewReader(out)
+		got, _ := ReadVarInt(r)
+		if got != want || !bytes.Equal(out[len(out)-r.Len():], tail) {
+			t.Errorf("26.3 action %d -> %d (rest % x), want %d", in, got, out[len(out)-r.Len():], want)
+		}
+	}
+	if rewritePlayerAction777(StatePlay, append(AppendVarInt(nil, 1), tail...)) != nil {
+		t.Error("CHANGE_DESTROY_DIRECTION should be dropped")
+	}
+	// Through the whole chain: a 26.3 client's "finished breaking" reaches
+	// the canonical block_dig as STOP_DESTROY_BLOCK (2), not DROP_ALL (3).
+	tr := TranslatorFor(777)
+	id, out, drop := tr.Serverbound(StatePlay, 41, append(AppendVarInt(nil, 3), tail...))
+	if drop {
+		t.Fatal("a stop-destroy was dropped")
+	}
+	if got, _ := ReadVarInt(bytes.NewReader(out)); got != 2 {
+		t.Errorf("stop-destroy arrived as action %d (packet 0x%02x), want 2", got, id)
+	}
+	if _, _, drop := tr.Serverbound(StatePlay, 41, append(AppendVarInt(nil, 1), tail...)); !drop {
+		t.Error("CHANGE_DESTROY_DIRECTION went through the chain")
+	}
+}

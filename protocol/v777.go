@@ -32,6 +32,7 @@ const (
 	signUpdate776          = 61 // serverbound
 	acceptTeleportation776 = 0  // serverbound
 	swing776               = 63 // serverbound: 26.3's punch maps here (protomap_777_gen.go)
+	playerAction776        = 41 // serverbound
 
 	// SwingAnimation777 is the clientbound swing_animation id at 26.3.
 	SwingAnimation777 = 123
@@ -59,6 +60,7 @@ func init() {
 				signUpdate776:          rewriteSignUpdate777,
 				acceptTeleportation776: rewriteAcceptTeleportation777,
 				swing776:               rewritePunchToSwing777,
+				playerAction776:        rewritePlayerAction777,
 			},
 		},
 	}
@@ -496,4 +498,26 @@ func rewriteChunkLightBitSets777(_ State, body []byte) []byte {
 	rest := make([]byte, r.Len())
 	r.Read(rest)
 	return append(out, rest...)
+}
+
+// rewritePlayerAction777: 26.3 inserted CHANGE_DESTROY_DIRECTION at 1 in
+// ServerboundPlayerActionPacket.Action, which moved every later action up
+// one. Without this a 26.3 client's "finished breaking" (3) read as "drop
+// the whole stack", and its drop, release and swap keys each as the next
+// one along. The new action has nothing to map to below 26.3 and is dropped.
+// Body: VarInt action, i64 position, u8 face, VarInt sequence.
+func rewritePlayerAction777(_ State, body []byte) []byte {
+	r := bytes.NewReader(body)
+	action, err := ReadVarInt(r)
+	if err != nil {
+		return body
+	}
+	switch {
+	case action == 1:
+		return nil
+	case action >= 2:
+		action--
+	}
+	rest := body[len(body)-r.Len():]
+	return append(AppendVarInt(nil, action), rest...)
 }
