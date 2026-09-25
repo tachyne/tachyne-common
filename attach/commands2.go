@@ -116,3 +116,28 @@ type NautilusVariant struct {
 	EID     int32 `json:"eid"`
 	Variant int32 `json:"variant"`
 }
+
+// MsgBlockDisplay (w→gw): what a vault, a trial spawner or a half-brushed
+// suspicious block shows (their update tags): the vault's display item
+// (VaultSharedData.display_item), the mob turning in a trial spawner
+// (TrialSpawnerStateData.spawn_data), the item peeking out of suspicious
+// sand or gravel (BrushableBlockEntity.item + hit_direction).
+const MsgBlockDisplay = 0x97
+
+// Block display kinds.
+const (
+	DisplayVault        = 1
+	DisplayTrialSpawner = 2
+	DisplayBrushable    = 3
+)
+
+// BlockDisplay is one block entity's display state. Name is an item id
+// (vault, brushable) or an entity type id (trial spawner); "" shows nothing.
+type BlockDisplay struct {
+	Pos    [3]int32 `json:"pos"`
+	Kind   int32    `json:"kind"`
+	Name   string   `json:"name,omitempty"`
+	Count  int32    `json:"count,omitempty"`
+	HitDir int32    `json:"hit_dir,omitempty"` // brushable: Direction 3D value + 1 (0 = none)
+	NextAt int64    `json:"next_at,omitempty"` // trial spawner: next_mob_spawns_at while active
+}

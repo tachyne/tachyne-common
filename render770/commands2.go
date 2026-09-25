@@ -49,3 +49,57 @@ func CommandSuggestions(e attach.Suggestions) Packet {
 	}
 	return Packet{IDCommandSuggestions, b}
 }
+
+// Block entity type ids in the canonical (1.21.11) numbering the chain maps
+// from.
+const (
+	beTypeBrushable    = 41
+	beTypeTrialSpawner = 44
+	beTypeVault        = 45
+)
+
+// BlockDisplay renders block_entity_data carrying a vault's, trial spawner's
+// or suspicious block's update tag.
+func BlockDisplay(e attach.BlockDisplay) (Packet, bool) {
+	b := protocol.AppendPosition(nil, int(e.Pos[0]), int(e.Pos[1]), int(e.Pos[2]))
+	item := func(b []byte, name string) []byte {
+		b = protocol.NBTString(b, "id", e.Name)
+		return protocol.NBTEnd(protocol.NBTInt(b, "count", max(e.Count, 1)))
+	}
+	switch e.Kind {
+	case attach.DisplayVault:
+		b = protocol.AppendVarInt(b, beTypeVault)
+		b = append(b, protocol.NBTRoot()...)
+		b = protocol.NBTCompound(b, "shared_data")
+		if e.Name != "" {
+			b = item(protocol.NBTCompound(b, "display_item"), e.Name)
+		}
+		b = protocol.NBTEnd(protocol.NBTEnd(b))
+	case attach.DisplayTrialSpawner:
+		b = protocol.AppendVarInt(b, beTypeTrialSpawner)
+		b = append(b, protocol.NBTRoot()...)
+		if e.NextAt != 0 {
+			b = protocol.NBTLong(b, "next_mob_spawns_at", e.NextAt)
+		}
+		if e.Name != "" {
+			b = protocol.NBTCompound(b, "spawn_data")
+			b = protocol.NBTCompound(b, "entity")
+			b = protocol.NBTEnd(protocol.NBTString(b, "id", e.Name))
+			b = protocol.NBTEnd(b)
+		}
+		b = protocol.NBTEnd(b)
+	case attach.DisplayBrushable:
+		b = protocol.AppendVarInt(b, beTypeBrushable)
+		b = append(b, protocol.NBTRoot()...)
+		if e.HitDir > 0 {
+			b = protocol.NBTByte(b, "hit_direction", int8(e.HitDir-1))
+		}
+		if e.Name != "" {
+			b = item(protocol.NBTCompound(b, "item"), e.Name)
+		}
+		b = protocol.NBTEnd(b)
+	default:
+		return Packet{}, false
+	}
+	return Packet{IDBlockEntityData, b}, true
+}

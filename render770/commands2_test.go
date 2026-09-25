@@ -24,3 +24,20 @@ func TestCommandSuggestionsMatchOracle(t *testing.T) {
 	w = protocol.AppendBool(protocol.AppendString(w, "keep_inventory"), false)
 	eq(t, "suggestions", CommandSuggestions(attach.Suggestions{ID: 4, Start: 10, Length: 2, Matches: []string{"keep_inventory"}}), IDCommandSuggestions, w)
 }
+
+// The vault's update tag: shared_data.display_item as an item compound.
+func TestBlockDisplayVault(t *testing.T) {
+	p, ok := BlockDisplay(attach.BlockDisplay{Pos: [3]int32{1, 2, 3}, Kind: attach.DisplayVault, Name: "minecraft:diamond", Count: 2})
+	if !ok || p.ID != IDBlockEntityData {
+		t.Fatal("no packet")
+	}
+	w := protocol.AppendPosition(nil, 1, 2, 3)
+	w = protocol.AppendVarInt(w, 45)
+	w = append(w, protocol.NBTRoot()...)
+	w = protocol.NBTCompound(w, "shared_data")
+	w = protocol.NBTCompound(w, "display_item")
+	w = protocol.NBTString(w, "id", "minecraft:diamond")
+	w = protocol.NBTEnd(protocol.NBTInt(w, "count", 2))
+	w = protocol.NBTEnd(protocol.NBTEnd(w))
+	eq(t, "vault", p, IDBlockEntityData, w)
+}

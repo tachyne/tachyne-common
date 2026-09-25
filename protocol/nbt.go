@@ -16,6 +16,7 @@ const (
 	nbtByte     = 1
 	nbtShort    = 2
 	nbtInt      = 3
+	nbtLong     = 4
 	nbtFloat    = 5
 	nbtDouble   = 6
 	nbtString   = 8
@@ -206,4 +207,10 @@ func orEOF(err error) error {
 		return err
 	}
 	return io.ErrUnexpectedEOF
+}
+
+// NBTLong writes a named TAG_Long.
+func NBTLong(b []byte, name string, v int64) []byte {
+	b = nbtName(append(b, nbtLong), name)
+	return AppendI64(b, v)
 }

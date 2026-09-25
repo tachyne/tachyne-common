@@ -864,6 +864,13 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 					p := render770.Hurt(e)
 					cc.send(p.ID, p.Body)
 				}
+			case attach.MsgBlockDisplay:
+				var e attach.BlockDisplay
+				if json.Unmarshal(payload, &e) == nil {
+					if p, ok := render770.BlockDisplay(e); ok {
+						cc.send(p.ID, p.Body)
+					}
+				}
 			case attach.MsgNautilusVariant:
 				var e attach.NautilusVariant
 				if json.Unmarshal(payload, &e) == nil {
