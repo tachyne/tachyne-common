@@ -778,7 +778,53 @@ const (
 	metaTypeOptBlockState = 15 // Optional<BlockState>: a single VarInt, 0 = empty
 	metaTypeOptUInt       = 20 // OptionalInt: VarInt value+1, 0 = empty; → 19 for clients ≥773
 	metaTypePose          = 21 // → 20 for clients ≥773
+	metaTypeParticles     = 18 // List<ParticleOptions> (a living entity's effect swirls); → 17 for clients ≥773
 )
+
+// Canonical particle ids that can ride a PARTICLES entry: entity_effect
+// carries an ARGB int, the rest (MobEffect.createParticleOptions overrides)
+// carry nothing.
+const (
+	particleEntityEffect770 = 20
+	particleSmallGust770    = 24
+	particleInfested770     = 32
+	particleItemSlime770    = 49
+	particleItemCobweb770   = 50
+	particleRaidOmen770     = 110
+	particleTrialOmen770    = 111
+)
+
+// copyMetaParticles walks a PARTICLES value — VarInt count, then per
+// particle its type id and payload — mapping each id through mapID. Only
+// the particles a mob effect shows are understood; anything else reports
+// false so the caller bails with the body untouched.
+func copyMetaParticles(r *bytes.Reader, out *[]byte, mapID func(int32) int32) bool {
+	n, err := ReadVarInt(r)
+	if err != nil || n < 0 || n > 64 {
+		return false
+	}
+	*out = AppendVarInt(*out, n)
+	for i := int32(0); i < n; i++ {
+		id, err := ReadVarInt(r)
+		if err != nil {
+			return false
+		}
+		*out = AppendVarInt(*out, mapID(id))
+		switch id {
+		case particleEntityEffect770: // ColorParticleOption: one ARGB int
+			var c [4]byte
+			if _, err := io.ReadFull(r, c[:]); err != nil {
+				return false
+			}
+			*out = append(*out, c[:]...)
+		case particleSmallGust770, particleInfested770, particleItemSlime770, particleItemCobweb770,
+			particleRaidOmen770, particleTrialOmen770:
+		default:
+			return false
+		}
+	}
+	return true
+}
 
 // remapEntityMeta rewrites set_entity_data for a translated client: item ids
 // inside Slot entries are remapped, and the pose serializer TYPE id shifts
@@ -816,7 +862,7 @@ func remapEntityMeta(version int32, body []byte) []byte {
 		// (it tracks eid→type from spawn packets).
 		out = append(out, idx)
 		wireType := typ
-		if (typ == metaTypePose || typ == VillagerDataSerializer770 || typ == metaTypeOptUInt) && version >= 773 {
+		if (typ == metaTypePose || typ == VillagerDataSerializer770 || typ == metaTypeOptUInt || typ == metaTypeParticles) && version >= 773 {
 			wireType = typ - 1 // COMPOUND_TAG (16) left the serializer list in 1.21.6
 		}
 		if typ == ArmadilloStateSerializer770 {
@@ -859,6 +905,10 @@ func remapEntityMeta(version int32, body []byte) []byte {
 			out = append(out, f[:]...)
 		case metaTypeSlot:
 			if !copyFullSlot(r, &out, remapItem, version, false) {
+				return body
+			}
+		case metaTypeParticles:
+			if !copyMetaParticles(r, &out, func(id int32) int32 { return remapParticleID(version, id) }) {
 				return body
 			}
 		case metaTypeBlockPos:
@@ -1122,6 +1172,10 @@ func rewriteMetaEntries(body []byte, mapEntry func(idx byte, typ int32) (byte, i
 					return body
 				}
 				out = append(out, p[:]...)
+			}
+		case metaTypeParticles: // canonical ids, carried as they are
+			if !copyMetaParticles(r, &out, func(id int32) int32 { return id }) {
+				return body
 			}
 		default:
 			if isVariantHolderSerializer(typ) { // a holder is one varint
