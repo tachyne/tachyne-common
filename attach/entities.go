@@ -1,5 +1,7 @@
 package attach
 
+import "encoding/json"
+
 // Entity/presence frames (attach v2): the hub's multiplayer state as domain
 // events, so any gateway renders any player/mob for any client version.
 // Positions are absolute; angles are degrees.
@@ -94,6 +96,11 @@ type Chat struct {
 	// clients apply to SYSTEM messages matching the "<name> message" pattern
 	// (hiding other players' unsigned lines). Ignored when ActionBar is set.
 	Sender string `json:"sender,omitempty"`
+	// Component, when set, is a JSON text component (/tellraw) already
+	// resolved for this player (selectors and scores filled in); it is
+	// sent as the system message in place of Text. Text stays the plain
+	// fallback for renderers that cannot draw a component.
+	Component json.RawMessage `json:"component,omitempty"`
 }
 
 // Interaction frames (attach v2.1): block breaking/placing from gateway

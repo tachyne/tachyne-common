@@ -67,7 +67,13 @@ func Chat(e attach.Chat) Packet {
 		b = protocol.AppendBool(b, false)            // target: absent
 		return Packet{IDProfilelessChat, b}
 	}
-	return Packet{IDSystemChat, protocol.AppendBool(chatNBT(e.Text), e.ActionBar)}
+	body := chatNBT(e.Text)
+	if len(e.Component) > 0 && e.Sender == "" {
+		if nbt, ok := protocol.TextComponentNBT(e.Component); ok {
+			body = nbt // a /tellraw component; plain text if it would not convert
+		}
+	}
+	return Packet{IDSystemChat, protocol.AppendBool(body, e.ActionBar)}
 }
 
 // IDDisconnect is the PLAY-state disconnect packet. Its id falls between

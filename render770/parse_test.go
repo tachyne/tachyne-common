@@ -239,3 +239,17 @@ func TestStopSoundRenders(t *testing.T) {
 		}
 	}
 }
+
+// A /tellraw component is sent as the system message's NBT; a broken one
+// falls back to the plain text.
+func TestChatComponent(t *testing.T) {
+	p := Chat(attach.Chat{Text: "plain", Component: []byte(`{"text":"hi"}`)})
+	want := append([]byte{0x0a, 8, 0, 4, 't', 'e', 'x', 't', 0, 2, 'h', 'i', 0}, 0)
+	if p.ID != IDSystemChat || !bytes.Equal(p.Body, want) {
+		t.Fatalf("component chat %x, want %x", p.Body, want)
+	}
+	p = Chat(attach.Chat{Text: "plain", Component: []byte(`{`)})
+	if !bytes.Equal(p.Body, append(chatNBT("plain"), 0)) {
+		t.Fatalf("a bad component did not fall back: %x", p.Body)
+	}
+}
