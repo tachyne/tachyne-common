@@ -57,3 +57,14 @@ const (
 
 // CanonExplode is explode's canonical 770 packet id; the chain renumbers it.
 const CanonExplode = 0x20
+
+// AddTransientBlock777 is 26.3's add_transient_block: the position, then the
+// block state at the client's version. Its id is 0x25 on 26.3; ok false for
+// a client that has no such packet.
+func AddTransientBlock777(version int32, x, y, z int, state int32) (int32, []byte, bool) {
+	if version < 777 {
+		return 0, nil, false
+	}
+	b := AppendPosition(nil, x, y, z)
+	return 0x25, AppendVarInt(b, RemapID(RegBlockState, version, state)), true
+}

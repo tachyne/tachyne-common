@@ -32,3 +32,14 @@ func TestExplode26xLayout(t *testing.T) {
 		t.Fatalf("26.2 body is %d bytes, want %d", len(g), len(w)-1)
 	}
 }
+
+func TestAddTransientBlock777(t *testing.T) {
+	if _, _, ok := AddTransientBlock777(776, 0, 0, 0, 1); ok {
+		t.Fatal("26.2 has no add_transient_block")
+	}
+	id, b, ok := AddTransientBlock777(777, 1, 64, -2, 1)
+	want := AppendVarInt(AppendPosition(nil, 1, 64, -2), RemapID(RegBlockState, 777, 1))
+	if !ok || id != 0x25 || !bytes.Equal(b, want) {
+		t.Fatalf("id %#x body %x, want 0x25 %x", id, b, want)
+	}
+}

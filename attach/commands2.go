@@ -47,3 +47,17 @@ const MsgTickingStep = 0x90
 type TickingStep struct {
 	Steps int32 `json:"steps"`
 }
+
+// MsgTransientBlock (w→gw): a falling block has just landed here
+// (ClientboundAddTransientBlockPacket, 26.3), sent with its block update so
+// the client draws the block without a frame's gap. Older clients have no
+// such packet and get the block update alone.
+const MsgTransientBlock = 0x91
+
+// TransientBlock is the landed block: position and canonical state.
+type TransientBlock struct {
+	X     int32 `json:"x"`
+	Y     int32 `json:"y"`
+	Z     int32 `json:"z"`
+	State int32 `json:"state"`
+}
