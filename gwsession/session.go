@@ -95,6 +95,7 @@ const (
 	playClientChunkBatchFinish = 0x0b // VarInt batch size; client replies chunk_batch_received
 	playClientSyncPosition     = 0x41
 	playClientKeepAlive        = 0x26
+	playClientBundleDelimiter  = 0x00
 	playClientUpdateTime       = 0x6a
 
 	playServerChatMessage  = 0x07
@@ -109,6 +110,10 @@ const (
 	playServerKeepAlive    = 0x1a // keep_alive reply
 	playServerStatusOnly   = 0x1f // move_player_status_only: on-ground / against-wall flags
 	playServerPingRequest  = 0x24 // ping_request (the F3 debug ping graph)
+	playServerAbilities    = 0x26 // player_abilities: the flying bit
+	playServerLoaded       = 0x2a // player_loaded: the client has its world
+	playServerSeenAdv      = 0x30 // seen_advancements: a tab opened
+	playClientSelectAdvTab = 0x4e // select_advancements_tab
 	playClientPongResponse = 0x37 // pong_response
 
 	// ServerCommonPacketListenerImpl.KEEPALIVE_LIMIT: a keep-alive still
@@ -617,13 +622,23 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 		// its requirement index then serves every incremental grant.
 		var advTree *attach.AdvTree
 		var advReqs map[string][]string
+		var frames attach.FrameQueue // expands MsgBundle in place
 		for {
-			typ, payload, err := attach.ReadFrame(b.Get())
+			typ, payload, err := frames.Next(b.Get())
 			if err != nil {
 				errs <- fmt.Errorf("world: %w", err)
 				return
 			}
 			switch typ {
+			case attach.MsgBundle:
+				// A spawn and its state: between two bundle_delimiter packets
+				// the client applies them together. The frames come next from
+				// the queue, then the end marker closes the bundle.
+				if frames.Expand(payload) {
+					cc.send(playClientBundleDelimiter, nil)
+				}
+			case attach.MsgBundleEnd:
+				cc.send(playClientBundleDelimiter, nil)
 			case attach.MsgChunk:
 				// Queue the promise (ordered) and the decode job (raced);
 				// blocking on full queues is the backpressure path.
@@ -1254,6 +1269,7 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 	// fifteen seconds; if the last is still unanswered when the next is due,
 	// the client has timed out. The replies give the latency the tab list
 	// shows.
+	var selectedTab string // the advancement tab the client last opened
 	var kaChallenge, kaSent atomic.Int64
 	var kaPending atomic.Bool
 	var latency atomic.Int32
@@ -1322,6 +1338,29 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 				// handlePingRequest: the same number straight back.
 				if len(pkt.Data) >= 8 {
 					cc.send(playClientPongResponse, pkt.Data[:8])
+				}
+				continue
+			case playServerAbilities:
+				// handlePlayerAbilities: the client's flying bit (0x02); the
+				// world decides whether the player may fly at all.
+				if len(pkt.Data) >= 1 {
+					b.Write(attach.MsgPlayerAbilities, attach.PlayerAbilities{Flying: pkt.Data[0]&0x02 != 0})
+				}
+				continue
+			case playServerLoaded:
+				b.Write(attach.MsgPlayerLoaded, attach.PlayerLoaded{})
+				continue
+			case playServerSeenAdv:
+				// handleSeenAdvancements OPENED_TAB → setSelectedTab, which
+				// answers with select_advancements_tab when the tab changes.
+				// The selection is per connection (PlayerAdvancements forgets
+				// it on logout), so the gateway keeps it.
+				r := bytes.NewReader(pkt.Data)
+				if act, err := protocol.ReadVarInt(r); err == nil && act == 0 {
+					if tab, err := protocol.ReadString(r); err == nil && tab != selectedTab {
+						selectedTab = tab
+						cc.send(playClientSelectAdvTab, protocol.AppendString(protocol.AppendBool(nil, true), tab))
+					}
 				}
 				continue
 			case playServerStatusOnly:

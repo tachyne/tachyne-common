@@ -49,6 +49,24 @@ type GameRuleValues struct {
 	Values map[string]string `json:"values"`
 }
 
+// MsgPlayerAbilities (gw→w): the client's flying bit
+// (ServerboundPlayerAbilitiesPacket). The world keeps it only if the player
+// may fly.
+const MsgPlayerAbilities = 0x86
+
+// PlayerAbilities is the client's claim.
+type PlayerAbilities struct {
+	Flying bool `json:"flying,omitempty"`
+}
+
+// MsgPlayerLoaded (gw→w): the client has loaded its world
+// (ServerboundPlayerLoadedPacket). Until then — or for 60 ticks — a joined
+// or respawned player cannot be hurt.
+const MsgPlayerLoaded = 0x87
+
+// PlayerLoaded carries nothing.
+type PlayerLoaded struct{}
+
 // MsgPlayerInfoLatency (w→gw): listed players' latencies — player_info_update
 // UPDATE_LATENCY, which PlayerList sends every 600 ticks for everyone.
 const MsgPlayerInfoLatency = 0x82
