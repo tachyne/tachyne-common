@@ -52,3 +52,15 @@ func TestWorldFXAndBlockSet(t *testing.T) {
 	wantB = protocol.AppendVarInt(wantB, 86)
 	eq(t, "blockset", BlockSet(attach.BlockSet{X: 5, Y: 64, Z: -9, State: 86}), IDBlockUpdate, wantB)
 }
+
+func TestSoundEntityMatchesOracle(t *testing.T) {
+	w := protocol.AppendVarInt(nil, 0)
+	w = protocol.AppendString(w, "minecraft:entity.sheep.shear")
+	w = protocol.AppendBool(w, false)
+	w = protocol.AppendVarInt(w, 7) // players
+	w = protocol.AppendVarInt(w, 42)
+	w = protocol.AppendF32(w, 1)
+	w = protocol.AppendF32(w, 1)
+	w = protocol.AppendI64(w, 0)
+	eq(t, "sound entity", SoundEntity(attach.Sound{Name: "minecraft:entity.sheep.shear", Category: 7, EID: 42, Volume: 1, Pitch: 1}), IDSoundEntity, w)
+}

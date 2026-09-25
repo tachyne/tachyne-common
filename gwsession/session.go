@@ -942,6 +942,9 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 				var e attach.Sound
 				if json.Unmarshal(payload, &e) == nil {
 					p := render770.Sound(e)
+					if e.EID != 0 {
+						p = render770.SoundEntity(e) // follows its entity
+					}
 					cc.send(p.ID, p.Body)
 				}
 			case attach.MsgStopSound:

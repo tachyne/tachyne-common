@@ -52,6 +52,22 @@ func Sound(e attach.Sound) Packet {
 	return Packet{IDSoundEffect, protocol.AppendI64(b, 0)} // seed 0: client picks variants
 }
 
+// IDSoundEntity is sound_entity at canonical 770.
+const IDSoundEntity = 0x6d
+
+// SoundEntity renders sound_entity: the sound inline, its source, the entity
+// it follows, volume, pitch and seed.
+func SoundEntity(e attach.Sound) Packet {
+	b := protocol.AppendVarInt(nil, 0)
+	b = protocol.AppendString(b, e.Name)
+	b = protocol.AppendBool(b, false)
+	b = protocol.AppendVarInt(b, e.Category)
+	b = protocol.AppendVarInt(b, e.EID)
+	b = protocol.AppendF32(b, e.Volume)
+	b = protocol.AppendF32(b, e.Pitch)
+	return Packet{IDSoundEntity, protocol.AppendI64(b, 0)}
+}
+
 // Particles renders level_particles for a payload-free particle type.
 func Particles(e attach.Particles) Packet {
 	b := protocol.AppendBool(nil, true) // long distance

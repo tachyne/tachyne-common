@@ -610,6 +610,10 @@ type Sound struct {
 	Z        float64 `json:"z"`
 	Volume   float32 `json:"volume"`
 	Pitch    float32 `json:"pitch"`
+	// EID, when set, attaches the sound to that entity (sound_entity, as
+	// Level.playSound(null, entity, …) sends it): it follows the entity as it
+	// moves. Renderers without that keep the position.
+	EID int32 `json:"eid,omitempty"`
 }
 
 // Particles is a payload-free particle burst. PID is the CANONICAL (770)
