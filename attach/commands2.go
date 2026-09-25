@@ -1,0 +1,49 @@
+package attach
+
+// MsgTransfer (w→gw): send the client to another server —
+// ClientboundTransferPacket (/transfer).
+const MsgTransfer = 0x8c
+
+// Transfer is where to.
+type Transfer struct {
+	Host string `json:"host"`
+	Port int32  `json:"port"`
+}
+
+// MsgCamera (w→gw): look through another entity's eyes — set_camera, which
+// ServerPlayer.setCamera sends a spectator (/spectate, or a left-click on an
+// entity in spectator mode). The player's own id returns the camera.
+const MsgCamera = 0x8d
+
+// Camera is the entity to look through.
+type Camera struct {
+	EID int32 `json:"eid"`
+}
+
+// MsgTeleportToEntity (gw→w): the spectator hotbar menu's teleport
+// (ServerboundTeleportToEntityPacket).
+const MsgTeleportToEntity = 0x8e
+
+// TeleportToEntity names the entity by UUID.
+type TeleportToEntity struct {
+	UUID [16]byte `json:"uuid"`
+}
+
+// MsgTickingState (w→gw): the server's tick rate and whether the game is
+// frozen (ClientboundTickingStatePacket, from /tick).
+const MsgTickingState = 0x8f
+
+// TickingState is /tick rate and /tick freeze.
+type TickingState struct {
+	Rate   float32 `json:"rate"`
+	Frozen bool    `json:"frozen,omitempty"`
+}
+
+// MsgTickingStep (w→gw): frozen-game steps left (ClientboundTickingStepPacket,
+// /tick step).
+const MsgTickingStep = 0x90
+
+// TickingStep is the number of steps.
+type TickingStep struct {
+	Steps int32 `json:"steps"`
+}

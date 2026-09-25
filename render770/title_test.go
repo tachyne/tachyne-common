@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/tachyne/tachyne-common/attach"
+	"github.com/tachyne/tachyne-common/protocol"
 )
 
 // A title is up to three packets, and vanilla sends the timing FIRST so the
@@ -90,5 +91,15 @@ func TestDisconnectCarriesTheReason(t *testing.T) {
 	// It is a text component, like every other reason-bearing packet here.
 	if p.Body[0] != 0x08 {
 		t.Errorf("body starts %#x, want a nameless TAG_String", p.Body[0])
+	}
+}
+
+// /title's text is a component: its colour and weight reach the screen.
+func TestTitleComponent(t *testing.T) {
+	raw := []byte(`{"text":"Hi","color":"red","bold":true}`)
+	ps := TitlePackets(attach.Title{Title: "Hi", TitleJSON: raw})
+	nbt, ok := protocol.TextComponentNBT(raw)
+	if !ok || len(ps) != 1 || !bytes.Equal(ps[0].Body, nbt) {
+		t.Fatalf("title body %x, want the component %x", ps[0].Body, nbt)
 	}
 }

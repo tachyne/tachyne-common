@@ -857,10 +857,13 @@ const (
 )
 
 type BossBar struct {
-	UUID   [16]byte `json:"uuid"`
-	Op     int32    `json:"op"`
-	Title  string   `json:"title,omitempty"`
-	Health float32  `json:"health,omitempty"` // 0..1 fill fraction
+	UUID  [16]byte `json:"uuid"`
+	Op    int32    `json:"op"`
+	Title string   `json:"title,omitempty"`
+	// TitleJSON is the name as a JSON text component (/bossbar's
+	// ComponentArgument); rendered instead of Title when set.
+	TitleJSON json.RawMessage `json:"title_json,omitempty"`
+	Health    float32         `json:"health,omitempty"` // 0..1 fill fraction
 	// BossEvent's own look. Each boss has its own: the dragon is pink with
 	// music and world fog, the wither purple and screen-darkening, a raid red
 	// and notched into ten. Zero values are vanilla's defaults (pink, a solid
@@ -1440,11 +1443,16 @@ const MsgTitle = 0x79 // w→gw
 type Title struct {
 	Title    string `json:"title,omitempty"`
 	Subtitle string `json:"subtitle,omitempty"`
-	FadeIn   int32  `json:"fade_in,omitempty"`  // ticks
-	Stay     int32  `json:"stay,omitempty"`     // ticks
-	FadeOut  int32  `json:"fade_out,omitempty"` // ticks
-	Clear    bool   `json:"clear,omitempty"`
-	Reset    bool   `json:"reset,omitempty"`
+	// TitleJSON / SubtitleJSON are the text as a JSON text component (what
+	// /title takes); when set they are rendered instead of the plain text,
+	// which stays for renderers that draw plain strings (Bedrock).
+	TitleJSON    json.RawMessage `json:"title_json,omitempty"`
+	SubtitleJSON json.RawMessage `json:"subtitle_json,omitempty"`
+	FadeIn       int32           `json:"fade_in,omitempty"`  // ticks
+	Stay         int32           `json:"stay,omitempty"`     // ticks
+	FadeOut      int32           `json:"fade_out,omitempty"` // ticks
+	Clear        bool            `json:"clear,omitempty"`
+	Reset        bool            `json:"reset,omitempty"`
 }
 
 // MsgDefaultSpawn is the world's spawn point

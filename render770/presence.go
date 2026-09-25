@@ -104,7 +104,7 @@ func BossBar(e attach.BossBar) Packet {
 	switch e.Op {
 	case attach.BossBarAdd:
 		b = protocol.AppendVarInt(b, 0)
-		b = append(b, chatNBT(e.Title)...)
+		b = append(b, componentOr(e.TitleJSON, e.Title)...)
 		b = protocol.AppendF32(b, e.Health)
 		b = protocol.AppendVarInt(b, e.Color)
 		b = protocol.AppendVarInt(b, e.Overlay)
@@ -114,7 +114,7 @@ func BossBar(e attach.BossBar) Packet {
 		b = protocol.AppendF32(b, e.Health)
 	case attach.BossBarTitle: // UpdateNameOperation
 		b = protocol.AppendVarInt(b, 3)
-		b = append(b, chatNBT(e.Title)...)
+		b = append(b, componentOr(e.TitleJSON, e.Title)...)
 	case attach.BossBarStyle: // UpdateStyleOperation
 		b = protocol.AppendVarInt(b, 4)
 		b = protocol.AppendVarInt(b, e.Color)

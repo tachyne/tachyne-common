@@ -113,6 +113,7 @@ const (
 	playServerAbilities    = 0x26 // player_abilities: the flying bit
 	playServerLoaded       = 0x2a // player_loaded: the client has its world
 	playServerSeenAdv      = 0x30 // seen_advancements: a tab opened
+	playServerTeleportTo   = 0x3d // teleport_to_entity: the spectator menu's teleport
 	playClientSelectAdvTab = 0x4e // select_advancements_tab
 	playClientPongResponse = 0x37 // pong_response
 
@@ -797,6 +798,30 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 					p := render770.Hurt(e)
 					cc.send(p.ID, p.Body)
 				}
+			case attach.MsgTransfer:
+				var e attach.Transfer
+				if json.Unmarshal(payload, &e) == nil {
+					p := render770.Transfer(e)
+					cc.send(p.ID, p.Body)
+				}
+			case attach.MsgCamera:
+				var e attach.Camera
+				if json.Unmarshal(payload, &e) == nil {
+					p := render770.Camera(e)
+					cc.send(p.ID, p.Body)
+				}
+			case attach.MsgTickingState:
+				var e attach.TickingState
+				if json.Unmarshal(payload, &e) == nil {
+					p := render770.TickingState(e)
+					cc.send(p.ID, p.Body)
+				}
+			case attach.MsgTickingStep:
+				var e attach.TickingStep
+				if json.Unmarshal(payload, &e) == nil {
+					p := render770.TickingStep(e)
+					cc.send(p.ID, p.Body)
+				}
 			case attach.MsgExplode:
 				var e attach.Explode
 				if json.Unmarshal(payload, &e) == nil && clientProto >= 775 {
@@ -1356,6 +1381,13 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 				// world decides whether the player may fly at all.
 				if len(pkt.Data) >= 1 {
 					b.Write(attach.MsgPlayerAbilities, attach.PlayerAbilities{Flying: pkt.Data[0]&0x02 != 0})
+				}
+				continue
+			case playServerTeleportTo:
+				if len(pkt.Data) >= 16 {
+					var u [16]byte
+					copy(u[:], pkt.Data[:16])
+					b.Write(attach.MsgTeleportToEntity, attach.TeleportToEntity{UUID: u})
 				}
 				continue
 			case playServerLoaded:

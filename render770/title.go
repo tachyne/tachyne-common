@@ -34,11 +34,11 @@ func TitlePackets(e attach.Title) []Packet {
 		b = protocol.AppendI32(b, e.Stay)
 		out = append(out, Packet{IDSetTitleAnimation, protocol.AppendI32(b, e.FadeOut)})
 	}
-	if e.Subtitle != "" {
-		out = append(out, Packet{IDSetSubtitleText, chatNBT(e.Subtitle)})
+	if e.Subtitle != "" || len(e.SubtitleJSON) > 0 {
+		out = append(out, Packet{IDSetSubtitleText, componentOr(e.SubtitleJSON, e.Subtitle)})
 	}
-	if e.Title != "" {
-		out = append(out, Packet{IDSetTitleText, chatNBT(e.Title)})
+	if e.Title != "" || len(e.TitleJSON) > 0 {
+		out = append(out, Packet{IDSetTitleText, componentOr(e.TitleJSON, e.Title)})
 	}
 	return out
 }
@@ -48,4 +48,15 @@ func boolByte(v bool) byte {
 		return 1
 	}
 	return 0
+}
+
+// componentOr is a JSON text component as network NBT, or the plain text
+// when there is none (or it does not parse).
+func componentOr(raw []byte, text string) []byte {
+	if len(raw) > 0 {
+		if nbt, ok := protocol.TextComponentNBT(raw); ok {
+			return nbt
+		}
+	}
+	return chatNBT(text)
 }
