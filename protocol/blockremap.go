@@ -378,15 +378,46 @@ func remapSpawnEntityType(version int32, body []byte) []byte {
 	// entity_substitute.go). The fallback is canonical and range-maps normally.
 	sub := substituteEntityType(version, typ)
 	nt := RemapID(RegEntity, version, sub)
-	if sub == typ && nt == typ {
+	afterType := len(body) - r.Len()
+	tail := body[afterType:] // x,y,z, angles, objectData, velocity
+	if typ == fallingBlockEntity {
+		// A falling block's objectData is its BLOCK STATE: it moves with the
+		// client's state ids like any block update.
+		if t, ok := remapFallingBlockData(version, tail); ok {
+			tail = t
+		}
+	}
+	if sub == typ && nt == typ && len(tail) == len(body)-afterType && bytes.Equal(tail, body[afterType:]) {
 		return body // nothing to change
 	}
-	afterType := len(body) - r.Len()
-	out := make([]byte, 0, len(body)+2)
-	out = append(out, body[:typeAt]...)    // entityId + objectUUID
-	out = AppendVarInt(out, nt)            // remapped type
-	out = append(out, body[afterType:]...) // x,y,z, angles, objectData, velocity
-	return out
+	out := make([]byte, 0, len(body)+4)
+	out = append(out, body[:typeAt]...) // entityId + objectUUID
+	out = AppendVarInt(out, nt)         // remapped type
+	return append(out, tail...)
+}
+
+// fallingBlockEntity is minecraft:falling_block in canonical numbering.
+var fallingBlockEntity = CanonicalEntity("falling_block")
+
+// remapFallingBlockData rewrites the objectData VarInt that follows x, y, z
+// (3 × f64) and the three angle bytes.
+func remapFallingBlockData(version int32, tail []byte) ([]byte, bool) {
+	const pre = 24 + 3
+	if len(tail) <= pre {
+		return nil, false
+	}
+	r := bytes.NewReader(tail[pre:])
+	state, err := ReadVarInt(r)
+	if err != nil {
+		return nil, false
+	}
+	ns := RemapID(RegBlockState, version, state)
+	if ns == state {
+		return tail, true
+	}
+	out := append([]byte(nil), tail[:pre]...)
+	out = AppendVarInt(out, ns)
+	return append(out, tail[len(tail)-r.Len():]...), true
 }
 
 // remapBlockUpdate rewrites the single block-state ID in a Block Update packet
