@@ -625,6 +625,26 @@ type SwingAction struct {
 	Hand int32 `json:"hand"` // 0 main hand, 1 off hand
 }
 
+// MsgPickItem (gw→w): the player middle-clicked a block or an entity
+// (ServerboundPickItemFromBlockPacket / ...FromEntityPacket →
+// ServerGamePacketListenerImpl.handlePickItemFromBlock/FromEntity). Since
+// 1.21.4 the server does the picking: it selects the matching stack in the
+// hotbar, swaps it in from the main inventory, or — with infinite
+// materials — adds a fresh one, then sends the held slot back.
+const MsgPickItem = 0x7e // gw→w
+
+// PickItem is one pick request: a block position, or an entity id when
+// Entity is set. IncludeData is the client's ctrl-pick flag (block entity
+// data or the profile print), honoured only for creative players.
+type PickItem struct {
+	Entity      bool  `json:"entity,omitempty"`
+	X           int32 `json:"x,omitempty"`
+	Y           int32 `json:"y,omitempty"`
+	Z           int32 `json:"z,omitempty"`
+	EID         int32 `json:"eid,omitempty"`
+	IncludeData bool  `json:"data,omitempty"`
+}
+
 // MsgRecipeBook (w→gw): the full recipe list for the green crafting book, sent
 // once at join. Item ids are CANONICAL (770); the renderer remaps them into
 // the client's id space per version (recipe_book_add carries raw item ids and

@@ -1312,6 +1312,14 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 				if e, ok := render770.ParseUseItem(pkt.Data); ok {
 					b.Write(attach.MsgUseItem, e)
 				}
+			case render770.SIDPickFromBlock:
+				if e, ok := render770.ParsePickFromBlock(pkt.Data); ok {
+					b.Write(attach.MsgPickItem, e)
+				}
+			case render770.SIDPickFromEntity:
+				if e, ok := render770.ParsePickFromEntity(pkt.Data); ok {
+					b.Write(attach.MsgPickItem, e)
+				}
 			case render770.SIDSwing:
 				if e, ok := render770.ParseSwing(pkt.Data); ok {
 					b.Write(attach.MsgSwingAction, e)

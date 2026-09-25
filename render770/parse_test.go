@@ -192,3 +192,23 @@ func TestSwingRendersEachHand(t *testing.T) {
 		t.Errorf("off hand: % x", p.Body)
 	}
 }
+
+// pick_item_from_block is a packed position then the ctrl flag;
+// pick_item_from_entity a VarInt id then the flag.
+func TestParsePickItem(t *testing.T) {
+	body := append(protocol.AppendPosition(nil, -5, 70, 1234567), 1)
+	got, ok := ParsePickFromBlock(body)
+	if !ok || got.Entity || got.X != -5 || got.Y != 70 || got.Z != 1234567 || !got.IncludeData {
+		t.Fatalf("ParsePickFromBlock = %+v, %v", got, ok)
+	}
+	if _, ok := ParsePickFromBlock(body[:8]); ok {
+		t.Fatal("a pick without its flag parsed")
+	}
+	got, ok = ParsePickFromEntity(append(protocol.AppendVarInt(nil, 300), 0))
+	if !ok || !got.Entity || got.EID != 300 || got.IncludeData {
+		t.Fatalf("ParsePickFromEntity = %+v, %v", got, ok)
+	}
+	if _, ok := ParsePickFromEntity(protocol.AppendVarInt(nil, 300)); ok {
+		t.Fatal("an entity pick without its flag parsed")
+	}
+}

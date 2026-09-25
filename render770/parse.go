@@ -26,6 +26,8 @@ const (
 	SIDSetSlotState   = 0x12 // container_slot_state_changed (crafter disable toggle)
 	SIDUseEntity      = 0x18
 	SIDVehicleMove    = 0x20
+	SIDPickFromBlock  = 0x22 // pick_item_from_block (middle click)
+	SIDPickFromEntity = 0x23 // pick_item_from_entity
 	SIDCraftRequest   = 0x25
 	SIDEntityAction   = 0x28
 	SIDPlayerInput    = 0x29
@@ -128,6 +130,31 @@ func ParseVehicleMove(data []byte) (attach.VehicleMove, bool) {
 	}
 	yaw := math.Float32frombits(binary.BigEndian.Uint32(data[24:]))
 	return attach.VehicleMove{X: f64(0), Y: f64(8), Z: f64(16), Yaw: yaw}, true
+}
+
+// ParsePickFromBlock decodes pick_item_from_block: Position, Boolean
+// includeData.
+func ParsePickFromBlock(data []byte) (attach.PickItem, bool) {
+	if len(data) != 9 {
+		return attach.PickItem{}, false
+	}
+	x, y, z := protocol.ReadPosition(data)
+	return attach.PickItem{X: int32(x), Y: int32(y), Z: int32(z), IncludeData: data[8] != 0}, true
+}
+
+// ParsePickFromEntity decodes pick_item_from_entity: VarInt entity id,
+// Boolean includeData.
+func ParsePickFromEntity(data []byte) (attach.PickItem, bool) {
+	br := bytes.NewReader(data)
+	id, err := protocol.ReadVarInt(br)
+	if err != nil {
+		return attach.PickItem{}, false
+	}
+	b, err := br.ReadByte()
+	if err != nil || br.Len() != 0 {
+		return attach.PickItem{}, false
+	}
+	return attach.PickItem{Entity: true, EID: id, IncludeData: b != 0}, true
 }
 
 // ParseSetSlotState decodes container_slot_state_changed (the crafter grid
