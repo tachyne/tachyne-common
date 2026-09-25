@@ -50,6 +50,8 @@ type Config struct {
 	// join packet then tells the client the server is online and enforces
 	// secure chat, so it shows no "chat messages can't be verified" toast.
 	Online bool
+	// ClientIP is this session's client address (set per login).
+	ClientIP string
 	// MOTD is the server description sent in server_data after the join
 	// (PlayerList.placeNewPlayer → sendServerStatus), as the server list has it.
 	MOTD string
@@ -302,7 +304,7 @@ func Run(cfg Config, br *bufio.Reader, c net.Conn, name string, uuid [16]byte, u
 	// cleanly instead of mid-join.
 	w, welcome, err := attach.DialSession(cfg.Backend, attach.Hello{
 		Token: cfg.AttachToken, Gateway: fmt.Sprintf("%s/%d", cfg.Name, cfg.SID),
-		Name: name, UUID: uuidStr, Roles: roles, Edition: "java", Props: props,
+		Name: name, UUID: uuidStr, Roles: roles, Edition: "java", Props: props, IP: cfg.ClientIP,
 	})
 	if err != nil {
 		if errors.Is(err, attach.ErrRefused) {

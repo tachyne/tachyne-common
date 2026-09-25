@@ -337,7 +337,9 @@ func (s *Server) login(br *bufio.Reader, c net.Conn, hs *handshake, remote strin
 		return
 	}
 	log.Printf("%s: login %q allowed (roles %v) — attaching to %s", remote, name, roles, s.Backend)
-	if err := Run(s.sessionConfig(), br, c, name, uuid, uuidStr, roles, prof.Props, hs.proto); err != nil {
+	cfg := s.sessionConfig()
+	cfg.ClientIP, _, _ = net.SplitHostPort(remote)
+	if err := Run(cfg, br, c, name, uuid, uuidStr, roles, prof.Props, hs.proto); err != nil {
 		log.Printf("%s: session %q ended: %v", c.RemoteAddr(), name, err)
 	}
 }

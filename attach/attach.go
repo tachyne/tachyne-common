@@ -119,6 +119,9 @@ type Hello struct {
 	UUID    string   `json:"uuid"`
 	Roles   []string `json:"roles"`
 	Edition string   `json:"edition"`
+	// IP is the client's address as the gateway saw it (after the
+	// ingress's PROXY header) — what /ban-ip bans for a named player.
+	IP string `json:"ip,omitempty"`
 	// Props are the authenticated game profile's properties (online mode's
 	// "textures": the skin other players see). Empty offline.
 	Props []Property `json:"props,omitempty"`
