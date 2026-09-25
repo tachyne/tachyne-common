@@ -1221,6 +1221,7 @@ const (
 	componentFireworks       = 60 // minecraft:fireworks (flight duration + explosions), canonical
 	componentFireworkStar    = 59 // minecraft:firework_explosion (one star's burst), canonical
 	componentPotDecorations  = 65 // minecraft:pot_decorations (four ITEM ids), canonical
+	componentInstrument      = 52 // minecraft:instrument (a goat horn's call), canonical
 	componentBannerPatterns  = 63 // minecraft:banner_patterns (layer list), canonical
 	componentWritableBook    = 45 // minecraft:writable_book_content, canonical
 	componentWrittenBook     = 46 // minecraft:written_book_content, canonical
@@ -1464,6 +1465,25 @@ func fireworkStarCompID(version int32) int32 {
 	}
 	return componentFireworkStar
 }
+
+// instrumentCompID: a goat horn's instrument. Its payload changes shape
+// too: through 1.21.11 it is an EitherHolder (Boolean true, then the holder
+// VarInt id+1); 26.x sends the holder alone.
+func instrumentCompID(version int32) int32 {
+	switch {
+	case version >= 777:
+		return 63
+	case version >= 775:
+		return 61
+	case version >= 774:
+		return 59
+	}
+	return componentInstrument
+}
+
+// instrumentBareHolder: the client's instrument payload is the holder
+// alone, without the EitherHolder flag (26.x).
+func instrumentBareHolder(version int32) bool { return version >= 775 }
 
 // potDecorationsCompID: a decorated pot's four faces. Unlike every other
 // component here its payload is ITEM ids, so the values are remapped too.
@@ -1813,6 +1833,7 @@ func copyFullSlotBody(r *bytes.Reader, out *[]byte, remap func(int32) int32, ver
 	fwIn, fwOut := int32(componentFireworks), fireworksCompID(version)
 	starIn, starOut := int32(componentFireworkStar), fireworkStarCompID(version)
 	potDecIn, potDecOut := int32(componentPotDecorations), potDecorationsCompID(version)
+	instIn, instOut := int32(componentInstrument), instrumentCompID(version)
 	if serverbound {
 		lodeIn, lodeOut = lodeOut, lodeIn
 		baseIn, baseOut = baseOut, baseIn
@@ -1835,6 +1856,7 @@ func copyFullSlotBody(r *bytes.Reader, out *[]byte, remap func(int32) int32, ver
 		fwIn, fwOut = fwOut, fwIn
 		starIn, starOut = starOut, starIn
 		potDecIn, potDecOut = potDecOut, potDecIn
+		instIn, instOut = instOut, instIn
 	}
 	count, err := ReadVarInt(r)
 	if err != nil {
@@ -1987,6 +2009,28 @@ func copyFullSlotBody(r *bytes.Reader, out *[]byte, remap func(int32) int32, ver
 			if !copyFireworkExplosion(r, out) {
 				return false
 			}
+		case instIn:
+			// instrument: canonically an EitherHolder — Boolean true, then
+			// the holder VarInt (declared-registry index + 1, the same for
+			// every version). 26.x drops the flag: strip it on the way out,
+			// put it back on the way in. A ResourceKey form never comes
+			// from us, so a false flag is refused rather than guessed at.
+			bare := instrumentBareHolder(version)
+			if !serverbound || !bare {
+				flag, err := r.ReadByte()
+				if err != nil || flag != 1 {
+					return false
+				}
+			}
+			val, err := ReadVarInt(r)
+			if err != nil {
+				return false
+			}
+			*out = AppendVarInt(*out, instOut)
+			if serverbound || !bare {
+				*out = append(*out, 1)
+			}
+			*out = AppendVarInt(*out, val)
 		case omenIn:
 			// ominous_bottle_amplifier: the Bad Omen level a captain's bottle
 			// carries, one varint.

@@ -395,3 +395,38 @@ func TestPotDecorationsRemapTheirItems(t *testing.T) {
 		}
 	}
 }
+
+// instrument renumbers, and 26.x drops the EitherHolder flag: the goat horn
+// a 26.3 client gets is the holder VarInt alone, and its echo comes back
+// canonical with the flag restored.
+func TestInstrumentFlagFollowsTheVersion(t *testing.T) {
+	body := AppendVarInt(nil, 1)
+	body = AppendVarInt(body, 1100) // goat_horn (any id: identity remap)
+	body = AppendVarInt(body, 1)
+	body = AppendVarInt(body, 0)
+	body = AppendVarInt(body, componentInstrument)
+	body = append(body, 1)         // EitherHolder: the holder side
+	body = AppendVarInt(body, 4+1) // ponder, declared index 4
+	for _, tc := range []struct {
+		version int32
+		want    []byte // the component on the wire
+	}{
+		{770, []byte{52, 1, 5}}, {774, []byte{59, 1, 5}},
+		{776, []byte{61, 5}}, {777, []byte{63, 5}},
+	} {
+		var out []byte
+		if !copyFullSlot(bytes.NewReader(body), &out, func(i int32) int32 { return i }, tc.version, false) {
+			t.Fatalf("v%d: the instrument case is missing", tc.version)
+		}
+		if got := out[len(out)-len(tc.want):]; !bytes.Equal(got, tc.want) || len(out) != len(body)-3+len(tc.want) {
+			t.Errorf("v%d: slot %x, want it to end %x", tc.version, out, tc.want)
+		}
+		var back []byte
+		if !copyFullSlot(bytes.NewReader(out), &back, func(i int32) int32 { return i }, tc.version, true) {
+			t.Fatalf("v%d: serverbound copy failed", tc.version)
+		}
+		if !bytes.Equal(back, body) {
+			t.Errorf("v%d: round trip %x, want %x", tc.version, back, body)
+		}
+	}
+}
