@@ -44,6 +44,13 @@ func TestParseSmallActions(t *testing.T) {
 	if e, ok := ParseUseEntity([]byte{5, 0}); !ok || e.Attack {
 		t.Fatalf("interact parse: %+v %v", e, ok)
 	}
+	// interact: target, type 0, then the hand and the sneak flag.
+	if e, ok := ParseUseEntity([]byte{5, 0, 1, 0}); !ok || e.Hand != 1 || e.Attack {
+		t.Fatalf("interact with the offhand: %+v ok=%v", e, ok)
+	}
+	if e, ok := ParseUseEntity([]byte{5, 0, 0, 1}); !ok || e.Hand != 0 {
+		t.Fatalf("interact with the main hand: %+v ok=%v", e, ok)
+	}
 	if _, ok := ParseUseEntity([]byte{5, 2}); ok {
 		t.Fatal("interact_at should not parse to an action")
 	}

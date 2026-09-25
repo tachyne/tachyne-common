@@ -209,6 +209,10 @@ type UseItem struct {
 type UseEntity struct {
 	Target int32 `json:"target"`
 	Attack bool  `json:"attack,omitempty"` // false = interact
+	// Hand is the interacting hand (0 main, 1 off). The client sends an
+	// interact per hand — the offhand one only when the main hand passed —
+	// so without it the engine could not tell the two apart.
+	Hand int32 `json:"hand,omitempty"`
 }
 
 type SelTrade struct {

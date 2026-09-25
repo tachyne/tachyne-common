@@ -88,7 +88,13 @@ func ParseUseEntity(data []byte) (attach.UseEntity, bool) {
 	if err != nil || mouse > 1 { // 0=interact, 1=attack, 2=interact_at (unused)
 		return attach.UseEntity{}, false
 	}
-	return attach.UseEntity{Target: target, Attack: mouse == 1}, true
+	e := attach.UseEntity{Target: target, Attack: mouse == 1}
+	if mouse == 0 { // interact carries the hand (InteractionHand) before the sneak flag
+		if hand, err := protocol.ReadVarInt(br); err == nil && (hand == 0 || hand == 1) {
+			e.Hand = hand
+		}
+	}
+	return e, true
 }
 
 // ParseUseItem decodes use_item: the hand, then a prediction sequence and
