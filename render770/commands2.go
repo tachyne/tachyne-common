@@ -32,3 +32,20 @@ func TickingState(e attach.TickingState) Packet {
 func TickingStep(e attach.TickingStep) Packet {
 	return Packet{IDTickingStep, protocol.AppendVarInt(nil, e.Steps)}
 }
+
+// IDCommandSuggestions is command_suggestions at canonical 770.
+const IDCommandSuggestions = 0x0f
+
+// CommandSuggestions renders command_suggestions: id, the replaced range,
+// then each match with no tooltip.
+func CommandSuggestions(e attach.Suggestions) Packet {
+	b := protocol.AppendVarInt(nil, e.ID)
+	b = protocol.AppendVarInt(b, e.Start)
+	b = protocol.AppendVarInt(b, e.Length)
+	b = protocol.AppendVarInt(b, int32(len(e.Matches)))
+	for _, m := range e.Matches {
+		b = protocol.AppendString(b, m)
+		b = protocol.AppendBool(b, false)
+	}
+	return Packet{IDCommandSuggestions, b}
+}

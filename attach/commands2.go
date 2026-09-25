@@ -83,3 +83,25 @@ const MsgPostEffects = 0x93
 type PostEffects struct {
 	Effects []string `json:"effects"`
 }
+
+// MsgSuggestReq (gw→w): the client wants completions for what it has typed
+// (ServerboundCommandSuggestionPacket, for an ask_server argument).
+const MsgSuggestReq = 0x94
+
+// SuggestReq is the request: its transaction id and the text so far.
+type SuggestReq struct {
+	ID   int32  `json:"id"`
+	Text string `json:"text"`
+}
+
+// MsgSuggestions (w→gw): the answer (ClientboundCommandSuggestionsPacket):
+// the range of the text they replace, and the candidates.
+const MsgSuggestions = 0x95
+
+// Suggestions is the completions for one request.
+type Suggestions struct {
+	ID      int32    `json:"id"`
+	Start   int32    `json:"start"`
+	Length  int32    `json:"length"`
+	Matches []string `json:"matches,omitempty"`
+}

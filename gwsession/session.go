@@ -157,6 +157,7 @@ const (
 	playServerLoaded       = 0x2a // player_loaded: the client has its world
 	playServerSeenAdv      = 0x30 // seen_advancements: a tab opened
 	playServerTeleportTo   = 0x3d // teleport_to_entity: the spectator menu's teleport
+	playServerSuggest      = 0x0d // command_suggestion: tab completion for an ask_server argument
 	playClientSelectAdvTab = 0x4e // select_advancements_tab
 	playClientPongResponse = 0x37 // pong_response
 
@@ -862,6 +863,12 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 					p := render770.Hurt(e)
 					cc.send(p.ID, p.Body)
 				}
+			case attach.MsgSuggestions:
+				var e attach.Suggestions
+				if json.Unmarshal(payload, &e) == nil {
+					p := render770.CommandSuggestions(e)
+					cc.send(p.ID, p.Body)
+				}
 			case attach.MsgPostEffects:
 				var e attach.PostEffects
 				if json.Unmarshal(payload, &e) == nil {
@@ -1469,6 +1476,14 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 				// world decides whether the player may fly at all.
 				if len(pkt.Data) >= 1 {
 					b.Write(attach.MsgPlayerAbilities, attach.PlayerAbilities{Flying: pkt.Data[0]&0x02 != 0})
+				}
+				continue
+			case playServerSuggest:
+				r := bytes.NewReader(pkt.Data)
+				if id, err := protocol.ReadVarInt(r); err == nil {
+					if text, err := protocol.ReadString(r); err == nil {
+						b.Write(attach.MsgSuggestReq, attach.SuggestReq{ID: id, Text: text})
+					}
 				}
 				continue
 			case playServerTeleportTo:
