@@ -59,6 +59,30 @@ func Effect(e attach.Effect) Packet {
 	return Packet{IDEntityEffect, protocol.AppendU8(b, flags)}
 }
 
+// IDDamageEvent is damage_event at canonical 770.
+const IDDamageEvent = 0x19
+
+// DamageEvent renders damage_event: entity, damage type (registry id), the
+// responsible and direct entities as id+1 (0 = none), and the optional
+// source position. An unknown type falls back to generic.
+func DamageEvent(e attach.DamageEvent) Packet {
+	id, ok := protocol.DamageTypeID(e.Type)
+	if !ok {
+		id, _ = protocol.DamageTypeID("generic")
+	}
+	b := protocol.AppendVarInt(nil, e.EID)
+	b = protocol.AppendVarInt(b, id)
+	b = protocol.AppendVarInt(b, optEntityID(e.Cause))
+	b = protocol.AppendVarInt(b, optEntityID(e.Direct))
+	b = protocol.AppendBool(b, e.Src != nil)
+	if e.Src != nil {
+		b = protocol.AppendF64(b, e.Src[0])
+		b = protocol.AppendF64(b, e.Src[1])
+		b = protocol.AppendF64(b, e.Src[2])
+	}
+	return Packet{IDDamageEvent, b}
+}
+
 // Hurt renders the hurt animation (red flash + directional camera tilt).
 func Hurt(e attach.Hurt) Packet {
 	b := protocol.AppendVarInt(nil, e.EID)
@@ -69,4 +93,12 @@ func Hurt(e attach.Hurt) Packet {
 func Death(e attach.Death) Packet {
 	b := protocol.AppendVarInt(nil, e.EID)
 	return Packet{IDDeathCombat, append(b, chatNBT(e.Message)...)}
+}
+
+// optEntityID is writeOptionalEntityId: id+1, with 0 for none (ids start at 1).
+func optEntityID(eid int32) int32 {
+	if eid == 0 {
+		return 0
+	}
+	return eid + 1
 }

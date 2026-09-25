@@ -399,6 +399,39 @@ type Hurt struct {
 	Yaw float32 `json:"yaw"` // attack direction for the camera tilt
 }
 
+// MsgExplode (w→gw): an explosion as the player it is sent to sees it —
+// ClientboundExplodePacket, sent by ServerLevel.explode to every player
+// within 64 blocks. The client plays the sound, draws the blast and the
+// block debris, and ADDS the knockback to its own motion.
+const MsgExplode = 0x8b
+
+// Explode is one explosion for one player.
+type Explode struct {
+	X         float64     `json:"x"`
+	Y         float64     `json:"y"`
+	Z         float64     `json:"z"`
+	Radius    float32     `json:"r"`
+	Blocks    int32       `json:"blocks,omitempty"` // how many blocks it destroyed (the debris)
+	Knockback *[3]float64 `json:"kb,omitempty"`     // this player's shove, if it reached them
+	Large     bool        `json:"large,omitempty"`  // explosion_emitter rather than explosion
+	Silent    bool        `json:"silent,omitempty"` // a silent source: no sound
+}
+
+// MsgDamageEvent (w→gw): an entity took damage — ClientboundDamageEventPacket,
+// which ServerLevel.broadcastDamageEvent sends to everyone tracking it and to
+// itself. The client flashes it red, wobbles its walk and remembers the
+// source. (hurt_animation — Hurt — is only the hurt player's own camera tilt.)
+const MsgDamageEvent = 0x8a
+
+// DamageEvent is one blow's source.
+type DamageEvent struct {
+	EID    int32       `json:"eid"`
+	Type   string      `json:"type"`             // damage_type name, e.g. "player_attack"
+	Cause  int32       `json:"cause,omitempty"`  // the entity responsible (0 = none)
+	Direct int32       `json:"direct,omitempty"` // the entity that struck (an arrow, a fireball; 0 = none)
+	Src    *[3]float64 `json:"src,omitempty"`    // the source position, when the damage has one
+}
+
 type Death struct {
 	EID     int32  `json:"eid"`
 	Message string `json:"message"`

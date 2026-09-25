@@ -60,3 +60,32 @@ func TestHurtDeathMatchOracle(t *testing.T) {
 	wantD = append(wantD, oracleChatNBT("You died")...)
 	eq(t, "death", Death(attach.Death{EID: 9, Message: "You died"}), IDDeathCombat, wantD)
 }
+
+// damage_event: entity, registry id of the type, cause+1, direct+1 (0 for
+// none), and the optional source position.
+func TestDamageEventMatchesOracle(t *testing.T) {
+	arrow, ok := protocol.DamageTypeID("arrow")
+	if !ok || arrow != 0 {
+		t.Fatalf("arrow is the first damage type, got %d %v", arrow, ok)
+	}
+	want := protocol.AppendVarInt(nil, 7)
+	want = protocol.AppendVarInt(want, arrow)
+	want = protocol.AppendVarInt(want, 43)  // shooter 42
+	want = protocol.AppendVarInt(want, 100) // the arrow, 99
+	want = protocol.AppendBool(want, false)
+	eq(t, "damage event", DamageEvent(attach.DamageEvent{EID: 7, Type: "arrow", Cause: 42, Direct: 99}), IDDamageEvent, want)
+
+	spear, ok := protocol.DamageTypeID("minecraft:spear")
+	if !ok || spear <= arrow {
+		t.Fatalf("26.x's spear is appended after the synced entries, got %d %v", spear, ok)
+	}
+	src := [3]float64{1, 2, 3}
+	w2 := protocol.AppendVarInt(nil, 7)
+	gen, _ := protocol.DamageTypeID("generic")
+	w2 = protocol.AppendVarInt(w2, gen)
+	w2 = protocol.AppendVarInt(w2, 0)
+	w2 = protocol.AppendVarInt(w2, 0)
+	w2 = protocol.AppendBool(w2, true)
+	w2 = protocol.AppendF64(protocol.AppendF64(protocol.AppendF64(w2, 1), 2), 3)
+	eq(t, "damage event unknown type", DamageEvent(attach.DamageEvent{EID: 7, Type: "nonsense", Src: &src}), IDDamageEvent, w2)
+}

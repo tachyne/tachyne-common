@@ -797,6 +797,17 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 					p := render770.Hurt(e)
 					cc.send(p.ID, p.Body)
 				}
+			case attach.MsgExplode:
+				var e attach.Explode
+				if json.Unmarshal(payload, &e) == nil && clientProto >= 775 {
+					cc.send(protocol.CanonExplode, protocol.Explode26x(clientProto, e.X, e.Y, e.Z, e.Radius, e.Blocks, e.Knockback, e.Large, !e.Silent))
+				}
+			case attach.MsgDamageEvent:
+				var e attach.DamageEvent
+				if json.Unmarshal(payload, &e) == nil {
+					p := render770.DamageEvent(e)
+					cc.send(p.ID, p.Body)
+				}
 			case attach.MsgDeath:
 				var e attach.Death
 				if json.Unmarshal(payload, &e) == nil {
