@@ -53,11 +53,12 @@ func TestAttackPacketUntouchedOn770(t *testing.T) {
 }
 
 // A 26.2/26.3 middle click (pick_item_from_block 0x24, pick_item_from_entity
-// 0x25) reaches the canonical ids 0x22/0x23 with its body untouched.
+// 0x25) and paddle_boat (0x23) reach the canonical ids 0x22/0x23/0x21 with
+// their bodies untouched.
 func TestPickItem26xToCanonical(t *testing.T) {
 	for _, v := range []int32{776, 777} {
 		tr := TranslatorFor(v)
-		for _, c := range []struct{ in, want int32 }{{0x24, 0x22}, {0x25, 0x23}} {
+		for _, c := range []struct{ in, want int32 }{{0x23, 0x21}, {0x24, 0x22}, {0x25, 0x23}} {
 			body := []byte{1, 2, 3, 4, 5, 6, 7, 8, 1}
 			id, out, drop := tr.Serverbound(StatePlay, c.in, body)
 			if drop || id != c.want || !bytes.Equal(out, []byte{1, 2, 3, 4, 5, 6, 7, 8, 1}) {

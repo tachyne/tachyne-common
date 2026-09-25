@@ -1312,6 +1312,10 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 				if e, ok := render770.ParseUseItem(pkt.Data); ok {
 					b.Write(attach.MsgUseItem, e)
 				}
+			case render770.SIDPaddleBoat:
+				if e, ok := render770.ParsePaddleBoat(pkt.Data); ok {
+					b.Write(attach.MsgPaddleBoat, e)
+				}
 			case render770.SIDPickFromBlock:
 				if e, ok := render770.ParsePickFromBlock(pkt.Data); ok {
 					b.Write(attach.MsgPickItem, e)

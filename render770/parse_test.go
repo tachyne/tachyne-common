@@ -212,3 +212,13 @@ func TestParsePickItem(t *testing.T) {
 		t.Fatal("an entity pick without its flag parsed")
 	}
 }
+
+// paddle_boat is two booleans, left then right.
+func TestParsePaddleBoat(t *testing.T) {
+	if got, ok := ParsePaddleBoat([]byte{0, 1}); !ok || got.Left || !got.Right {
+		t.Fatalf("ParsePaddleBoat(0,1) = %+v, %v", got, ok)
+	}
+	if _, ok := ParsePaddleBoat([]byte{1}); ok {
+		t.Fatal("a one-byte paddle_boat parsed")
+	}
+}

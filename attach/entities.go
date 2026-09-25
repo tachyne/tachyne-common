@@ -645,6 +645,18 @@ type PickItem struct {
 	IncludeData bool  `json:"data,omitempty"`
 }
 
+// MsgPaddleBoat (gw→w): the rowing player's paddle input, sent by the
+// client every tick while it drives a boat (ServerboundPaddleBoatPacket →
+// AbstractBoat.setPaddleState). The paddles are synced entity data others
+// see move, and the server plays the paddle sounds from them.
+const MsgPaddleBoat = 0x7f // gw→w
+
+// PaddleBoat is which paddles are rowing.
+type PaddleBoat struct {
+	Left  bool `json:"l,omitempty"`
+	Right bool `json:"r,omitempty"`
+}
+
 // MsgRecipeBook (w→gw): the full recipe list for the green crafting book, sent
 // once at join. Item ids are CANONICAL (770); the renderer remaps them into
 // the client's id space per version (recipe_book_add carries raw item ids and

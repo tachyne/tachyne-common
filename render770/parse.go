@@ -26,6 +26,7 @@ const (
 	SIDSetSlotState   = 0x12 // container_slot_state_changed (crafter disable toggle)
 	SIDUseEntity      = 0x18
 	SIDVehicleMove    = 0x20
+	SIDPaddleBoat     = 0x21 // paddle_boat (rowing input, every tick)
 	SIDPickFromBlock  = 0x22 // pick_item_from_block (middle click)
 	SIDPickFromEntity = 0x23 // pick_item_from_entity
 	SIDCraftRequest   = 0x25
@@ -130,6 +131,14 @@ func ParseVehicleMove(data []byte) (attach.VehicleMove, bool) {
 	}
 	yaw := math.Float32frombits(binary.BigEndian.Uint32(data[24:]))
 	return attach.VehicleMove{X: f64(0), Y: f64(8), Z: f64(16), Yaw: yaw}, true
+}
+
+// ParsePaddleBoat decodes paddle_boat: Boolean left, Boolean right.
+func ParsePaddleBoat(data []byte) (attach.PaddleBoat, bool) {
+	if len(data) != 2 {
+		return attach.PaddleBoat{}, false
+	}
+	return attach.PaddleBoat{Left: data[0] != 0, Right: data[1] != 0}, true
 }
 
 // ParsePickFromBlock decodes pick_item_from_block: Position, Boolean
