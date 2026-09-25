@@ -15,8 +15,8 @@ import "bytes"
 //	  f32 priceMultiplier, i32 demand
 //	varint villagerLevel, varint villagerXp, bool showProgress, bool canRestock
 //
-// Anything the parser does not understand (a cost with component predicates,
-// which we never emit) returns the body untouched rather than guessing.
+// Anything the parser does not understand (a cost predicate other than
+// potion_contents) returns the body untouched rather than guessing.
 func remapMerchantOffers(version int32, body []byte) []byte {
 	r := bytes.NewReader(body)
 	remap := func(i int32) int32 { return RemapID(RegItem, version, i) }
@@ -35,12 +35,24 @@ func remapMerchantOffers(version int32, body []byte) []byte {
 		item, e1 := ReadVarInt(r)
 		count, e2 := ReadVarInt(r)
 		preds, e3 := ReadVarInt(r)
-		if e1 != nil || e2 != nil || e3 != nil || preds != 0 {
+		if e1 != nil || e2 != nil || e3 != nil || preds < 0 || preds > 1 {
 			return false
 		}
 		out = AppendVarInt(out, remap(item))
 		out = AppendVarInt(out, count)
-		out = AppendVarInt(out, 0)
+		out = AppendVarInt(out, preds)
+		// The one predicate an offer carries: potion_contents (the
+		// wandering trader's water bottle). Its component id renumbers.
+		for p := int32(0); p < preds; p++ {
+			typ, err := ReadVarInt(r)
+			if err != nil || typ != componentPotionContents {
+				return false
+			}
+			out = AppendVarInt(out, potionContentsCompID(version))
+			if !copyPotionContents(r, &out) {
+				return false
+			}
+		}
 		return true
 	}
 	for i := int32(0); i < n; i++ {

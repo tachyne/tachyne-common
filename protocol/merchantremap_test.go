@@ -95,3 +95,46 @@ func TestMerchantOffersTranslateItemsAndComponents(t *testing.T) {
 		t.Error("770 must not rewrite merchant offers")
 	}
 }
+
+// The wandering trader's water bottle: a cost with one potion_contents
+// predicate, whose component id renumbers on 26.x while the item ids map.
+func TestMerchantCostPotionPredicate(t *testing.T) {
+	const potion, emerald = 900, 100
+	b := AppendVarInt(nil, 5)
+	b = AppendVarInt(b, 1)
+	b = AppendVarInt(b, potion)
+	b = AppendVarInt(b, 1)
+	b = AppendVarInt(b, 1) // one predicate
+	b = AppendVarInt(b, componentPotionContents)
+	b = append(b, 1)       // has potion
+	b = AppendVarInt(b, 0) // water
+	b = append(b, 0)       // no colour
+	b = AppendVarInt(b, 0) // no effects
+	b = append(b, 0)       // no name
+	b = AppendVarInt(b, 1) // result: 1 emerald
+	b = AppendVarInt(b, emerald)
+	b = AppendVarInt(b, 0)
+	b = AppendVarInt(b, 0)
+	b = append(b, 0) // no cost B
+	b = append(b, 0)
+	for i := 0; i < 6; i++ {
+		b = binary.BigEndian.AppendUint32(b, 0)
+	}
+	b = AppendVarInt(b, 1)
+	b = AppendVarInt(b, 0)
+	b = append(b, 0, 0)
+	out := remapMerchantOffers(777, b)
+	r := bytes.NewReader(out)
+	ReadVarInt(r)
+	ReadVarInt(r)
+	if it, _ := ReadVarInt(r); it != RemapID(RegItem, 777, potion) {
+		t.Fatalf("cost item %d not remapped", it)
+	}
+	ReadVarInt(r)
+	if n, _ := ReadVarInt(r); n != 1 {
+		t.Fatal("the predicate was dropped")
+	}
+	if cid, _ := ReadVarInt(r); cid != potionContentsCompID(777) {
+		t.Fatalf("predicate component %d, want %d", cid, potionContentsCompID(777))
+	}
+}
