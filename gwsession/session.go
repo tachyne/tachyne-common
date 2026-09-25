@@ -798,6 +798,13 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 					p := render770.Hurt(e)
 					cc.send(p.ID, p.Body)
 				}
+			case attach.MsgPostEffects:
+				var e attach.PostEffects
+				if json.Unmarshal(payload, &e) == nil {
+					if id, body, ok := protocol.PostEffects777(clientProto, e.Effects); ok {
+						cc.sendRaw(id, body)
+					}
+				}
 			case attach.MsgGhostRecipe:
 				var e attach.GhostRecipe
 				if json.Unmarshal(payload, &e) == nil {

@@ -68,3 +68,16 @@ func AddTransientBlock777(version int32, x, y, z int, state int32) (int32, []byt
 	b := AppendPosition(nil, x, y, z)
 	return 0x25, AppendVarInt(b, RemapID(RegBlockState, version, state)), true
 }
+
+// PostEffects777 is 26.3's post_effects (play id 0x53): a list of
+// identifiers. ok false for a client without it.
+func PostEffects777(version int32, effects []string) (int32, []byte, bool) {
+	if version < 777 {
+		return 0, nil, false
+	}
+	b := AppendVarInt(nil, int32(len(effects)))
+	for _, e := range effects {
+		b = AppendString(b, e)
+	}
+	return 0x53, b, true
+}

@@ -74,3 +74,12 @@ type GhostRecipe struct {
 	Shaped    *ShapedRecipe    `json:"shaped,omitempty"`
 	Shapeless *ShapelessRecipe `json:"shapeless,omitempty"`
 }
+
+// MsgPostEffects (w→gw): the player's post effects — the shader passes
+// /posteffect puts on their screen (ClientboundPostEffectsPacket, 26.3).
+const MsgPostEffects = 0x93
+
+// PostEffects is the whole list, in order.
+type PostEffects struct {
+	Effects []string `json:"effects"`
+}
