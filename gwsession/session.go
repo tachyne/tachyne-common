@@ -50,6 +50,9 @@ type Config struct {
 	// join packet then tells the client the server is online and enforces
 	// secure chat, so it shows no "chat messages can't be verified" toast.
 	Online bool
+	// MOTD is the server description sent in server_data after the join
+	// (PlayerList.placeNewPlayer → sendServerStatus), as the server list has it.
+	MOTD string
 }
 
 // viewCap resolves the deployment's render-distance ceiling: the client's
@@ -103,6 +106,14 @@ const (
 	playServerPositionLook = 0x1d
 	playServerLook         = 0x1e
 	playServerClientInfo   = 0x0c // Client Information (mid-game render-distance change)
+	playServerKeepAlive    = 0x1a // keep_alive reply
+	playServerStatusOnly   = 0x1f // move_player_status_only: on-ground / against-wall flags
+	playServerPingRequest  = 0x24 // ping_request (the F3 debug ping graph)
+	playClientPongResponse = 0x37 // pong_response
+
+	// ServerCommonPacketListenerImpl.KEEPALIVE_LIMIT: a keep-alive still
+	// unanswered when the next is due times the client out.
+	keepAliveInterval = 15 * time.Second
 
 	viewRadius      = 6  // default chunk radius when the client hasn't sent Client Information
 	defaultViewCap  = 12 // default honored render-distance ceiling (vanilla server default is 10)
@@ -447,6 +458,10 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 
 	cc.send(playClientLogin, joinPacket(welcome.EID, welcome.Gamemode, viewDist.Load(), welcome.Death, cfg.Online, welcome))
 	cc.send(playClientGameEvent, []byte{13, 0, 0, 0, 0})
+	if cfg.MOTD != "" {
+		sd := render770.ServerData(cfg.MOTD)
+		cc.send(sd.ID, sd.Body)
+	}
 	cc.send(playClientCenterChunk, protocol.AppendVarInt(protocol.AppendVarInt(nil, ccx), ccz))
 	tp := render770.Time(attach.Time{Time: welcome.Time})
 	cc.send(tp.ID, tp.Body)
@@ -627,6 +642,17 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 				var e attach.PlayerInfo
 				if json.Unmarshal(payload, &e) == nil {
 					p := render770.PlayerInfoAdd(e)
+					cc.send(p.ID, p.Body)
+				}
+			case attach.MsgGameRuleValues:
+				var e attach.GameRuleValues
+				if json.Unmarshal(payload, &e) == nil && clientProto >= 775 {
+					cc.sendRaw(protocol.GameRuleValuesID(clientProto), protocol.GameRuleValues(e.Values))
+				}
+			case attach.MsgPlayerInfoLatency:
+				var e attach.PlayerInfoLatency
+				if json.Unmarshal(payload, &e) == nil {
+					p := render770.PlayerInfoLatency(e)
 					cc.send(p.ID, p.Body)
 				}
 			case attach.MsgPlayerInfoMode:
@@ -1224,13 +1250,28 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 	}()
 
 	// Client → world (runs in this goroutine) + keepalive ticker.
+	// ServerCommonPacketListenerImpl.keepConnectionAlive: one challenge every
+	// fifteen seconds; if the last is still unanswered when the next is due,
+	// the client has timed out. The replies give the latency the tab list
+	// shows.
+	var kaChallenge, kaSent atomic.Int64
+	var kaPending atomic.Bool
+	var latency atomic.Int32
 	go func() {
-		t := time.NewTicker(10 * time.Second)
+		t := time.NewTicker(keepAliveInterval)
 		defer t.Stop()
-		var n int64
 		for range t.C {
-			n++
-			if cc.send(playClientKeepAlive, protocol.AppendI64(nil, n)) != nil {
+			if kaPending.Load() {
+				p := render770.Disconnect(attach.Disconnect{Reason: "Timed out"})
+				cc.send(p.ID, p.Body)
+				errs <- fmt.Errorf("client timed out")
+				return
+			}
+			now := time.Now()
+			kaChallenge.Store(now.UnixMilli())
+			kaSent.Store(now.UnixNano())
+			kaPending.Store(true)
+			if cc.send(playClientKeepAlive, protocol.AppendI64(nil, now.UnixMilli())) != nil {
 				return
 			}
 		}
@@ -1250,12 +1291,47 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 			// Back-translate the client's version to canonical 770 so the
 			// switch below (and the render770 parsers) speak one id space.
 			// Identity for a 770 client.
+			// The 26.x gamerule editor's edits have no canonical packet: each
+			// becomes the /gamerule it stands for, ahead of the chain (which
+			// drops them).
+			if cmds, ok := protocol.SetGameRuleCommands(clientProto, pkt.ID, pkt.Data); ok {
+				for _, c := range cmds {
+					b.Write(attach.MsgCommand, attach.Command{Cmd: c})
+				}
+				continue
+			}
 			sbID, sbData, sbDrop := cc.tr.Serverbound(protocol.StatePlay, pkt.ID, pkt.Data)
 			if sbDrop {
 				continue
 			}
 			pkt.ID, pkt.Data = sbID, sbData
 			switch pkt.ID {
+			case playServerKeepAlive:
+				// handleKeepAlive: the right answer clears the challenge and
+				// folds the round trip into the latency, (l*3 + sample) / 4.
+				if len(pkt.Data) >= 8 && kaPending.Load() &&
+					int64(binary.BigEndian.Uint64(pkt.Data)) == kaChallenge.Load() {
+					kaPending.Store(false)
+					sample := int32(time.Since(time.Unix(0, kaSent.Load())).Milliseconds())
+					l := (latency.Load()*3 + sample) / 4
+					latency.Store(l)
+					b.Write(attach.MsgLatency, attach.Latency{MS: l})
+				}
+				continue
+			case playServerPingRequest:
+				// handlePingRequest: the same number straight back.
+				if len(pkt.Data) >= 8 {
+					cc.send(playClientPongResponse, pkt.Data[:8])
+				}
+				continue
+			case playServerStatusOnly:
+				// move_player_status_only: a player standing still still tells
+				// the server when it lands or leaves the ground.
+				if len(pkt.Data) >= 1 {
+					onGround = pkt.Data[0]&1 != 0
+					b.Write(attach.MsgMove, attach.Move{Pos: pos, OnGround: onGround})
+				}
+				continue
 			case render770.SIDChunkBatchReceived:
 				// Gateway-local flow control: adopt the client's desired
 				// chunks-per-tick and release one in-flight batch. Never
@@ -1401,6 +1477,8 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 					b.Write(attach.MsgRespawnReq, e)
 				} else if e, ok := render770.ParseStatsReq(pkt.Data); ok {
 					b.Write(attach.MsgStatsReq, e)
+				} else if clientProto >= 775 && len(pkt.Data) > 0 && pkt.Data[0] == protocol.ClientCommandRequestGameRules {
+					b.Write(attach.MsgGameRuleReq, attach.GameRuleReq{})
 				}
 			case render770.SIDRecipeSettings:
 				if e, ok := render770.ParseRecipeSettingChange(pkt.Data); ok {

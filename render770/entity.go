@@ -274,7 +274,18 @@ func PlayerInfoAdd(e attach.PlayerInfo) Packet {
 	}
 	b = protocol.AppendVarInt(b, e.Gamemode) // the player's own game mode
 	b = protocol.AppendVarInt(b, 1)          // listed = true
-	b = protocol.AppendVarInt(b, 0)          // latency = 0 ms
+	b = protocol.AppendVarInt(b, e.Latency)  // latency, ms
+	return Packet{IDPlayerInfo, b}
+}
+
+// PlayerInfoLatency renders player_info_update with UPDATE_LATENCY alone.
+func PlayerInfoLatency(e attach.PlayerInfoLatency) Packet {
+	b := protocol.AppendU8(nil, 0x10)
+	b = protocol.AppendVarInt(b, int32(len(e.Entries)))
+	for _, en := range e.Entries {
+		b = append(b, en.UUID[:]...)
+		b = protocol.AppendVarInt(b, en.Latency)
+	}
 	return Packet{IDPlayerInfo, b}
 }
 

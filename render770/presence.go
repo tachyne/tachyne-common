@@ -76,6 +76,15 @@ func Chat(e attach.Chat) Packet {
 	return Packet{IDSystemChat, protocol.AppendBool(body, e.ActionBar)}
 }
 
+// IDServerData is server_data at canonical 770.
+const IDServerData = 0x4f
+
+// ServerData renders server_data: the server's description and no icon
+// (the gateways advertise none).
+func ServerData(motd string) Packet {
+	return Packet{IDServerData, protocol.AppendBool(chatNBT(motd), false)}
+}
+
 // IDDisconnect is the PLAY-state disconnect packet. Its id falls between
 // delete_chat and disguised_chat in the alphabetical registry; two anchors
 // this renderer already pins land on it exactly — horse_screen_open 0x23 and
@@ -103,6 +112,16 @@ func BossBar(e attach.BossBar) Packet {
 	case attach.BossBarHealth:
 		b = protocol.AppendVarInt(b, 2)
 		b = protocol.AppendF32(b, e.Health)
+	case attach.BossBarTitle: // UpdateNameOperation
+		b = protocol.AppendVarInt(b, 3)
+		b = append(b, chatNBT(e.Title)...)
+	case attach.BossBarStyle: // UpdateStyleOperation
+		b = protocol.AppendVarInt(b, 4)
+		b = protocol.AppendVarInt(b, e.Color)
+		b = protocol.AppendVarInt(b, e.Overlay)
+	case attach.BossBarFlags: // UpdatePropertiesOperation
+		b = protocol.AppendVarInt(b, 5)
+		b = protocol.AppendU8(b, e.Flags)
 	default: // BossBarRemove
 		b = protocol.AppendVarInt(b, 1)
 	}

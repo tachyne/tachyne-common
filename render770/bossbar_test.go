@@ -54,3 +54,22 @@ func TestBossBarsDiffer(t *testing.T) {
 		t.Errorf("the raid bar is colour %d overlay %d, want red/notched-10", raid.Body[n-3], raid.Body[n-2])
 	}
 }
+
+// ClientboundBossEventPacket's in-place updates: a rename, a restyle and a
+// flag change each travel as their own operation, so the bar stays put.
+func TestBossBarUpdateOps(t *testing.T) {
+	var u [16]byte
+	u[0] = 7
+	name := append(append([]byte(nil), u[:]...), protocol.AppendVarInt(nil, 3)...)
+	name = append(name, oracleChatNBT("Renamed")...)
+	eq(t, "bossbar name", BossBar(attach.BossBar{UUID: u, Op: attach.BossBarTitle, Title: "Renamed"}), IDBossBar, name)
+
+	style := append(append([]byte(nil), u[:]...), protocol.AppendVarInt(nil, 4)...)
+	style = protocol.AppendVarInt(style, attach.BossRed)
+	style = protocol.AppendVarInt(style, attach.BossNotched10)
+	eq(t, "bossbar style", BossBar(attach.BossBar{UUID: u, Op: attach.BossBarStyle, Color: attach.BossRed, Overlay: attach.BossNotched10}), IDBossBar, style)
+
+	flags := append(append([]byte(nil), u[:]...), protocol.AppendVarInt(nil, 5)...)
+	flags = protocol.AppendU8(flags, attach.BossDarkenScreen)
+	eq(t, "bossbar flags", BossBar(attach.BossBar{UUID: u, Op: attach.BossBarFlags, Flags: attach.BossDarkenScreen}), IDBossBar, flags)
+}

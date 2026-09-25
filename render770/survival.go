@@ -53,6 +53,9 @@ func Effect(e attach.Effect) Packet {
 	if !e.NoIcon {
 		flags |= 0x04
 	}
+	if e.Blend {
+		flags |= 0x08
+	}
 	return Packet{IDEntityEffect, protocol.AppendU8(b, flags)}
 }
 

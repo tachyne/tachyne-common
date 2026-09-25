@@ -18,8 +18,50 @@ const (
 type PlayerInfo struct {
 	UUID     [16]byte   `json:"uuid"`
 	Name     string     `json:"name"`
-	Props    []Property `json:"props,omitempty"` // game-profile properties (textures = skin)
-	Gamemode int32      `json:"gamemode"`        // 0 survival, 1 creative, 2 adventure, 3 spectator
+	Props    []Property `json:"props,omitempty"`   // game-profile properties (textures = skin)
+	Gamemode int32      `json:"gamemode"`          // 0 survival, 1 creative, 2 adventure, 3 spectator
+	Latency  int32      `json:"latency,omitempty"` // ms, from the player's keep-alive replies
+}
+
+// MsgLatency (gw→w): the player's connection latency, measured by the
+// gateway from its keep-alive round trips (ServerCommonPacketListenerImpl
+// handleKeepAlive: (latency*3 + sample) / 4).
+const MsgLatency = 0x81
+
+// Latency is one latency reading, in milliseconds.
+type Latency struct {
+	MS int32 `json:"ms"`
+}
+
+// MsgGameRuleReq (gw→w): the 26.x gamerule editor asks for the current
+// values (client_command REQUEST_GAMERULE_VALUES). Only an operator is answered.
+const MsgGameRuleReq = 0x83
+
+// GameRuleReq carries nothing.
+type GameRuleReq struct{}
+
+// MsgGameRuleValues (w→gw): every game rule's current value, by its
+// snake_case name — the editor's game_rule_values.
+const MsgGameRuleValues = 0x84
+
+// GameRuleValues is the rule → value-text map.
+type GameRuleValues struct {
+	Values map[string]string `json:"values"`
+}
+
+// MsgPlayerInfoLatency (w→gw): listed players' latencies — player_info_update
+// UPDATE_LATENCY, which PlayerList sends every 600 ticks for everyone.
+const MsgPlayerInfoLatency = 0x82
+
+// PlayerInfoLatency is a batch of players' latencies.
+type PlayerInfoLatency struct {
+	Entries []PlayerLatency `json:"entries"`
+}
+
+// PlayerLatency is one player's entry.
+type PlayerLatency struct {
+	UUID    [16]byte `json:"uuid"`
+	Latency int32    `json:"latency"`
 }
 
 // MsgPlayerInfoMode (w→gw): a listed player's game mode changed —
@@ -328,6 +370,10 @@ type Effect struct {
 	Ambient     bool `json:"ambient,omitempty"`     // from a beacon or a conduit: fainter particles
 	NoParticles bool `json:"noParticles,omitempty"` // isVisible() == false
 	NoIcon      bool `json:"noIcon,omitempty"`      // showIcon() == false — no HUD icon
+	// Blend is the packet's blend bit: set when the effect is newly added
+	// (ServerPlayer.onEffectAdded), so a Darkness or Nausea screen fades in
+	// rather than snapping on; updates and join re-sends leave it clear.
+	Blend bool `json:"blend,omitempty"`
 }
 
 type Hurt struct {
@@ -754,6 +800,9 @@ const (
 	BossBarAdd    = 0 // show the bar: Title + Health used
 	BossBarRemove = 1 // hide the bar
 	BossBarHealth = 2 // update the fill fraction: Health used
+	BossBarTitle  = 3 // rename the bar in place: Title used
+	BossBarStyle  = 4 // recolour/restyle in place: Color + Overlay used
+	BossBarFlags  = 5 // change the flags in place: Flags used
 )
 
 type BossBar struct {

@@ -39,6 +39,13 @@ func TestEffectMatchesOracle(t *testing.T) {
 	eq(t, "effect ambient", Effect(attach.Effect{EID: 5, ID: 10, Ticks: -1, Ambient: true, NoParticles: true}),
 		IDEntityEffect, amb)
 
+	blend := protocol.AppendVarInt(nil, 5)
+	blend = protocol.AppendVarInt(blend, 10)
+	blend = protocol.AppendVarInt(blend, 0)
+	blend = protocol.AppendVarInt(blend, 600)
+	blend = protocol.AppendU8(blend, 0x02|0x04|0x08) // newly added: the blend bit
+	eq(t, "effect blend", Effect(attach.Effect{EID: 5, ID: 10, Ticks: 600, Blend: true}), IDEntityEffect, blend)
+
 	wantRm := protocol.AppendVarInt(nil, 5)
 	wantRm = protocol.AppendVarInt(wantRm, 10)
 	eq(t, "effect remove", Effect(attach.Effect{EID: 5, ID: 10, Remove: true}), IDRemoveEffect, wantRm)

@@ -83,6 +83,7 @@ func (s *Server) sessionConfig() Config {
 		AttachToken: s.AttachToken, SID: s.SID,
 		ViewCap: s.ViewCap,
 		Online:  s.Auth != nil,
+		MOTD:    s.MOTD,
 	}
 }
 
