@@ -55,6 +55,7 @@ type Server struct {
 	WorldPattern string         // dial pattern for a neighbour shard on handover (%d = sid)
 	AttachToken  string         // shared secret for the world attach protocol
 	MOTD         string         // server-list description
+	ResourcePack *ResourcePack  // server resource pack pushed in configuration (nil = none)
 	SID          int            // this gateway's ordinal (StatefulSet pod name)
 	Access       *access.Client // authorization service; nil = open mode (dev only)
 	Auth         *Authenticator // online mode (Mojang session auth); nil = offline, as vanilla's online-mode=false
@@ -81,9 +82,10 @@ func (s *Server) sessionConfig() Config {
 		Name: s.Name, Proto: s.Proto,
 		Backend: s.Backend, WorldPattern: s.WorldPattern,
 		AttachToken: s.AttachToken, SID: s.SID,
-		ViewCap: s.ViewCap,
-		Online:  s.Auth != nil,
-		MOTD:    s.MOTD,
+		ViewCap:      s.ViewCap,
+		Online:       s.Auth != nil,
+		MOTD:         s.MOTD,
+		ResourcePack: s.ResourcePack,
 	}
 }
 

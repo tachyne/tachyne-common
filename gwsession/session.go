@@ -53,6 +53,46 @@ type Config struct {
 	// MOTD is the server description sent in server_data after the join
 	// (PlayerList.placeNewPlayer → sendServerStatus), as the server list has it.
 	MOTD string
+	// ResourcePack is the server resource pack (server.properties
+	// resource-pack, -sha1, require-resource-pack, resource-pack-prompt),
+	// pushed in configuration; nil = none.
+	ResourcePack *ResourcePack
+}
+
+// ResourcePack is MinecraftServer.ServerResourcePackInfo.
+type ResourcePack struct {
+	ID       [16]byte // the pack's UUID (vanilla derives it from the URL)
+	URL      string
+	SHA1     string // hex, or "" for none
+	Required bool
+	Prompt   string // shown on the accept screen, "" for none
+}
+
+// packPush is resource_pack_push's body.
+func packPush(p *ResourcePack) []byte {
+	b := append([]byte(nil), p.ID[:]...)
+	b = protocol.AppendString(b, p.URL)
+	b = protocol.AppendString(b, p.SHA1)
+	b = protocol.AppendBool(b, p.Required)
+	b = protocol.AppendBool(b, p.Prompt != "")
+	if p.Prompt != "" {
+		b = append(b, render770.ChatNBT(p.Prompt)...)
+	}
+	return b
+}
+
+// packResponseTerminal reads resource_pack (the client's answer): whether
+// it is a final one (ServerboundResourcePackPacket.Action.isTerminal) and
+// whether it declined.
+func packResponseTerminal(data []byte) (terminal, declined bool) {
+	if len(data) < 17 {
+		return false, false
+	}
+	act, err := protocol.ReadVarInt(bytes.NewReader(data[16:]))
+	if err != nil {
+		return false, false
+	}
+	return act != 3 && act != 4, act == 1 // ACCEPTED (3) and DOWNLOADED (4) are not final
 }
 
 // viewCap resolves the deployment's render-distance ceiling: the client's
@@ -85,6 +125,9 @@ const (
 	cfgClientFinish        = 0x03
 	cfgServerKnownPacks    = 0x07
 	cfgServerFinish        = 0x03
+	cfgServerResourcePack  = 0x06 // resource_pack: the client's answer to a push
+	cfgClientDisconnect    = 0x02
+	cfgClientPackPush      = 0x09 // resource_pack_push
 	cfgServerClientInfo    = 0x00 // Client Information (locale, view distance, …)
 
 	playClientLogin            = 0x2b
@@ -380,10 +423,31 @@ func configure(cfg Config, br *bufio.Reader, c net.Conn, tr protocol.Translator,
 			if err := send(cfgClientUpdateTags, protocol.UpdateTagsPacket(clientProto)); err != nil {
 				return 0, err
 			}
+			// ServerResourcePackConfigurationTask: the pack goes after the
+			// registries, and configuration waits for the client's final
+			// answer before it finishes.
+			if cfg.ResourcePack != nil {
+				if err := send(cfgClientPackPush, packPush(cfg.ResourcePack)); err != nil {
+					return 0, err
+				}
+				continue
+			}
 			if err := send(cfgClientFinish, nil); err != nil {
 				return 0, err
 			}
 			sent = true
+		case cfgServerResourcePack:
+			terminal, declined := packResponseTerminal(pkt.Data)
+			if declined && cfg.ResourcePack != nil && cfg.ResourcePack.Required {
+				send(cfgClientDisconnect, render770.ChatNBT("This server requires a custom resource pack"))
+				return 0, errors.New("required resource pack declined")
+			}
+			if terminal && !sent && cfg.ResourcePack != nil {
+				if err := send(cfgClientFinish, nil); err != nil {
+					return 0, err
+				}
+				sent = true
+			}
 		case cfgServerFinish:
 			if !sent {
 				return 0, errors.New("finish before registries")

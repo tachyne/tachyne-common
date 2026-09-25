@@ -140,3 +140,6 @@ func Time(e attach.Time) Packet {
 	b = protocol.AppendI64(b, e.Time%dayLengthTicks)
 	return Packet{IDUpdateTime, protocol.AppendBool(b, true)}
 }
+
+// ChatNBT is a plain string as a network-NBT text component.
+func ChatNBT(s string) []byte { return chatNBT(s) }
