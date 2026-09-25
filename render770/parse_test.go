@@ -222,3 +222,20 @@ func TestParsePaddleBoat(t *testing.T) {
 		t.Fatal("a one-byte paddle_boat parsed")
 	}
 }
+
+// stop_sound: flags (1 source, 2 sound), the source varint, the name.
+func TestStopSoundRenders(t *testing.T) {
+	for _, tc := range []struct {
+		e    attach.StopSound
+		want []byte
+	}{
+		{attach.StopSound{Category: -1}, []byte{0}},
+		{attach.StopSound{Category: 2}, []byte{1, 2}},
+		{attach.StopSound{Category: -1, Name: "a:b"}, []byte{2, 3, 'a', ':', 'b'}},
+		{attach.StopSound{Category: 8, Name: "a:b"}, []byte{3, 8, 3, 'a', ':', 'b'}},
+	} {
+		if p := StopSound(tc.e); p.ID != IDStopSound || !bytes.Equal(p.Body, tc.want) {
+			t.Errorf("%+v → %x, want %x", tc.e, p.Body, tc.want)
+		}
+	}
+}

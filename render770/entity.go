@@ -124,6 +124,8 @@ func (v *EntityView) Render(ev any) (Packet, bool) {
 		return Collect(e), true
 	case attach.Sound:
 		return Sound(e), true
+	case attach.StopSound:
+		return StopSound(e), true
 	case attach.Particles:
 		return Particles(e), true
 	case attach.WorldFX:

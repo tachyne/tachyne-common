@@ -867,6 +867,12 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 					p := render770.Sound(e)
 					cc.send(p.ID, p.Body)
 				}
+			case attach.MsgStopSound:
+				var e attach.StopSound
+				if json.Unmarshal(payload, &e) == nil {
+					p := render770.StopSound(e)
+					cc.send(p.ID, p.Body)
+				}
 			case attach.MsgParticles:
 				var e attach.Particles
 				if json.Unmarshal(payload, &e) == nil {

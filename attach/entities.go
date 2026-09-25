@@ -657,6 +657,17 @@ type PaddleBoat struct {
 	Right bool `json:"r,omitempty"`
 }
 
+// MsgStopSound (w→gw): stop sounds playing on the client
+// (ClientboundStopSoundPacket; /stopsound). An empty Name stops every sound
+// in the category; a negative Category means every category.
+const MsgStopSound = 0x80 // w→gw
+
+// StopSound names what to stop.
+type StopSound struct {
+	Category int32  `json:"category"` // soundSource enum, -1 = any
+	Name     string `json:"name,omitempty"`
+}
+
 // MsgRecipeBook (w→gw): the full recipe list for the green crafting book, sent
 // once at join. Item ids are CANONICAL (770); the renderer remaps them into
 // the client's id space per version (recipe_book_add carries raw item ids and

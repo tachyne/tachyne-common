@@ -15,7 +15,28 @@ const (
 	IDBlockEvent  = 0x07 // block_event: position, action u8, param u8, block varint
 	IDParticles   = 0x29
 	IDSoundEffect = 0x6e
+	IDStopSound   = 0x70
 )
+
+// StopSound renders stop_sound: a flags byte (1 = a source follows, 2 = a
+// sound name follows), the source enum, then the sound's identifier.
+func StopSound(e attach.StopSound) Packet {
+	var flags byte
+	if e.Category >= 0 {
+		flags |= 1
+	}
+	if e.Name != "" {
+		flags |= 2
+	}
+	b := []byte{flags}
+	if e.Category >= 0 {
+		b = protocol.AppendVarInt(b, e.Category)
+	}
+	if e.Name != "" {
+		b = protocol.AppendString(b, e.Name)
+	}
+	return Packet{IDStopSound, b}
+}
 
 // Sound renders sound_effect with an inline (by-name) sound event.
 func Sound(e attach.Sound) Packet {
