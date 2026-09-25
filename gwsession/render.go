@@ -36,19 +36,19 @@ var fullDark [2048]byte
 // (enforcesSecureChat) carries it, and the 26.x step writes it into both
 // onlineMode and enforcesSecureChat. Chat reaches clients as system messages,
 // which a secure-chat client shows; only player chat is ever verified.
-func joinPacket(eid int32, gamemode int32, view int32, death *attach.DeathPos, online bool) []byte {
+func joinPacket(eid int32, gamemode int32, view int32, death *attach.DeathPos, online bool, w attach.Welcome) []byte {
 	b := protocol.AppendI32(nil, eid)
 	b = protocol.AppendBool(b, false) // hardcore
 	b = protocol.AppendVarInt(b, 3)
 	b = protocol.AppendString(b, "minecraft:overworld")
 	b = protocol.AppendString(b, "minecraft:the_end")
 	b = protocol.AppendString(b, "minecraft:the_nether")
-	b = protocol.AppendVarInt(b, 100)  // max players
-	b = protocol.AppendVarInt(b, view) // view distance
-	b = protocol.AppendVarInt(b, view) // simulation distance
-	b = protocol.AppendBool(b, false)  // reduced debug
-	b = protocol.AppendBool(b, true)   // respawn screen
-	b = protocol.AppendBool(b, false)  // limited crafting
+	b = protocol.AppendVarInt(b, 100)              // max players
+	b = protocol.AppendVarInt(b, view)             // view distance
+	b = protocol.AppendVarInt(b, view)             // simulation distance
+	b = protocol.AppendBool(b, w.ReducedDebug)     // reduced_debug_info
+	b = protocol.AppendBool(b, !w.NoRespawnScreen) // !immediate_respawn
+	b = protocol.AppendBool(b, w.LimitedCrafting)  // limited_crafting
 	// SpawnInfo
 	b = protocol.AppendVarInt(b, protocol.DimensionOverworldID)
 	b = protocol.AppendString(b, "minecraft:overworld")

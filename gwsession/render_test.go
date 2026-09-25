@@ -14,7 +14,7 @@ import (
 // composition (an extraction once dropped a single AppendString and broke
 // every real client). Walks the exact 770 Login (play) layout.
 func TestJoinPacketReparse(t *testing.T) {
-	b := joinPacket(77, 1, 6, nil, false)
+	b := joinPacket(77, 1, 6, nil, false, attach.Welcome{NoRespawnScreen: true, LimitedCrafting: true})
 	r := bytes.NewReader(b)
 
 	i32 := func(what string) int32 {
@@ -65,9 +65,11 @@ func TestJoinPacketReparse(t *testing.T) {
 		t.Errorf("view distance = %d", v)
 	}
 	vi("sim distance")
-	u8("reduced debug")
-	u8("respawn screen")
-	u8("limited crafting")
+	// The gamerule flags follow the Welcome: reduced debug off, the
+	// respawn screen off (immediate_respawn), limited crafting on.
+	if f := [3]byte{u8("reduced debug"), u8("respawn screen"), u8("limited crafting")}; f != [3]byte{0, 0, 1} {
+		t.Errorf("login flags %v, want [0 0 1]", f)
+	}
 	vi("dimension id")
 	if s := str("dimension name"); s != "minecraft:overworld" {
 		t.Errorf("dimension = %q", s)

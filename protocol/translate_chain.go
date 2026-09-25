@@ -1,5 +1,7 @@
 package protocol
 
+import "bytes"
+
 // Chained, data-driven version translation. The canonical core speaks Target
 // (770); a client several versions newer is reached by composing single-version
 // "steps", each renumbering packet IDs (and, where field layouts changed, running
@@ -121,6 +123,15 @@ func (c chainTranslator) Clientbound(state State, id int32, body []byte) (int32,
 const canonAnimate = 0x02
 
 func (c chainTranslator) Serverbound(state State, id int32, body []byte) (int32, []byte, bool) {
+	// 26.2+ F3+F4 sends change_game_mode, which canonical 770 has no packet
+	// for: it becomes the /gamemode command it stands for, so the op check
+	// (GameModeCommand.PERMISSION_CHECK) is the command's own.
+	if state == StatePlay && c.version >= 776 && id == sbChangeGameMode776 {
+		if cmd, ok := changeGameModeCommand(body); ok {
+			return canonChatCommand, AppendString(nil, cmd), false
+		}
+		return id, body, true // malformed: drop it
+	}
 	// 26.x (proto ≥775) split use_entity into separate Attack and Interact packets.
 	// Fold them back into the canonical use_entity here, before the chained id remap,
 	// so player→mob combat works on 26.x clients (left-click attacks).
@@ -161,4 +172,22 @@ func chainFor(version int32) Translator {
 		steps = append(steps, s)
 	}
 	return chainTranslator{version: version, steps: steps}
+}
+
+// sbChangeGameMode776 is serverbound change_game_mode on 26.2 and 26.3;
+// canonChatCommand is chat_command at canonical 770 (its body the command
+// string).
+const (
+	sbChangeGameMode776 = 0x05
+	canonChatCommand    = 0x05
+)
+
+// changeGameModeCommand reads change_game_mode's GameType id.
+func changeGameModeCommand(body []byte) (string, bool) {
+	r := bytes.NewReader(body)
+	mode, err := ReadVarInt(r)
+	if err != nil || r.Len() != 0 || mode < 0 || mode > 3 {
+		return "", false
+	}
+	return "gamemode " + [...]string{"survival", "creative", "adventure", "spectator"}[mode], true
 }

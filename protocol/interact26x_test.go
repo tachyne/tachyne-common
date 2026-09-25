@@ -67,3 +67,17 @@ func TestPickItem26xToCanonical(t *testing.T) {
 		}
 	}
 }
+
+// F3+F4 on 26.2/26.3 (change_game_mode, 0x05, a GameType VarInt) arrives as
+// the /gamemode command it stands for.
+func TestChangeGameModeBecomesTheCommand(t *testing.T) {
+	for _, v := range []int32{776, 777} {
+		id, out, drop := TranslatorFor(v).Serverbound(StatePlay, 0x05, AppendVarInt(nil, 1))
+		if drop || id != canonChatCommand || !bytes.Equal(out, AppendString(nil, "gamemode creative")) {
+			t.Errorf("v%d: id 0x%02x drop %v body %q", v, id, drop, out)
+		}
+		if _, _, drop := TranslatorFor(v).Serverbound(StatePlay, 0x05, AppendVarInt(nil, 9)); !drop {
+			t.Errorf("v%d: a bad mode was not dropped", v)
+		}
+	}
+}

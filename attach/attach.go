@@ -153,6 +153,13 @@ type Welcome struct {
 	// unsharded (single-pod) world.
 	SID  int32  `json:"sid,omitempty"`
 	Topo string `json:"topo,omitempty"`
+	// The login packet's gamerule-driven flags (named so the zero value is
+	// vanilla's default): immediate_respawn hides the death screen,
+	// limited_crafting limits crafting to the recipe book, and
+	// reduced_debug_info trims the F3 screen.
+	NoRespawnScreen bool `json:"no_respawn_screen,omitempty"`
+	LimitedCrafting bool `json:"limited_crafting,omitempty"`
+	ReducedDebug    bool `json:"reduced_debug,omitempty"`
 }
 
 // Want declares the chunk view the gateway needs.
