@@ -81,3 +81,26 @@ func PostEffects777(version int32, effects []string) (int32, []byte, bool) {
 	}
 	return 0x53, b, true
 }
+
+// ZombieNautilusVariant26x is a zombie nautilus's DATA_VARIANT_ID as a
+// set_entity_data at the client's version: index 21 (after AgeableMob's
+// baby/age-locked, TamableAnimal's flags/owner and AbstractNautilus's dash),
+// serializer ZOMBIE_NAUTILUS_VARIANT (33 on 26.2 and 26.3), the registry id.
+// ok false for a client without zombie nautiluses.
+func ZombieNautilusVariant26x(version, eid, variant int32) (int32, []byte, bool) {
+	c := chainFor(version)
+	if version < 776 || c == nil {
+		return 0, nil, false
+	}
+	// set_entity_data's id at the client's version, as the chain numbers it
+	// (canonical 0x5c); the body is written at that version already.
+	id, _, drop := c.Clientbound(StatePlay, 0x5c, AppendU8(AppendVarInt(nil, eid), 0xff))
+	if drop {
+		return 0, nil, false
+	}
+	b := AppendVarInt(nil, eid)
+	b = AppendU8(b, 21)
+	b = AppendVarInt(b, 33)
+	b = AppendVarInt(b, variant)
+	return id, AppendU8(b, 0xff), true
+}

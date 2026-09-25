@@ -863,6 +863,13 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 					p := render770.Hurt(e)
 					cc.send(p.ID, p.Body)
 				}
+			case attach.MsgNautilusVariant:
+				var e attach.NautilusVariant
+				if json.Unmarshal(payload, &e) == nil {
+					if id, body, ok := protocol.ZombieNautilusVariant26x(clientProto, e.EID, e.Variant); ok {
+						cc.sendRaw(id, body)
+					}
+				}
 			case attach.MsgSuggestions:
 				var e attach.Suggestions
 				if json.Unmarshal(payload, &e) == nil {

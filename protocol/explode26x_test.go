@@ -43,3 +43,14 @@ func TestAddTransientBlock777(t *testing.T) {
 		t.Fatalf("id %#x body %x, want 0x25 %x", id, b, want)
 	}
 }
+
+// set_entity_data's own id on each version, as the chain renumbers it.
+func TestZombieNautilusVariantIDs(t *testing.T) {
+	for _, v := range []int32{776, 777} {
+		id, _, ok := ZombieNautilusVariant26x(v, 1, 1)
+		want, _, _ := chainFor(v).Clientbound(StatePlay, 0x5c, AppendU8(AppendVarInt(nil, 1), 0xff))
+		if !ok || id != want {
+			t.Fatalf("v%d: id %#x, the chain gives %#x", v, id, want)
+		}
+	}
+}

@@ -105,3 +105,14 @@ type Suggestions struct {
 	Length  int32    `json:"length"`
 	Matches []string `json:"matches,omitempty"`
 }
+
+// MsgNautilusVariant (w→gw): a zombie nautilus's variant (DATA_VARIANT_ID,
+// ZombieNautilus.finalizeSpawn's biome pick). The mob is 26.x-only and so is
+// its serializer, so the gateway writes the entry at the client's version.
+const MsgNautilusVariant = 0x96
+
+// NautilusVariant is the variant's registry id: 0 temperate, 1 warm.
+type NautilusVariant struct {
+	EID     int32 `json:"eid"`
+	Variant int32 `json:"variant"`
+}
