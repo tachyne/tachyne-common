@@ -12,6 +12,17 @@ import (
 // metadata (ClientboundBundlePacket, as ServerEntity.sendPairingData uses).
 const MsgBundle = 0x85
 
+// MsgBundleOpen / MsgBundleClose (w→gw) bracket frames the world sends
+// separately but that belong in one bundle — a spawn and its pairing data.
+// The world sends both on its reliable path, so an open is always closed.
+const (
+	MsgBundleOpen  = 0x88
+	MsgBundleClose = 0x89
+)
+
+// BundleMark is the (empty) payload of both markers.
+type BundleMark struct{}
+
 // MsgBundleEnd is the queue's marker for the end of a bundle's frames. It is
 // never sent over the wire.
 const MsgBundleEnd = 0xff

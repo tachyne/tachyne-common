@@ -637,7 +637,7 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 				if frames.Expand(payload) {
 					cc.send(playClientBundleDelimiter, nil)
 				}
-			case attach.MsgBundleEnd:
+			case attach.MsgBundleEnd, attach.MsgBundleOpen, attach.MsgBundleClose:
 				cc.send(playClientBundleDelimiter, nil)
 			case attach.MsgChunk:
 				// Queue the promise (ordered) and the decode job (raced);
