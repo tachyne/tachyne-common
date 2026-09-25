@@ -798,6 +798,13 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 					p := render770.Hurt(e)
 					cc.send(p.ID, p.Body)
 				}
+			case attach.MsgGhostRecipe:
+				var e attach.GhostRecipe
+				if json.Unmarshal(payload, &e) == nil {
+					if p, ok := render770.GhostRecipe(e, clientProto); ok {
+						cc.send(p.ID, p.Body)
+					}
+				}
 			case attach.MsgTransientBlock:
 				var e attach.TransientBlock
 				if json.Unmarshal(payload, &e) == nil {

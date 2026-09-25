@@ -1,6 +1,7 @@
 package render770
 
 import (
+	"bytes"
 	"encoding/binary"
 	"math"
 	"testing"
@@ -251,5 +252,26 @@ func TestRecipeBookSkipsItemsTheClientLacks(t *testing.T) {
 	}
 	if n := RecipeBook(rb, 777).Body[0]; n != 4 {
 		t.Errorf("26.3 got %d entries, want 4", n)
+	}
+}
+
+// place_ghost_recipe: the window, then the shaped display — its size, the
+// cells, the result and the crafting table as the station.
+func TestGhostRecipeLayout(t *testing.T) {
+	p, ok := GhostRecipe(attach.GhostRecipe{Window: 3, Shaped: &attach.ShapedRecipe{W: 1, H: 2, Cells: []int32{5, 5}, Result: 6, Count: 4}}, 770)
+	if !ok || p.ID != IDPlaceGhostRecipe {
+		t.Fatalf("ok=%v id=%#x", ok, p.ID)
+	}
+	sd := slotDisplayIDs{item: 2, itemStack: 3}
+	w := protocol.AppendVarInt(nil, 3)
+	w = protocol.AppendVarInt(w, recipeDisplayShaped)
+	w = protocol.AppendVarInt(protocol.AppendVarInt(w, 1), 2)
+	w = protocol.AppendVarInt(w, 2)
+	rid := func(id int32) int32 { return protocol.RemapID(protocol.RegItem, 770, id) }
+	w = appendSlotDisplay(appendSlotDisplay(w, sd, rid(5), 1), sd, rid(5), 1)
+	w = appendSlotDisplay(w, sd, rid(6), 4)
+	w = appendSlotDisplay(w, sd, rid(itemCraftingTable), 1)
+	if !bytes.Equal(p.Body, w) {
+		t.Fatalf("body %x\nwant %x", p.Body, w)
 	}
 }

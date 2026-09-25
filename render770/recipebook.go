@@ -221,3 +221,57 @@ func ingredientInstances(cells []int32) []int32 {
 	}
 	return out
 }
+
+// IDPlaceGhostRecipe is place_ghost_recipe at canonical 770.
+const IDPlaceGhostRecipe = 0x38
+
+// GhostRecipe renders place_ghost_recipe: the container id, then the
+// recipe's RecipeDisplay (as the book entry carries it, without the entry's
+// own fields). ok false when the client's version lacks one of its items.
+func GhostRecipe(e attach.GhostRecipe, version int32) (Packet, bool) {
+	rid := func(id int32) int32 { return protocol.RemapID(protocol.RegItem, version, id) }
+	sd := slotDisplayIDs{item: 2, itemStack: 3}
+	if version >= 775 {
+		sd = slotDisplayIDs{item: 4, itemStack: 5, templateForm: true}
+	}
+	has := func(ids ...int32) bool {
+		for _, id := range ids {
+			if id != 0 && !protocol.IDPresent(protocol.RegItem, version, id) {
+				return false
+			}
+		}
+		return true
+	}
+	b := protocol.AppendVarInt(nil, e.Window)
+	switch {
+	case e.Shaped != nil:
+		r := e.Shaped
+		if !has(r.Cells...) || !has(r.Result) {
+			return Packet{}, false
+		}
+		b = protocol.AppendVarInt(b, recipeDisplayShaped)
+		b = protocol.AppendVarInt(b, r.W)
+		b = protocol.AppendVarInt(b, r.H)
+		b = protocol.AppendVarInt(b, int32(len(r.Cells)))
+		for _, c := range r.Cells {
+			b = appendSlotDisplay(b, sd, rid(c), 1)
+		}
+		b = appendSlotDisplay(b, sd, rid(r.Result), int(r.Count))
+		b = appendSlotDisplay(b, sd, rid(itemCraftingTable), 1)
+	case e.Shapeless != nil:
+		r := e.Shapeless
+		if !has(r.Ingredients...) || !has(r.Result) {
+			return Packet{}, false
+		}
+		b = protocol.AppendVarInt(b, recipeDisplayShapeless)
+		b = protocol.AppendVarInt(b, int32(len(r.Ingredients)))
+		for _, c := range r.Ingredients {
+			b = appendSlotDisplay(b, sd, rid(c), 1)
+		}
+		b = appendSlotDisplay(b, sd, rid(r.Result), int(r.Count))
+		b = appendSlotDisplay(b, sd, rid(itemCraftingTable), 1)
+	default:
+		return Packet{}, false
+	}
+	return Packet{IDPlaceGhostRecipe, b}, true
+}

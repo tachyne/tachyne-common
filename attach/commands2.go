@@ -61,3 +61,16 @@ type TransientBlock struct {
 	Z     int32 `json:"z"`
 	State int32 `json:"state"`
 }
+
+// MsgGhostRecipe (w→gw): the player clicked a recipe they cannot make — the
+// grid shows its ingredients as ghosts (ClientboundPlaceGhostRecipePacket,
+// ServerGamePacketListenerImpl.handlePlaceRecipe's PLACE_GHOST_RECIPE).
+// Exactly one of Shaped and Shapeless is set.
+const MsgGhostRecipe = 0x92
+
+// GhostRecipe is the window and the recipe's display.
+type GhostRecipe struct {
+	Window    int32            `json:"window"`
+	Shaped    *ShapedRecipe    `json:"shaped,omitempty"`
+	Shapeless *ShapelessRecipe `json:"shapeless,omitempty"`
+}
