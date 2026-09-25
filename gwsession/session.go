@@ -142,32 +142,39 @@ var (
 	// for — enrolled in the 26.2 AGE_LOCKED index shift below. Those whose
 	// variant is a registry HOLDER also get their serializer renumbered
 	// (FixVariantMeta); the rest carry plain INT/byte fields.
-	typeSheep       = protocol.CanonicalEntity("sheep")
-	typeArmadillo   = protocol.CanonicalEntity("armadillo")  // ARMADILLO_STATE at 17 (an AgeableMob: 18 on 26.2)
-	typePanda       = protocol.CanonicalEntity("panda")      // MAIN_GENE/HIDDEN_GENE bytes at 20/21 (an AgeableMob: 21/22 on 26.2)
-	typeCamel       = protocol.CanonicalEntity("camel")      // DASH bool at 18 (an AgeableMob: 19 on 26.2)
-	typeGoat        = protocol.CanonicalEntity("goat")       // IS_SCREAMING/HAS_LEFT_HORN/HAS_RIGHT_HORN bools at 17-19 (an AgeableMob: 18-20 on 26.2)
-	typeTurtle      = protocol.CanonicalEntity("turtle")     // HAS_EGG/LAYING_EGG bools at 17/18 (an AgeableMob: 18/19 on 26.2)
-	typePolarBear   = protocol.CanonicalEntity("polar_bear") // DATA_STANDING_ID bool at 17 (an AgeableMob: 18 on 26.2)
-	typeGlowSquid   = protocol.CanonicalEntity("glow_squid") // DATA_DARK_TICKS_REMAINING int at 17 (an AgeableWaterCreature: 18 on 26.2)
-	typeStrider     = protocol.CanonicalEntity("strider")    // BOOST_TIME int at 17, SUFFOCATING bool at 18 (an Animal: 18/19 on 26.2)
-	typeWolf        = protocol.CanonicalEntity("wolf")       // tame flags 17, WOLF_VARIANT holder at 22
-	typeCat         = protocol.CanonicalEntity("cat")        // CAT_VARIANT holder at 19 (tame flags 17)
-	typeOcelot      = protocol.CanonicalEntity("ocelot")
-	typeParrot      = protocol.CanonicalEntity("parrot") // tame flags 17, variant INT at 19
-	typeBee         = protocol.CanonicalEntity("bee")
-	typeFrog        = protocol.CanonicalEntity("frog")         // FROG_VARIANT holder at 17
-	typeAxolotl     = protocol.CanonicalEntity("axolotl")      // variant INT at 17
-	typeVillager    = protocol.CanonicalEntity("villager")     // VILLAGER_DATA at 18 (an AgeableMob: 19 on 26.2)
-	typeHorse       = protocol.CanonicalEntity("horse")        // variant INT (colour | markings<<8) at 18
-	typeLlama       = protocol.CanonicalEntity("llama")        // strength INT 19, variant INT 20
-	typeTraderLlama = protocol.CanonicalEntity("trader_llama") // a Llama subclass: the same fields
-	typeRabbit      = protocol.CanonicalEntity("rabbit")       // variant INT at 17
-	typeFox         = protocol.CanonicalEntity("fox")          // variant INT at 17
-	typeMooshroom   = protocol.CanonicalEntity("mooshroom")    // variant INT at 17
-	typePig         = protocol.CanonicalEntity("pig")          // PIG_VARIANT holder at 18 (boost time 17)
-	typeCow         = protocol.CanonicalEntity("cow")          // COW_VARIANT holder at 17
-	typeChicken     = protocol.CanonicalEntity("chicken")      // CHICKEN_VARIANT holder at 17
+	typeSheep     = protocol.CanonicalEntity("sheep")
+	typeArmadillo = protocol.CanonicalEntity("armadillo")  // ARMADILLO_STATE at 17 (an AgeableMob: 18 on 26.2)
+	typePanda     = protocol.CanonicalEntity("panda")      // MAIN_GENE/HIDDEN_GENE bytes at 20/21 (an AgeableMob: 21/22 on 26.2)
+	typeCamel     = protocol.CanonicalEntity("camel")      // DASH bool at 18 (an AgeableMob: 19 on 26.2)
+	typeGoat      = protocol.CanonicalEntity("goat")       // IS_SCREAMING/HAS_LEFT_HORN/HAS_RIGHT_HORN bools at 17-19 (an AgeableMob: 18-20 on 26.2)
+	typeTurtle    = protocol.CanonicalEntity("turtle")     // HAS_EGG/LAYING_EGG bools at 17/18 (an AgeableMob: 18/19 on 26.2)
+	typePolarBear = protocol.CanonicalEntity("polar_bear") // DATA_STANDING_ID bool at 17 (an AgeableMob: 18 on 26.2)
+	typeGlowSquid = protocol.CanonicalEntity("glow_squid") // DATA_DARK_TICKS_REMAINING int at 17 (an AgeableWaterCreature: 18 on 26.2)
+	typeStrider   = protocol.CanonicalEntity("strider")    // BOOST_TIME int at 17, SUFFOCATING bool at 18 (an Animal: 18/19 on 26.2)
+	typeWolf      = protocol.CanonicalEntity("wolf")       // tame flags 17, WOLF_VARIANT holder at 22
+	typeCat       = protocol.CanonicalEntity("cat")        // CAT_VARIANT holder at 19 (tame flags 17)
+	typeOcelot    = protocol.CanonicalEntity("ocelot")
+	typeParrot    = protocol.CanonicalEntity("parrot") // tame flags 17, variant INT at 19
+	typeBee       = protocol.CanonicalEntity("bee")
+	typeFrog      = protocol.CanonicalEntity("frog")     // FROG_VARIANT holder at 17
+	typeAxolotl   = protocol.CanonicalEntity("axolotl")  // variant INT at 17
+	typeVillager  = protocol.CanonicalEntity("villager") // VILLAGER_DATA at 18 (an AgeableMob: 19 on 26.2)
+	typeHorse     = protocol.CanonicalEntity("horse")    // variant INT (colour | markings<<8) at 18
+	// The rest of the AbstractHorse family: its flags byte (tame, bred,
+	// eating, standing, open mouth) at 17 — 18 on 26.2.
+	typeDonkey        = protocol.CanonicalEntity("donkey")
+	typeMule          = protocol.CanonicalEntity("mule")
+	typeSkeletonHorse = protocol.CanonicalEntity("skeleton_horse")
+	typeZombieHorse   = protocol.CanonicalEntity("zombie_horse")
+	typeCamelHusk     = protocol.CanonicalEntity("camel_husk")
+	typeLlama         = protocol.CanonicalEntity("llama")        // strength INT 19, variant INT 20
+	typeTraderLlama   = protocol.CanonicalEntity("trader_llama") // a Llama subclass: the same fields
+	typeRabbit        = protocol.CanonicalEntity("rabbit")       // variant INT at 17
+	typeFox           = protocol.CanonicalEntity("fox")          // variant INT at 17
+	typeMooshroom     = protocol.CanonicalEntity("mooshroom")    // variant INT at 17
+	typePig           = protocol.CanonicalEntity("pig")          // PIG_VARIANT holder at 18 (boost time 17)
+	typeCow           = protocol.CanonicalEntity("cow")          // COW_VARIANT holder at 17
+	typeChicken       = protocol.CanonicalEntity("chicken")      // CHICKEN_VARIANT holder at 17
 )
 
 // ageableIntMetaTypes are the AgeableMob species whose type-specific
@@ -175,6 +182,7 @@ var (
 var ageableIntMetaTypes = map[int32]bool{
 	typeSheep: true, typeOcelot: true, typeParrot: true, typeBee: true, typeAxolotl: true,
 	typeVillager: true, typeHorse: true, typeLlama: true, typeTraderLlama: true,
+	typeDonkey: true, typeMule: true, typeSkeletonHorse: true, typeZombieHorse: true, typeCamelHusk: true,
 	typeRabbit: true, typeFox: true, typeMooshroom: true, typeArmadillo: true, typePanda: true, typeCamel: true, typeGoat: true, typeTurtle: true, typePolarBear: true, typeGlowSquid: true, typeStrider: true,
 }
 
