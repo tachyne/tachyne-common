@@ -899,6 +899,9 @@ func remapEntityMeta(version int32, body []byte) []byte {
 		if typ == ArmadilloStateSerializer770 {
 			wireType = armadilloStateSerializer(version)
 		}
+		if typ == SnifferStateSerializer770 {
+			wireType = snifferStateSerializer(version)
+		}
 		if t, ok := variantSerializer776[typ]; ok && version >= 776 {
 			// The mob-variant holders renumber here, on the CANONICAL id, so
 			// the pose shift above cannot mistake a renumbered cat (26.2's 21)
@@ -914,7 +917,7 @@ func remapEntityMeta(version int32, body []byte) []byte {
 				return body
 			}
 			out = append(out, b)
-		case metaTypeVarInt, metaTypePose, ArmadilloStateSerializer770, metaTypeOptUInt:
+		case metaTypeVarInt, metaTypePose, ArmadilloStateSerializer770, SnifferStateSerializer770, metaTypeOptUInt:
 			v, err := ReadVarInt(r)
 			if err != nil {
 				return body
@@ -1085,18 +1088,36 @@ func isVariantHolderSerializer(typ int32) bool {
 const VillagerDataSerializer770 = 19
 
 // ArmadilloStateSerializer770 is EntityDataSerializers.ARMADILLO_STATE (an
-// enum varint: idle, rolling, scared, unrolling): 32 on 1.21.5, 34 on 26.2
-// (31 across the unrouted 1.21.6-26.1 gap, COMPOUND_TAG's removal only).
+// enum varint: idle, rolling, scared, unrolling): 32 on 1.21.5, 36 on 26.2
+// and 26.3 — counted from the serializer registration order: COMPOUND_TAG
+// left, and the sound variants and the zombie nautilus variant came in ahead
+// of it. (34 there is PAINTING_VARIANT: sending it made a client read an
+// armadillo's state as a painting and drop the connection.)
 const ArmadilloStateSerializer770 = 32
 
 func armadilloStateSerializer(version int32) int32 {
 	switch {
 	case version >= 776:
-		return 34
+		return 36
 	case version >= 773:
 		return 31
 	}
 	return ArmadilloStateSerializer770
+}
+
+// SnifferStateSerializer770 is EntityDataSerializers.SNIFFER_STATE (an enum
+// varint: idling, feeling happy, scenting, sniffing, searching, digging,
+// rising): 31 on 1.21.5, 35 on 26.2 and 26.3.
+const SnifferStateSerializer770 = 31
+
+func snifferStateSerializer(version int32) int32 {
+	switch {
+	case version >= 776:
+		return 35
+	case version >= 773:
+		return 30
+	}
+	return SnifferStateSerializer770
 }
 
 // FixVariantMeta rewrites an ageable mob's set_entity_data for a 26.2 client
@@ -1165,7 +1186,7 @@ func rewriteMetaEntries(body []byte, mapEntry func(idx byte, typ int32) (byte, i
 				return body
 			}
 			out = append(out, b)
-		case metaTypeVarInt, metaTypePose, ArmadilloStateSerializer770: // varint payloads
+		case metaTypeVarInt, metaTypePose, ArmadilloStateSerializer770, SnifferStateSerializer770: // varint payloads
 			v, err := ReadVarInt(r)
 			if err != nil {
 				return body
@@ -2414,7 +2435,7 @@ func appendLpVec3(b []byte, x, y, z float64) []byte {
 // WEATHERING_COPPER_STATE → "invalid entity data item type" disconnect). Ids from
 // the vanilla EntityDataSerializers registration order (774 vs 776 differ by
 // the four sound-variant serializers 26.1 inserted).
-var weatheringCopperStateSerializer = map[int32]int32{774: 34, 775: 38, 776: 38}
+var weatheringCopperStateSerializer = map[int32]int32{774: 34, 775: 38, 776: 38, 777: 38}
 
 // FixCopperGolemMeta rewrites a copper golem's index-16 metadata serializer type
 // from the INT placeholder to WEATHERING_COPPER_STATE for the client version. The
@@ -2456,7 +2477,7 @@ func FixCopperGolemMeta(version int32, body []byte) []byte {
 				return body
 			}
 			out = append(out, b)
-		case metaTypeVarInt, metaTypePose, ArmadilloStateSerializer770:
+		case metaTypeVarInt, metaTypePose, ArmadilloStateSerializer770, SnifferStateSerializer770:
 			v, err := ReadVarInt(r)
 			if err != nil {
 				return body

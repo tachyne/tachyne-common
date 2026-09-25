@@ -85,7 +85,7 @@ func PostEffects777(version int32, effects []string) (int32, []byte, bool) {
 // ZombieNautilusVariant26x is a zombie nautilus's DATA_VARIANT_ID as a
 // set_entity_data at the client's version: index 21 (after AgeableMob's
 // baby/age-locked, TamableAnimal's flags/owner and AbstractNautilus's dash),
-// serializer ZOMBIE_NAUTILUS_VARIANT (33 on 26.2 and 26.3), the registry id.
+// serializer ZOMBIE_NAUTILUS_VARIANT (32 on 26.2 and 26.3), the registry id.
 // ok false for a client without zombie nautiluses.
 func ZombieNautilusVariant26x(version, eid, variant int32) (int32, []byte, bool) {
 	c := chainFor(version)
@@ -100,7 +100,7 @@ func ZombieNautilusVariant26x(version, eid, variant int32) (int32, []byte, bool)
 	}
 	b := AppendVarInt(nil, eid)
 	b = AppendU8(b, 21)
-	b = AppendVarInt(b, 33)
+	b = AppendVarInt(b, 32)
 	b = AppendVarInt(b, variant)
 	return id, AppendU8(b, 0xff), true
 }

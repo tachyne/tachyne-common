@@ -236,6 +236,7 @@ var (
 	typePig           = protocol.CanonicalEntity("pig")          // PIG_VARIANT holder at 18 (boost time 17)
 	typeCow           = protocol.CanonicalEntity("cow")          // COW_VARIANT holder at 17
 	typeChicken       = protocol.CanonicalEntity("chicken")      // CHICKEN_VARIANT holder at 17
+	typeSniffer       = protocol.CanonicalEntity("sniffer")      // SNIFFER_STATE at 17 (an AgeableMob: 18 on 26.2)
 )
 
 // ageableIntMetaTypes are the AgeableMob species whose type-specific
@@ -244,7 +245,7 @@ var ageableIntMetaTypes = map[int32]bool{
 	typeSheep: true, typeOcelot: true, typeParrot: true, typeBee: true, typeAxolotl: true,
 	typeVillager: true, typeHorse: true, typeLlama: true, typeTraderLlama: true,
 	typeDonkey: true, typeMule: true, typeSkeletonHorse: true, typeZombieHorse: true, typeCamelHusk: true,
-	typeRabbit: true, typeFox: true, typeMooshroom: true, typeArmadillo: true, typePanda: true, typeCamel: true, typeGoat: true, typeTurtle: true, typePolarBear: true, typeGlowSquid: true, typeStrider: true,
+	typeRabbit: true, typeFox: true, typeMooshroom: true, typeSniffer: true, typeArmadillo: true, typePanda: true, typeCamel: true, typeGoat: true, typeTurtle: true, typePolarBear: true, typeGlowSquid: true, typeStrider: true,
 }
 
 // ageableHolderMetaTypes are the AgeableMob species carrying a registry-holder

@@ -1077,8 +1077,8 @@ func TestArmadilloStateMeta(t *testing.T) {
 	idx, _ := r.ReadByte()
 	typ, _ := ReadVarInt(r)
 	val, _ := ReadVarInt(r)
-	if idx != 18 || typ != 34 || val != 2 {
-		t.Fatalf("26.2 armadillo meta = idx %d typ %d val %d, want 18/34/2", idx, typ, val)
+	if idx != 18 || typ != 36 || val != 2 {
+		t.Fatalf("26.2 armadillo meta = idx %d typ %d val %d, want 18/36/2", idx, typ, val)
 	}
 	if !bytes.Equal(remapEntityMeta(770, body), body) {
 		t.Fatal("a 1.21.5 client gets it untouched")

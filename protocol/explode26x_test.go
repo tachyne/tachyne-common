@@ -54,3 +54,37 @@ func TestZombieNautilusVariantIDs(t *testing.T) {
 		}
 	}
 }
+
+// The enum-state serializers' ids on 26.2/26.3, counted from vanilla's
+// registration order: sniffer 35, armadillo 36 — not 34, which is
+// PAINTING_VARIANT.
+func TestStateSerializers26x(t *testing.T) {
+	if armadilloStateSerializer(776) != 36 || armadilloStateSerializer(777) != 36 {
+		t.Fatal("ARMADILLO_STATE is 36 on 26.x")
+	}
+	if snifferStateSerializer(776) != 35 || snifferStateSerializer(777) != 35 {
+		t.Fatal("SNIFFER_STATE is 35 on 26.x")
+	}
+	body := AppendVarInt(nil, 5)
+	body = append(body, 17)
+	body = AppendVarInt(body, SnifferStateSerializer770)
+	body = AppendVarInt(body, 3) // sniffing
+	body = append(body, 0xff)
+	out := remapEntityMeta(777, ShiftAgeableMobMeta(777, body))
+	want := AppendVarInt(nil, 5)
+	want = append(want, 18)
+	want = AppendVarInt(want, 35)
+	want = AppendVarInt(want, 3)
+	want = append(want, 0xff)
+	if !bytes.Equal(out, want) {
+		t.Fatalf("sniffer state %x, want %x", out, want)
+	}
+}
+
+// The copper golem's WEATHERING_COPPER_STATE is 38 on 26.3 as on 26.2; with
+// no 777 entry a 26.3 client got the INT placeholder.
+func TestCopperGolemMeta777(t *testing.T) {
+	if weatheringCopperStateSerializer[777] != 38 {
+		t.Fatal("26.3 copper golem serializer missing")
+	}
+}
