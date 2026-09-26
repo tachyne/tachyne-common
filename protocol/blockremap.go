@@ -1830,6 +1830,9 @@ func copyNBTValue(r *bytes.Reader, out *[]byte) bool {
 // and unbounded recursion here would be a stack overflow on malformed input.
 const maxBundleNesting = 16
 
+// maxBannerLayers bounds the banner_patterns list the copier walks.
+const maxBannerLayers = 16
+
 func copyFullSlot(r *bytes.Reader, out *[]byte, remap func(int32) int32, version int32, serverbound bool) bool {
 	return copyFullSlotAt(r, out, remap, version, serverbound, 0)
 }
@@ -1892,30 +1895,27 @@ func slotAbsent(r *bytes.Reader, remap func(int32) int32, serverbound bool) bool
 	return err == nil && item != 0 && remap(item) == 0
 }
 
-// copyNestedSlots copies the n stacks of a bundle's or a container's contents.
-// 26.x decodes those as item templates, which cannot be empty, so a stack the
-// client lacks is left out of the list rather than sent empty.
-func copyNestedSlots(r *bytes.Reader, out *[]byte, n int32, remap func(int32) int32, version int32, serverbound bool, depth int) bool {
-	var items []byte
-	kept := int32(0)
-	for j := int32(0); j < n; j++ {
-		absent := slotAbsent(r, remap, serverbound)
-		var one []byte
-		if !copyFullSlotBody(r, &one, remap, version, serverbound, depth) {
-			return false
-		}
-		if absent {
-			continue
-		}
-		items = append(items, one...)
-		kept++
+func copyFullSlotBody(r *bytes.Reader, out *[]byte, remap func(int32) int32, version int32, serverbound bool, depth int) bool {
+	count, err := ReadVarInt(r)
+	if err != nil {
+		return false
 	}
-	*out = AppendVarInt(*out, kept)
-	*out = append(*out, items...)
-	return true
+	*out = AppendVarInt(*out, count)
+	if count <= 0 {
+		return true
+	}
+	item, err := ReadVarInt(r)
+	if err != nil {
+		return false
+	}
+	*out = AppendVarInt(*out, remap(item))
+	return copyComponentPatch(r, out, remap, version, serverbound, depth)
 }
 
-func copyFullSlotBody(r *bytes.Reader, out *[]byte, remap func(int32) int32, version int32, serverbound bool, depth int) bool {
+// copyComponentPatch copies what follows a stack's item id: the added and
+// removed component counts and the added components, each renumbered (and,
+// where its payload changed shape, reshaped) for the other side.
+func copyComponentPatch(r *bytes.Reader, out *[]byte, remap func(int32) int32, version int32, serverbound bool, depth int) bool {
 	// Component-id translation pairs for this direction: canonical (770) ids on
 	// the server side, the client version's ids on the wire side.
 	enchIn, enchOut := int32(componentEnchantments), enchCompID(version)
@@ -1964,19 +1964,6 @@ func copyFullSlotBody(r *bytes.Reader, out *[]byte, remap func(int32) int32, ver
 		potDecIn, potDecOut = potDecOut, potDecIn
 		instIn, instOut = instOut, instIn
 	}
-	count, err := ReadVarInt(r)
-	if err != nil {
-		return false
-	}
-	*out = AppendVarInt(*out, count)
-	if count <= 0 {
-		return true
-	}
-	item, err := ReadVarInt(r)
-	if err != nil {
-		return false
-	}
-	*out = AppendVarInt(*out, remap(item))
 	addC, e1 := ReadVarInt(r)
 	remC, e2 := ReadVarInt(r)
 	if e1 != nil || e2 != nil || addC < 0 || addC > 8 || remC != 0 {
@@ -1988,6 +1975,13 @@ func copyFullSlotBody(r *bytes.Reader, out *[]byte, remap func(int32) int32, ver
 		cid, err := ReadVarInt(r)
 		if err != nil {
 			return false
+		}
+		if canon, outID, ok := laterComponent(cid, version, serverbound); ok {
+			*out = AppendVarInt(*out, outID)
+			if !copyLaterComponent(r, out, canon, remap, version, serverbound, depth) {
+				return false
+			}
+			continue
 		}
 		switch cid {
 		case mapIn:
@@ -2052,7 +2046,7 @@ func copyFullSlotBody(r *bytes.Reader, out *[]byte, remap func(int32) int32, ver
 				return false
 			}
 			*out = AppendVarInt(*out, contOut)
-			if !copyNestedSlots(r, out, n, remap, version, serverbound, depth+1) {
+			if !copyNestedStacks(r, out, n, remap, version, serverbound, depth+1, true) {
 				return false
 			}
 		case stewIn:
@@ -2157,9 +2151,11 @@ func copyFullSlotBody(r *bytes.Reader, out *[]byte, remap func(int32) int32, ver
 		case bannerIn:
 			// banner_patterns: varint layer count + (pattern holder, dye)
 			// varint pairs — pattern ids are our declared order, dye is the
-			// stable enum; only the component id renumbers.
+			// stable enum; only the component id renumbers. The codec's list
+			// is unbounded: a loom stops at six, the ominous banner has
+			// eight, and sixteen is the widest walked here.
 			n, err := ReadVarInt(r)
-			if err != nil || n < 0 || n > 6 {
+			if err != nil || n < 0 || n > maxBannerLayers {
 				return false
 			}
 			*out = AppendVarInt(*out, bannerOut)
@@ -2310,7 +2306,7 @@ func copyFullSlotBody(r *bytes.Reader, out *[]byte, remap func(int32) int32, ver
 				return false
 			}
 			*out = AppendVarInt(*out, bundleOut)
-			if !copyNestedSlots(r, out, n, remap, version, serverbound, depth+1) {
+			if !copyNestedStacks(r, out, n, remap, version, serverbound, depth+1, false) {
 				return false
 			}
 		default:

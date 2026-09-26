@@ -162,8 +162,15 @@ func TestAbsentItemLeftOutOfABundle(t *testing.T) {
 	if n, _ := ReadVarInt(r); n != 1 {
 		t.Fatalf("proto %d: bundle holds %d stacks, want 1 (the absent item left out)", v, n)
 	}
-	ReadVarInt(r) // count
-	if got, _ := ReadVarInt(r); got != RemapID(RegItem, v, present) {
+	var got int32
+	if templateStacks(v) { // an item template: item, then count
+		got, _ = ReadVarInt(r)
+		ReadVarInt(r)
+	} else {
+		ReadVarInt(r) // count
+		got, _ = ReadVarInt(r)
+	}
+	if got != RemapID(RegItem, v, present) {
 		t.Errorf("the kept stack is item %d, want %d", got, RemapID(RegItem, v, present))
 	}
 }

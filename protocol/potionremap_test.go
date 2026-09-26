@@ -218,14 +218,27 @@ func TestContainerContentsRemapInside(t *testing.T) {
 			t.Fatalf("v%d: %d slots, want %d", tc.version, n, len(items))
 		}
 		for j, want := range items {
-			cnt, _ := ReadVarInt(r)
+			var cnt, id int32
+			if templateStacks(tc.version) {
+				// 26.x: Optional<ItemStackTemplate> — a present flag, then
+				// item before count.
+				flag, _ := r.ReadByte()
+				if flag == 1 {
+					id, _ = ReadVarInt(r)
+					cnt, _ = ReadVarInt(r)
+				}
+			} else {
+				cnt, _ = ReadVarInt(r)
+				if cnt > 0 {
+					id, _ = ReadVarInt(r)
+				}
+			}
 			if want == 0 {
 				if cnt != 0 {
 					t.Errorf("v%d slot %d: count %d, want the empty slot", tc.version, j, cnt)
 				}
 				continue
 			}
-			id, _ := ReadVarInt(r)
 			if id != want+shift {
 				t.Errorf("v%d slot %d: item %d, want %d", tc.version, j, id, want+shift)
 			}
