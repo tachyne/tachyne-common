@@ -140,4 +140,8 @@ type BlockDisplay struct {
 	Count  int32    `json:"count,omitempty"`
 	HitDir int32    `json:"hit_dir,omitempty"` // brushable: Direction 3D value + 1 (0 = none)
 	NextAt int64    `json:"next_at,omitempty"` // trial spawner: next_mob_spawns_at while active
+	// Brushable, for renderers that draw the dust from the tag (Bedrock's
+	// brush_count and type): the block's dusted stage and its block id.
+	Dusted int32  `json:"dusted,omitempty"`
+	Block  string `json:"block,omitempty"`
 }

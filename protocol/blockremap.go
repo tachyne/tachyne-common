@@ -833,6 +833,7 @@ const (
 	metaTypeVarInt        = 1
 	metaTypeFloat         = 3
 	metaTypeBoolean       = 8
+	metaTypeRotations     = 9 // Rotations.STREAM_CODEC: three floats (an armor stand's pose); 9 on 770, 776 and 777
 	metaTypeBlockPos      = 10
 	metaTypeOptBlockPos   = 11
 	metaTypeOptBlockState = 15 // Optional<BlockState>: a single VarInt, 0 = empty
@@ -974,6 +975,12 @@ func remapEntityMeta(version int32, body []byte) []byte {
 			if !copyMetaParticles(r, &out, func(id int32) int32 { return remapParticleID(version, id) }) {
 				return body
 			}
+		case metaTypeRotations:
+			var f [12]byte
+			if _, err := io.ReadFull(r, f[:]); err != nil {
+				return body
+			}
+			out = append(out, f[:]...)
 		case metaTypeBlockPos:
 			var p [8]byte
 			if _, err := io.ReadFull(r, p[:]); err != nil {
@@ -1231,6 +1238,12 @@ func rewriteMetaEntries(body []byte, mapEntry func(idx byte, typ int32) (byte, i
 			}
 		case metaTypeFloat:
 			var f [4]byte
+			if _, err := io.ReadFull(r, f[:]); err != nil {
+				return body
+			}
+			out = append(out, f[:]...)
+		case metaTypeRotations:
+			var f [12]byte
 			if _, err := io.ReadFull(r, f[:]); err != nil {
 				return body
 			}
