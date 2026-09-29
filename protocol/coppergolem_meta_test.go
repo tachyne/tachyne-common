@@ -31,3 +31,23 @@ func TestFixCopperGolemMeta(t *testing.T) {
 		t.Error("unknown version should pass through unchanged")
 	}
 }
+
+// Index 17, the golem's interaction animation, is restored to
+// COPPER_GOLEM_STATE (id 37 on 26.2 and 26.3) next to index 16, in one body:
+// the exact bytes a 777 client reads.
+func TestFixCopperGolemMetaState(t *testing.T) {
+	body := AppendVarInt(nil, 7)
+	body = AppendU8(body, 16)
+	body = AppendVarInt(body, metaTypeVarInt)
+	body = AppendVarInt(body, 1) // EXPOSED
+	body = AppendU8(body, 17)
+	body = AppendVarInt(body, metaTypeVarInt)
+	body = AppendVarInt(body, 3) // DROPPING_ITEM
+	body = AppendU8(body, 0xff)
+	want := []byte{7, 16, 38, 1, 17, 37, 3, 0xff}
+	for _, v := range []int32{776, 777} {
+		if got := FixCopperGolemMeta(v, body); !bytes.Equal(got, want) {
+			t.Errorf("%d: % x, want % x", v, got, want)
+		}
+	}
+}

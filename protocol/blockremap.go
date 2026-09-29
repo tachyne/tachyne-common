@@ -2462,9 +2462,15 @@ func appendLpVec3(b []byte, x, y, z float64) []byte {
 // the four sound-variant serializers 26.1 inserted).
 var weatheringCopperStateSerializer = map[int32]int32{774: 34, 775: 38, 776: 38, 777: 38}
 
+// copperGolemStateSerializer is COPPER_GOLEM_STATE, one below it in
+// EntityDataSerializers' registration order: the golem's own interaction
+// animation (idle, getting/dropping an item, with or without one), index 17.
+var copperGolemStateSerializer = map[int32]int32{774: 33, 775: 37, 776: 37, 777: 37}
+
 // FixCopperGolemMeta rewrites a copper golem's index-16 metadata serializer type
-// from the INT placeholder to WEATHERING_COPPER_STATE for the client version. The
-// value (a VarInt ordinal, 0 unaffected → 3 oxidized) is unchanged. A gateway
+// from the INT placeholder to WEATHERING_COPPER_STATE for the client version, and
+// index 17's to COPPER_GOLEM_STATE. The values (VarInt ordinals: 0 unaffected → 3
+// oxidized; 0 idle → 4 dropping without an item) are unchanged. A gateway
 // calls this only for entities it knows are copper golems (eid→type tracking).
 func FixCopperGolemMeta(version int32, body []byte) []byte {
 	weatherID, ok := weatheringCopperStateSerializer[version]
@@ -2492,6 +2498,9 @@ func FixCopperGolemMeta(version int32, body []byte) []byte {
 		outType := typ
 		if idx == 16 && typ == metaTypeVarInt {
 			outType = weatherID // restore the WEATHERING_COPPER_STATE value-type
+		}
+		if idx == 17 && typ == metaTypeVarInt {
+			outType = copperGolemStateSerializer[version] // COPPER_GOLEM_STATE
 		}
 		out = append(out, idx)
 		out = AppendVarInt(out, outType)
