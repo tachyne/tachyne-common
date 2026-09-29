@@ -298,3 +298,55 @@ func TestBundleContentsAreTemplatesOn26x(t *testing.T) {
 		}
 	}
 }
+
+// A copper golem statue keeps its pose in block_state: a VarInt count, then
+// STRING_UTF8 key/value pairs. The component is block_state's position in
+// DataComponents' registration order: 76 on 26.2, 78 on 26.3.
+func TestBlockStateComponentPerVersion(t *testing.T) {
+	statue := CanonicalItem("copper_golem_statue")
+	pose := append([]byte{17}, "copper_golem_pose"...)
+	pose = append(pose, 7, 'r', 'u', 'n', 'n', 'i', 'n', 'g')
+	body := AppendVarInt(nil, 1)
+	body = AppendVarInt(body, statue)
+	body = append(body, 1, 0, 67, 1)
+	body = append(body, pose...)
+
+	for _, tc := range []struct {
+		version int32
+		cid     byte
+	}{{776, 76}, {777, 78}} {
+		id := func(i int32) int32 { return RemapID(RegItem, tc.version, i) }
+		want := AppendVarInt(nil, 1)
+		want = AppendVarInt(want, id(statue))
+		want = append(want, 1, 0, tc.cid, 1)
+		want = append(want, pose...)
+
+		var out []byte
+		if !copyFullSlot(bytes.NewReader(body), &out, id, tc.version, false) {
+			t.Fatalf("v%d: the statue's block_state was refused", tc.version)
+		}
+		if !bytes.Equal(out, want) {
+			t.Errorf("v%d:\n got %x\nwant %x", tc.version, out, want)
+		}
+		var back []byte
+		if !copyFullSlot(bytes.NewReader(out), &back, func(i int32) int32 { return UnmapID(RegItem, tc.version, i) }, tc.version, true) {
+			t.Fatalf("v%d: the client's statue could not be lifted back", tc.version)
+		}
+		if !bytes.Equal(back, body) {
+			t.Errorf("v%d round trip:\n got %x\nwant %x", tc.version, back, body)
+		}
+	}
+}
+
+// A truncated block_state map is refused rather than guessed at.
+func TestBlockStateComponentRefusesATruncatedMap(t *testing.T) {
+	body := AppendVarInt(nil, 1)
+	body = AppendVarInt(body, CanonicalItem("copper_golem_statue"))
+	body = append(body, 1, 0, 67, 2, 17)
+	body = append(body, "copper_golem_pose"...)
+	body = append(body, 7, 'r', 'u', 'n', 'n', 'i', 'n', 'g')
+	var out []byte
+	if copyFullSlot(bytes.NewReader(body), &out, func(i int32) int32 { return i }, 777, false) {
+		t.Fatal("a map missing its second pair was copied")
+	}
+}

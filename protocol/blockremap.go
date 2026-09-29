@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"bytes"
+	"encoding/binary"
 	"io"
 	"math"
 )
@@ -107,6 +108,9 @@ func remapClientboundIDs(version, id int32, body []byte) ([]byte, bool) {
 		if version >= 775 {
 			return rewriteSetTime26x(body), false
 		}
+		if len(body) > 17 {
+			return body[:17], false // the clock states ride only to 26.x
+		}
 	case canonWorldEvent:
 		return remapWorldEvent(version, body), false
 	case canonBlockEvent:
@@ -209,10 +213,16 @@ func remapParticleID(version, id int32) int32 {
 	return id
 }
 
-// rewriteSetTime26x converts our Update Time (i64 gameTime, i64 dayTime, bool
-// tickDayTime) into the 26.1 clock form: gameTime, then for one clock — VarInt
-// count(1), VarInt clock id(0 = overworld), VarLong total ticks, Float partial
-// tick(0), Float tick rate (1 if day advances, else 0).
+// rewriteSetTime26x converts our Update Time into 26.x's set_time:
+// ClientboundSetTimePacket is the LONG game time, then a map of WorldClock
+// holders to ClockNetworkState — a VarInt count, then per clock the VarInt
+// world_clock id, VAR_LONG total ticks, FLOAT partial tick and FLOAT rate
+// (0 while paused). The same on 26.2 and 26.3.
+//
+// The canonical body is i64 gameTime, i64 dayTime, bool tickDayTime, then
+// (render770.Time, when the engine sent clock states) a VarInt count and per
+// clock VarInt id, i64 total, f32 partial, f32 rate. Without them the
+// overworld clock alone goes out at the day time, rate 1 if day advances.
 func rewriteSetTime26x(body []byte) []byte {
 	r := bytes.NewReader(body)
 	var gameTime, dayBytes [8]byte
@@ -226,14 +236,33 @@ func rewriteSetTime26x(body []byte) []byte {
 	if err != nil {
 		return body
 	}
-	dayTime := int64(uint64(dayBytes[0])<<56 | uint64(dayBytes[1])<<48 | uint64(dayBytes[2])<<40 |
-		uint64(dayBytes[3])<<32 | uint64(dayBytes[4])<<24 | uint64(dayBytes[5])<<16 |
-		uint64(dayBytes[6])<<8 | uint64(dayBytes[7]))
 	out := append([]byte(nil), gameTime[:]...) // Long game time (unchanged)
-	out = AppendVarInt(out, 1)                 // one clock
-	out = AppendVarInt(out, 0)                 // overworld clock id
-	out = AppendVarLong(out, dayTime)          // total ticks
-	out = AppendF32(out, 0)                    // partial tick
+	if r.Len() > 0 {
+		n, err := ReadVarInt(r)
+		if err != nil || n < 0 || n > 16 {
+			return body
+		}
+		out = AppendVarInt(out, n)
+		for i := int32(0); i < n; i++ {
+			id, err := ReadVarInt(r)
+			if err != nil {
+				return body
+			}
+			var rest [16]byte // i64 total, f32 partial, f32 rate
+			if _, err := io.ReadFull(r, rest[:]); err != nil {
+				return body
+			}
+			out = AppendVarInt(out, id)
+			out = AppendVarLong(out, int64(binary.BigEndian.Uint64(rest[:8])))
+			out = append(out, rest[8:]...) // the two floats, as they are
+		}
+		return out
+	}
+	dayTime := int64(binary.BigEndian.Uint64(dayBytes[:]))
+	out = AppendVarInt(out, 1)        // one clock
+	out = AppendVarInt(out, 0)        // overworld clock id
+	out = AppendVarLong(out, dayTime) // total ticks
+	out = AppendF32(out, 0)           // partial tick
 	rate := float32(0)
 	if tick != 0 {
 		rate = 1

@@ -138,11 +138,14 @@ type Hello struct {
 
 // Welcome accepts the session.
 type Welcome struct {
-	EID      int32 `json:"eid"` // the session's own entity id in the world
-	Spawn    Pos   `json:"spawn"`
-	Time     int64 `json:"time"`
-	MinY     int   `json:"min_y"`
-	Sections int   `json:"sections"`
+	EID   int32 `json:"eid"` // the session's own entity id in the world
+	Spawn Pos   `json:"spawn"`
+	Time  int64 `json:"time"`
+	// Clocks is the join's full clock sync (see Time.Clocks); empty from an
+	// older engine.
+	Clocks   []Clock `json:"clocks,omitempty"`
+	MinY     int     `json:"min_y"`
+	Sections int     `json:"sections"`
 	// Gamemode is the player's persisted game mode (0 survival, 1 creative,
 	// 2 adventure, 3 spectator) so the gateway's join packet renders the right
 	// HUD from the first frame instead of hardcoding survival.
@@ -188,7 +191,33 @@ type Time struct {
 	// Age is the world age in ticks (drives no visuals but vanilla sends it).
 	// Zero = unknown; renderers fall back to Time.
 	Age int64 `json:"age,omitempty"`
+	// Clocks are the world clocks' states, as ServerClockManager's
+	// ClientboundSetTimePacket carries them (26.x): each clock's full total,
+	// partial tick and effective rate. Empty = an older engine; renderers
+	// fall back to Time as the overworld clock advancing at rate 1.
+	Clocks []Clock `json:"clocks,omitempty"`
 }
+
+// Clock is one world clock's network state (ClockNetworkState).
+type Clock struct {
+	// ID is the clock's position in the world_clock registry the gateway
+	// sends: ClockOverworld or ClockTheEnd.
+	ID int32 `json:"id"`
+	// Total is the clock's total ticks — not reduced to a day, so the moon
+	// phase (the moon timeline's 192000-tick period) survives.
+	Total   int64   `json:"total"`
+	Partial float32 `json:"partial,omitempty"`
+	// Rate is the ticks the clock gains per game tick; 0 when it is paused
+	// or the advance_time rule is off (packNetworkState).
+	Rate float32 `json:"rate"`
+}
+
+// World clock registry ids (minecraft:world_clock, in the order the
+// gateways' registry data lists them).
+const (
+	ClockOverworld int32 = 0
+	ClockTheEnd    int32 = 1
+)
 
 // Bye closes a session with a player-visible reason.
 type Bye struct {

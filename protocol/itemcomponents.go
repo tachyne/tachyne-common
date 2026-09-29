@@ -18,6 +18,7 @@ import "bytes"
 //	tropical_fish/base_color  80   87   89   90   96
 //	tropical_fish/pattern_col 81   88   90   91   97
 //	axolotl/variant           91   99  104  105  111
+//	block_state               67   74   76   76   78
 const (
 	componentItemName         = 6  // item_name: a text component (network NBT)
 	componentRarity           = 9  // rarity: the Rarity enum, one varint
@@ -29,6 +30,7 @@ const (
 	componentFishBaseColor    = 80 // tropical_fish/base_color: DyeColor id
 	componentFishPatternColor = 81 // tropical_fish/pattern_color: DyeColor id
 	componentAxolotlVariant   = 91 // axolotl/variant: Axolotl.Variant id
+	componentBlockState       = 67 // block_state: property name -> value strings
 )
 
 // laterComponentIDs: each canonical id above at 774, 775, 776 and 777.
@@ -43,6 +45,7 @@ var laterComponentIDs = map[int32][4]int32{
 	componentFishBaseColor:    {87, 89, 90, 96},
 	componentFishPatternColor: {88, 90, 91, 97},
 	componentAxolotlVariant:   {99, 104, 105, 111},
+	componentBlockState:       {74, 76, 76, 78},
 }
 
 func laterCompID(canon, version int32) int32 {
@@ -73,6 +76,7 @@ var knownComponents = []int32{
 	componentItemName, componentRarity, componentTooltipDisplay, componentChargedProj,
 	componentBucketEntityData, componentSalmonSize, componentFishPattern,
 	componentFishBaseColor, componentFishPatternColor, componentAxolotlVariant,
+	componentBlockState,
 }
 
 // componentIDAt is a known canonical component's id at a client version —
@@ -205,6 +209,23 @@ func copyLaterComponent(r *bytes.Reader, out *[]byte, canon int32, remap func(in
 				return false
 			}
 			*out = AppendVarInt(*out, id)
+		}
+		return true
+	case componentBlockState:
+		// BlockItemStateProperties: a map of STRING_UTF8 property names to
+		// STRING_UTF8 values — a VarInt count, then each key and value.
+		// The same shape on every version.
+		n, err := ReadVarInt(r)
+		if err != nil || n < 0 || n > 64 {
+			return false
+		}
+		*out = AppendVarInt(*out, n)
+		for i := int32(0); i < 2*n; i++ {
+			s, err := ReadString(r)
+			if err != nil || len(s) > 32767 {
+				return false
+			}
+			*out = AppendString(*out, s)
 		}
 		return true
 	case componentChargedProj:

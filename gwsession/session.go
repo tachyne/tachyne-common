@@ -537,7 +537,7 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 		cc.send(sd.ID, sd.Body)
 	}
 	cc.send(playClientCenterChunk, protocol.AppendVarInt(protocol.AppendVarInt(nil, ccx), ccz))
-	tp := render770.Time(attach.Time{Time: welcome.Time})
+	tp := render770.Time(attach.Time{Time: welcome.Time, Clocks: welcome.Clocks})
 	cc.send(tp.ID, tp.Body)
 	// The stonecutter's recipe list is static vanilla data the client needs
 	// before that menu can show options; composed at the client's version.

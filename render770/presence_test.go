@@ -136,3 +136,20 @@ func TestTimeMatchesOracle(t *testing.T) {
 	eq(t, "age fallback", Time(attach.Time{Time: 9313}),
 		IDUpdateTime, oracleTimePacket(9313, 9313))
 }
+
+// With clock states the canonical body carries them after the 770 fields;
+// tickDayTime follows the overworld clock (paused here).
+func TestTimeCarriesClocks(t *testing.T) {
+	want := []byte{
+		0, 0, 0, 0, 0, 0, 0, 0x64, // age 100
+		0, 0, 0, 0, 0, 0, 0x19, 0x64, // the overworld total 30500, as a day time
+		0, // tickDayTime false: rate 0
+		2,
+		0, 0, 0, 0, 0, 0, 0, 0x77, 0x24, 0x3f, 0, 0, 0, 0, 0, 0, 0,
+		1, 0, 0, 0, 0, 0, 0x03, 0x0d, 0x40, 0, 0, 0, 0, 0x40, 0, 0, 0,
+	}
+	eq(t, "clocks", Time(attach.Time{Age: 100, Time: 6500, Clocks: []attach.Clock{
+		{ID: attach.ClockOverworld, Total: 30500, Partial: 0.5},
+		{ID: attach.ClockTheEnd, Total: 200000, Rate: 2},
+	}}), IDUpdateTime, want)
+}

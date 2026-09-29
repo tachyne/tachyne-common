@@ -131,14 +131,38 @@ func BossBar(e attach.BossBar) Packet {
 // Time renders Update Time with tickDayTime=true (the client advances its own
 // clock between sends). A zero Age falls back to the day time — sessions that
 // only track a clock (solo mode, gateway join) have no world age.
+//
+// With Clocks, the canonical body carries them after the 770 fields —
+// tickDayTime is then whether the overworld clock runs — as a VarInt count
+// and, per clock, VarInt registry id, i64 total ticks, f32 partial tick and
+// f32 rate. The translation chain turns that into the 26.x set_time clock
+// map (protocol.rewriteSetTime26x); it is not part of any client's packet.
 func Time(e attach.Time) Packet {
 	age := e.Age
 	if age == 0 {
 		age = e.Time
 	}
 	b := protocol.AppendI64(nil, age)
-	b = protocol.AppendI64(b, e.Time%dayLengthTicks)
-	return Packet{IDUpdateTime, protocol.AppendBool(b, true)}
+	if len(e.Clocks) == 0 {
+		b = protocol.AppendI64(b, e.Time%dayLengthTicks)
+		return Packet{IDUpdateTime, protocol.AppendBool(b, true)}
+	}
+	day, ticking := e.Time, true
+	for _, c := range e.Clocks {
+		if c.ID == attach.ClockOverworld {
+			day, ticking = c.Total, c.Rate != 0
+		}
+	}
+	b = protocol.AppendI64(b, day%dayLengthTicks)
+	b = protocol.AppendBool(b, ticking)
+	b = protocol.AppendVarInt(b, int32(len(e.Clocks)))
+	for _, c := range e.Clocks {
+		b = protocol.AppendVarInt(b, c.ID)
+		b = protocol.AppendI64(b, c.Total)
+		b = protocol.AppendF32(b, c.Partial)
+		b = protocol.AppendF32(b, c.Rate)
+	}
+	return Packet{IDUpdateTime, b}
 }
 
 // ChatNBT is a plain string as a network-NBT text component.
