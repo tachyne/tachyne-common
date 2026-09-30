@@ -53,6 +53,7 @@ func CommandSuggestions(e attach.Suggestions) Packet {
 // Block entity type ids in the canonical (1.21.11) numbering the chain maps
 // from.
 const (
+	beTypeSkull        = 16
 	beTypeBrushable    = 41
 	beTypeTrialSpawner = 44
 	beTypeVault        = 45
@@ -98,8 +99,49 @@ func BlockDisplay(e attach.BlockDisplay) (Packet, bool) {
 			b = item(protocol.NBTCompound(b, "item"), e.Name)
 		}
 		b = protocol.NBTEnd(b)
+	case attach.DisplaySkull:
+		// SkullBlockEntity's update tag (saveCustomOnly): profile (the
+		// ResolvableProfile codec's map form), note_block_sound.
+		b = protocol.AppendVarInt(b, beTypeSkull)
+		b = append(b, protocol.NBTRoot()...)
+		if e.Profile != nil {
+			b = AppendProfileNBT(protocol.NBTCompound(b, "profile"), *e.Profile)
+		}
+		if e.Name != "" {
+			b = protocol.NBTString(b, "note_block_sound", e.Name)
+		}
+		b = protocol.NBTEnd(b)
 	default:
 		return Packet{}, false
 	}
 	return Packet{IDBlockEntityData, b}, true
+}
+
+// AppendProfileNBT writes a profile's fields into an open compound and
+// closes it: ResolvableProfile's map form — name, id (UUIDUtil's four-int
+// array), properties (a list of {name, value, signature}).
+func AppendProfileNBT(b []byte, p attach.GameProfile) []byte {
+	if p.Name != "" {
+		b = protocol.NBTString(b, "name", p.Name)
+	}
+	if p.UUID != ([16]byte{}) {
+		ids := make([]int32, 4)
+		for i := range ids {
+			u := p.UUID[i*4 : i*4+4]
+			ids[i] = int32(uint32(u[0])<<24 | uint32(u[1])<<16 | uint32(u[2])<<8 | uint32(u[3]))
+		}
+		b = protocol.NBTIntArray(b, "id", ids)
+	}
+	if len(p.Properties) > 0 {
+		b = protocol.NBTCompoundList(b, "properties", len(p.Properties))
+		for _, pr := range p.Properties {
+			b = protocol.NBTString(b, "name", pr.Name)
+			b = protocol.NBTString(b, "value", pr.Value)
+			if pr.Signature != "" {
+				b = protocol.NBTString(b, "signature", pr.Signature)
+			}
+			b = protocol.NBTEnd(b)
+		}
+	}
+	return protocol.NBTEnd(b)
 }

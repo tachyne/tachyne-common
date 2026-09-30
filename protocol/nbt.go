@@ -22,6 +22,7 @@ const (
 	nbtString   = 8
 	nbtList     = 9
 	nbtCompound = 10
+	nbtIntArray = 11
 )
 
 // NBTRoot starts a nameless root compound (the network-NBT framing). Append
@@ -88,6 +89,27 @@ func NBTStringList(b []byte, name string, vals []string) []byte {
 		b = append(b, v...)
 	}
 	return b
+}
+
+// NBTIntArray writes a named TAG_Int_Array (a UUID is four ints, most
+// significant first: UUIDUtil.CODEC).
+func NBTIntArray(b []byte, name string, vals []int32) []byte {
+	b = append(b, nbtIntArray)
+	b = nbtName(b, name)
+	b = AppendI32(b, int32(len(vals)))
+	for _, v := range vals {
+		b = AppendI32(b, v)
+	}
+	return b
+}
+
+// NBTCompoundList opens a named list of n compounds: write each element's
+// entries and close each with NBTEnd; the list itself needs no closing.
+func NBTCompoundList(b []byte, name string, n int) []byte {
+	b = append(b, nbtList)
+	b = nbtName(b, name)
+	b = append(b, nbtCompound)
+	return AppendI32(b, int32(n))
 }
 
 // NBTCompound opens a named child compound; close it with its own NBTEnd.

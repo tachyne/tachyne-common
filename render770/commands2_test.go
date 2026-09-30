@@ -41,3 +41,41 @@ func TestBlockDisplayVault(t *testing.T) {
 	w = protocol.NBTEnd(protocol.NBTEnd(w))
 	eq(t, "vault", p, IDBlockEntityData, w)
 }
+
+// A player head's update tag (SkullBlockEntity.saveCustomOnly): profile in
+// ResolvableProfile's map form — name, id as UUIDUtil's four-int array,
+// properties as a list of {name, value, signature} — and note_block_sound.
+// The profile bytes are written out by hand from the NBT format, not with
+// the helpers under test.
+func TestBlockDisplaySkull(t *testing.T) {
+	uuid := [16]byte{0, 0, 0, 1, 0, 0, 0, 2, 0xff, 0xff, 0xff, 0xfd, 0x7f, 0, 0, 4}
+	p, ok := BlockDisplay(attach.BlockDisplay{Pos: [3]int32{1, 2, 3}, Kind: attach.DisplaySkull,
+		Name: "minecraft:block.note_block.harp",
+		Profile: &attach.GameProfile{Name: "Legion", UUID: uuid,
+			Properties: []attach.Property{{Name: "textures", Value: "e30=", Signature: "c2ln"}}}})
+	if !ok {
+		t.Fatal("no packet")
+	}
+	str := func(b []byte, s string) []byte { return append(append(b, byte(len(s)>>8), byte(len(s))), s...) }
+	w := protocol.AppendPosition(nil, 1, 2, 3)
+	w = protocol.AppendVarInt(w, 16) // minecraft:skull
+	w = append(w, 10)                // root compound
+	w = str(append(w, 10), "profile")
+	w = str(str(append(w, 8), "name"), "Legion")
+	w = str(append(w, 11), "id")
+	w = append(w, 0, 0, 0, 4, 0, 0, 0, 1, 0, 0, 0, 2, 0xff, 0xff, 0xff, 0xfd, 0x7f, 0, 0, 4)
+	w = str(append(w, 9), "properties")
+	w = append(w, 10, 0, 0, 0, 1) // list of one compound
+	w = str(str(append(w, 8), "name"), "textures")
+	w = str(str(append(w, 8), "value"), "e30=")
+	w = str(str(append(w, 8), "signature"), "c2ln")
+	w = append(w, 0) // property compound
+	w = append(w, 0) // profile compound
+	w = str(str(append(w, 8), "note_block_sound"), "minecraft:block.note_block.harp")
+	w = append(w, 0) // root
+	eq(t, "skull", p, IDBlockEntityData, w)
+
+	// A head with no owner: an empty tag.
+	p, _ = BlockDisplay(attach.BlockDisplay{Pos: [3]int32{1, 2, 3}, Kind: attach.DisplaySkull})
+	eq(t, "bare skull", p, IDBlockEntityData, append(protocol.AppendVarInt(protocol.AppendPosition(nil, 1, 2, 3), 16), 10, 0))
+}

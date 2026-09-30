@@ -121,7 +121,9 @@ type NautilusVariant struct {
 // suspicious block shows (their update tags): the vault's display item
 // (VaultSharedData.display_item), the mob turning in a trial spawner
 // (TrialSpawnerStateData.spawn_data), the item peeking out of suspicious
-// sand or gravel (BrushableBlockEntity.item + hit_direction).
+// sand or gravel (BrushableBlockEntity.item + hit_direction), and a player
+// head's owner (SkullBlockEntity's profile + note_block_sound, its whole
+// update tag).
 const MsgBlockDisplay = 0x97
 
 // Block display kinds.
@@ -129,10 +131,14 @@ const (
 	DisplayVault        = 1
 	DisplayTrialSpawner = 2
 	DisplayBrushable    = 3
+	DisplaySkull        = 4
 )
 
 // BlockDisplay is one block entity's display state. Name is an item id
-// (vault, brushable) or an entity type id (trial spawner); "" shows nothing.
+// (vault, brushable), an entity type id (trial spawner) or the sound a note
+// block under the head plays (skull: note_block_sound, a sound event id);
+// "" shows nothing. Profile is a skull's owner — nil for a head without one
+// (a plain player head, or a mob skull).
 type BlockDisplay struct {
 	Pos    [3]int32 `json:"pos"`
 	Kind   int32    `json:"kind"`
@@ -144,4 +150,17 @@ type BlockDisplay struct {
 	// brush_count and type): the block's dusted stage and its block id.
 	Dusted int32  `json:"dusted,omitempty"`
 	Block  string `json:"block,omitempty"`
+	// Skull: the owner's profile.
+	Profile *GameProfile `json:"profile,omitempty"`
+}
+
+// GameProfile is a player head's owner, after vanilla ResolvableProfile: a
+// name and/or a UUID (a zero UUID is none) and the profile's properties —
+// the "textures" property (value and signature) is the skin the head wears.
+// With a name or id alone and no properties the client resolves the rest
+// itself, as vanilla's dynamic profiles do.
+type GameProfile struct {
+	Name       string     `json:"name,omitempty"`
+	UUID       [16]byte   `json:"uuid"`
+	Properties []Property `json:"properties,omitempty"`
 }
