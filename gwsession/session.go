@@ -101,7 +101,7 @@ func packResponseTerminal(data []byte) (terminal, declined bool) {
 }
 
 // gatewayFeatures are the optional frames this gateway renders (attach Hello).
-var gatewayFeatures = []string{attach.FeaturePlayerChat}
+var gatewayFeatures = []string{attach.FeaturePlayerChat, attach.FeatureDialog}
 
 // viewCap resolves the deployment's render-distance ceiling: the client's
 // slider is honored up to this. Kept well below the engine's hard attach
@@ -826,6 +826,20 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 						return
 					}
 				}
+			case attach.MsgShowDialog:
+				// Dialogs are 1.21.6+: composed at the client's own id.
+				var e attach.ShowDialog
+				if json.Unmarshal(payload, &e) == nil && clientProto >= render770.DialogMinProto {
+					if body, ok := render770.ShowDialogBody(e); ok {
+						cc.sendRaw(render770.ShowDialogID(clientProto), body)
+					} else {
+						log.Printf("dialog: %q: cannot render %s%s", name, e.Ref, e.Dialog)
+					}
+				}
+			case attach.MsgClearDialog:
+				if clientProto >= render770.DialogMinProto {
+					cc.sendRaw(render770.ClearDialogID(clientProto), nil)
+				}
 			case attach.MsgPlayerInfoChat:
 				var e attach.PlayerInfoChat
 				if json.Unmarshal(payload, &e) == nil {
@@ -1515,6 +1529,15 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 			// Back-translate the client's version to canonical 770 so the
 			// switch below (and the render770 parsers) speak one id space.
 			// Identity for a 770 client.
+			// custom_click_action has no canonical packet (dialogs are
+			// 1.21.6+; the chain drops it): read at the client's id and
+			// handed to the world.
+			if clientProto >= render770.DialogMinProto && pkt.ID == render770.SIDCustomClickAction26x {
+				if e, ok := render770.ParseCustomClickAction(pkt.Data); ok {
+					b.Write(attach.MsgCustomClickAction, e)
+				}
+				continue
+			}
 			// The 26.x gamerule editor's edits have no canonical packet: each
 			// becomes the /gamerule it stands for, ahead of the chain (which
 			// drops them).

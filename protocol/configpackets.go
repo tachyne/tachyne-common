@@ -136,6 +136,25 @@ var extra26xRegistries = []struct {
 	{"minecraft:cow_sound_variant", []string{"minecraft:classic", "minecraft:moody"}},
 	{"minecraft:pig_sound_variant", []string{"minecraft:big", "minecraft:classic", "minecraft:mini"}},
 	{"minecraft:zombie_nautilus_variant", []string{"minecraft:temperate", "minecraft:warm"}},
+	// Dialogs (1.21.6+): the core pack's three, in the order the server's
+	// registry holds them (loaded sorted by id). Declaring the registry is
+	// what lets show_dialog name one and the pause_screen_additions /
+	// quick_actions tags be sent.
+	{"minecraft:dialog", dialogEntries},
+}
+
+// dialogEntries is the dialog registry this server declares.
+var dialogEntries = []string{"minecraft:custom_options", "minecraft:quick_actions", "minecraft:server_links"}
+
+// DialogRegistryID is a dialog's network id in the declared registry (a
+// holder reference sends it +1).
+func DialogRegistryID(name string) (int32, bool) {
+	for i, e := range dialogEntries {
+		if e == name {
+			return int32(i), true
+		}
+	}
+	return 0, false
 }
 
 // tags26xSkip lists registries whose tags must NOT be sent: they are
@@ -148,7 +167,6 @@ var tags26xSkip = map[string]bool{
 	"minecraft:worldgen/structure":                   true,
 	"minecraft:worldgen/world_preset":                true,
 	"minecraft:villager_trade":                       true,
-	"minecraft:dialog":                               true,
 }
 
 // fluid26xID: the fluid registry is static and tiny; vanilla registration order.
