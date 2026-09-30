@@ -310,7 +310,7 @@ func TestFireworkComponentsRenumber(t *testing.T) {
 		wantRocket, wantStar int32
 	}{{770, 60, 59}, {774, 67, 66}, {776, 69, 68}, {777, 71, 70}} {
 		rocket := AppendVarInt(nil, 1)
-		rocket = AppendVarInt(rocket, 1242) // firework_rocket
+		rocket = AppendVarInt(rocket, CanonicalItem("firework_rocket"))
 		rocket = AppendVarInt(rocket, 1)
 		rocket = AppendVarInt(rocket, 0)
 		rocket = AppendVarInt(rocket, componentFireworks)
@@ -319,7 +319,7 @@ func TestFireworkComponentsRenumber(t *testing.T) {
 		rocket = burst(rocket)
 
 		star := AppendVarInt(nil, 1)
-		star = AppendVarInt(star, 1243) // firework_star
+		star = AppendVarInt(star, CanonicalItem("firework_star"))
 		star = AppendVarInt(star, 1)
 		star = AppendVarInt(star, 0)
 		star = AppendVarInt(star, componentFireworkStar)
