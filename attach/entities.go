@@ -1129,6 +1129,31 @@ type Objective struct {
 	Method int32  `json:"method"`
 	Title  string `json:"title,omitempty"`  // literal display text
 	Hearts bool   `json:"hearts,omitempty"` // render type: hearts vs integer
+	// Format is the objective's number format (Objective.numberFormat,
+	// /scoreboard objectives modify … numberformat); nil = the default.
+	Format *NumberFormat `json:"format,omitempty"`
+}
+
+// Number format kinds (the number_format_type registry).
+const (
+	NumberFormatBlank  = "blank"  // no number at all
+	NumberFormatStyled = "styled" // the number, in a style
+	NumberFormatFixed  = "fixed"  // this text instead of the number
+)
+
+// NumberFormat is how scores show on the sidebar, list and below-name
+// displays — vanilla NumberFormat: BlankFormat, StyledFormat(Style) or
+// FixedFormat(Component). Fixed is literal text; the style fields are
+// Style's (Color a colour name such as "red" or "#rrggbb").
+type NumberFormat struct {
+	Kind          string `json:"kind"`
+	Fixed         string `json:"fixed,omitempty"`
+	Color         string `json:"color,omitempty"`
+	Bold          bool   `json:"bold,omitempty"`
+	Italic        bool   `json:"italic,omitempty"`
+	Underlined    bool   `json:"underlined,omitempty"`
+	Strikethrough bool   `json:"strikethrough,omitempty"`
+	Obfuscated    bool   `json:"obfuscated,omitempty"`
 }
 
 type DisplaySlot struct {
@@ -1141,6 +1166,9 @@ type Score struct {
 	Objective string `json:"objective"`
 	Value     int32  `json:"value,omitempty"`
 	Reset     bool   `json:"reset,omitempty"` // true = reset_score instead
+	// Format is this score's own number format (ScoreAccess.numberFormatOverride,
+	// /scoreboard players display numberformat); nil = the objective's.
+	Format *NumberFormat `json:"format,omitempty"`
 }
 
 type Team struct {

@@ -122,3 +122,34 @@ func TestPlayerTeamNewForm776(t *testing.T) {
 		t.Fatal("players-only wire")
 	}
 }
+
+// Number formats (NumberFormatTypes.OPTIONAL_STREAM_CODEC): present flag,
+// type id (blank 0, styled 1, fixed 2), payload — none, a Style compound, a
+// text component. Written out by hand as the byte oracle.
+func TestNumberFormats(t *testing.T) {
+	head := protocol.AppendString(nil, "w")
+	head = protocol.AppendString(head, "kills")
+	head = protocol.AppendVarInt(head, 7)
+	head = protocol.AppendBool(head, false) // no display name
+	for _, tc := range []struct {
+		name string
+		f    *attach.NumberFormat
+		want []byte
+	}{
+		{"none", nil, []byte{0}},
+		{"blank", &attach.NumberFormat{Kind: attach.NumberFormatBlank}, []byte{1, 0}},
+		{"styled", &attach.NumberFormat{Kind: attach.NumberFormatStyled, Color: "red", Bold: true},
+			[]byte{1, 1, 10, 8, 0, 5, 'c', 'o', 'l', 'o', 'r', 0, 3, 'r', 'e', 'd', 1, 0, 4, 'b', 'o', 'l', 'd', 1, 0}},
+		{"fixed", &attach.NumberFormat{Kind: attach.NumberFormatFixed, Fixed: "MVP"}, []byte{1, 2, 8, 0, 3, 'M', 'V', 'P'}},
+		{"unknown", &attach.NumberFormat{Kind: "sparkly"}, []byte{0}},
+	} {
+		eq(t, "score "+tc.name, Score(attach.Score{Owner: "w", Objective: "kills", Value: 7, Format: tc.f}),
+			IDSetScore, append(append([]byte(nil), head...), tc.want...))
+	}
+	obj := protocol.AppendString(nil, "kills")
+	obj = append(obj, 0) // add
+	obj = append(obj, chatNBT("Kills")...)
+	obj = protocol.AppendVarInt(obj, 0)
+	eq(t, "objective fixed", Objective(attach.Objective{Name: "kills", Method: attach.ObjAdd, Title: "Kills",
+		Format: &attach.NumberFormat{Kind: attach.NumberFormatBlank}}), IDSetObjective, append(obj, 1, 0))
+}

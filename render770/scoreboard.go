@@ -26,8 +26,8 @@ const (
 // teamParamsNewForm is the first protocol using the 26.2 parameter layout.
 const teamParamsNewForm = 776
 
-// Objective renders set_objective. Number format is always absent (default
-// styling), matching vanilla servers without format overrides.
+// Objective renders set_objective: name, method, then (add/update) the
+// title, render type and the optional number format.
 func Objective(e attach.Objective) Packet {
 	b := protocol.AppendString(nil, e.Name)
 	b = protocol.AppendU8(b, uint8(e.Method))
@@ -38,7 +38,7 @@ func Objective(e attach.Objective) Packet {
 			render = 1
 		}
 		b = protocol.AppendVarInt(b, render)
-		b = protocol.AppendBool(b, false) // no number format override
+		b = appendNumberFormat(b, e.Format)
 	}
 	return Packet{IDSetObjective, b}
 }
@@ -64,8 +64,42 @@ func Score(e attach.Score) Packet {
 	b = protocol.AppendString(b, e.Objective)
 	b = protocol.AppendVarInt(b, e.Value)
 	b = protocol.AppendBool(b, false) // no display-name override
-	b = protocol.AppendBool(b, false) // no number format override
+	b = appendNumberFormat(b, e.Format)
 	return Packet{IDSetScore, b}
+}
+
+// appendNumberFormat writes NumberFormatTypes.OPTIONAL_STREAM_CODEC: a
+// presence flag, then the number_format_type id (blank 0, styled 1, fixed
+// 2 — the same on every served version) and its payload: nothing, a Style
+// (network NBT), or a Component (network NBT). An unknown kind is absent.
+func appendNumberFormat(b []byte, f *attach.NumberFormat) []byte {
+	if f == nil {
+		return protocol.AppendBool(b, false)
+	}
+	switch f.Kind {
+	case attach.NumberFormatBlank:
+		return protocol.AppendVarInt(protocol.AppendBool(b, true), 0)
+	case attach.NumberFormatStyled:
+		b = protocol.AppendVarInt(protocol.AppendBool(b, true), 1)
+		b = append(b, protocol.NBTRoot()...)
+		if f.Color != "" {
+			b = protocol.NBTString(b, "color", f.Color)
+		}
+		for _, flag := range []struct {
+			on   bool
+			name string
+		}{{f.Bold, "bold"}, {f.Italic, "italic"}, {f.Underlined, "underlined"},
+			{f.Strikethrough, "strikethrough"}, {f.Obfuscated, "obfuscated"}} {
+			if flag.on {
+				b = protocol.NBTBool(b, flag.name, true)
+			}
+		}
+		return protocol.NBTEnd(b)
+	case attach.NumberFormatFixed:
+		b = protocol.AppendVarInt(protocol.AppendBool(b, true), 2)
+		return append(b, chatNBT(f.Fixed)...)
+	}
+	return protocol.AppendBool(b, false)
 }
 
 // PlayerTeam renders set_player_team for the client's protocol version.
