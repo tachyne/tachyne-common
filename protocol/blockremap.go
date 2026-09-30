@@ -112,6 +112,9 @@ func remapClientboundIDs(version, id int32, body []byte) ([]byte, bool) {
 			return body[:17], false // the clock states ride only to 26.x
 		}
 	case canonWorldEvent:
+		if version < 777 && isDestroyProgressEvent(body) {
+			return body, true // 26.3's breaking particles: earlier clients draw their own
+		}
 		return remapWorldEvent(version, body), false
 	case canonBlockEvent:
 		// position (8) + action + param, then the block id the client checks
@@ -126,9 +129,10 @@ func remapClientboundIDs(version, id int32, body []byte) ([]byte, bool) {
 			return AppendVarInt(out, RemapID(RegBlock, version, id)), false
 		}
 	case canonWorldParticles:
-		if version > 770 {
-			return remapWorldParticles(version, body), false
-		}
+		// Every version: the particle's options (block states, items, the
+		// 26.x options of dragon breath, spells and flash) are read and
+		// rewritten, which a 770 client needs too (the 26.x tail comes off).
+		return remapLevelParticles(version, body)
 	case canonUpdateAdvancements:
 		return remapAdvancementIcons(version, body), false
 	case canonMerchantOffers:
@@ -144,6 +148,27 @@ func remapClientboundIDs(version, id int32, body []byte) ([]byte, bool) {
 		return remapAwardStats(version, body), false
 	}
 	return body, false
+}
+
+// Level events 26.3 added for block breaking (LevelEvent
+// PARTICLES_DESTROY_PROGRESS 2019, PARTICLES_AND_SOUND_DESTROY_PROGRESS
+// 2020): ServerPlayerGameMode sends one every tick a block is being broken,
+// with the face being hit (Direction ordinal) as data, and the 26.3 client
+// draws the crack particles (and every fourth tick the hit sound) from them
+// instead of by itself. A 26.2 client still draws its own and knows neither.
+const (
+	LevelEventDestroyProgress         = 2019
+	LevelEventDestroyProgressAndSound = 2020
+)
+
+// isDestroyProgressEvent reports whether a canonical level_event body is
+// 2019 or 2020.
+func isDestroyProgressEvent(body []byte) bool {
+	if len(body) < 4 {
+		return false
+	}
+	ev := int32(uint32(body[0])<<24 | uint32(body[1])<<16 | uint32(body[2])<<8 | uint32(body[3]))
+	return ev == LevelEventDestroyProgress || ev == LevelEventDestroyProgressAndSound
 }
 
 // remapWorldEvent rewrites the data field of a World Event when the event is
@@ -165,29 +190,6 @@ func remapWorldEvent(version int32, body []byte) []byte {
 	out := append([]byte(nil), body...)
 	out[12], out[13], out[14], out[15] = byte(ns>>24), byte(ns>>16), byte(ns>>8), byte(ns)
 	return out
-}
-
-// remapWorldParticles rewrites the TRAILING particle-type id of a Level
-// Particles packet, for the handful of no-payload particles we emit (their
-// per-version ids come from ViaVersion's mappings). A particle we don't know
-// may carry a payload after the id, so the body is left untouched then.
-// Layout: bool, bool, 3×f64, 4×f32, i32 count, VarInt particleId [payload].
-func remapWorldParticles(version int32, body []byte) []byte {
-	const prefix = 2 + 24 + 16 + 4
-	r := bytes.NewReader(body)
-	if !skip(r, prefix) {
-		return body
-	}
-	pid, err := ReadVarInt(r)
-	if err != nil || r.Len() != 0 {
-		return body // payload follows — not one of ours, don't guess
-	}
-	np := remapParticleID(version, pid)
-	if np == pid {
-		return body
-	}
-	out := append([]byte(nil), body[:prefix]...)
-	return AppendVarInt(out, np)
 }
 
 // remapParticleID maps a canonical (770) particle id to the client version's
@@ -839,48 +841,27 @@ const (
 	metaTypeOptBlockState = 15 // Optional<BlockState>: a single VarInt, 0 = empty
 	metaTypeOptUInt       = 20 // OptionalInt: VarInt value+1, 0 = empty; → 19 for clients ≥773
 	metaTypePose          = 21 // → 20 for clients ≥773
+	metaTypeParticle      = 17 // ParticleOptions (an area-effect cloud's DATA_PARTICLE); → 16 for clients ≥773
 	metaTypeParticles     = 18 // List<ParticleOptions> (a living entity's effect swirls); → 17 for clients ≥773
 )
 
-// Canonical particle ids that can ride a PARTICLES entry: entity_effect
-// carries an ARGB int, the rest (MobEffect.createParticleOptions overrides)
-// carry nothing.
-const (
-	particleEntityEffect770 = 20
-	particleSmallGust770    = 24
-	particleInfested770     = 32
-	particleItemSlime770    = 49
-	particleItemCobweb770   = 50
-	particleRaidOmen770     = 110
-	particleTrialOmen770    = 111
-)
+// ParticleEntityEffect770 is entity_effect's canonical id: a ColorParticleOption
+// (one ARGB int), the particle of a mob effect's swirls and of a cloud.
+const ParticleEntityEffect770 = 20
 
 // copyMetaParticles walks a PARTICLES value — VarInt count, then per
-// particle its type id and payload — mapping each id through mapID. Only
-// the particles a mob effect shows are understood; anything else reports
-// false so the caller bails with the body untouched.
-func copyMetaParticles(r *bytes.Reader, out *[]byte, mapID func(int32) int32) bool {
+// particle its type id and options — writing each in the client version's
+// form (copyParticle; canonicalParticle copies as it is). A particle the
+// walker does not understand reports false so the caller bails with the body
+// untouched.
+func copyMetaParticles(r *bytes.Reader, out *[]byte, version int32) bool {
 	n, err := ReadVarInt(r)
 	if err != nil || n < 0 || n > 64 {
 		return false
 	}
 	*out = AppendVarInt(*out, n)
 	for i := int32(0); i < n; i++ {
-		id, err := ReadVarInt(r)
-		if err != nil {
-			return false
-		}
-		*out = AppendVarInt(*out, mapID(id))
-		switch id {
-		case particleEntityEffect770: // ColorParticleOption: one ARGB int
-			var c [4]byte
-			if _, err := io.ReadFull(r, c[:]); err != nil {
-				return false
-			}
-			*out = append(*out, c[:]...)
-		case particleSmallGust770, particleInfested770, particleItemSlime770, particleItemCobweb770,
-			particleRaidOmen770, particleTrialOmen770:
-		default:
+		if !copyParticle(r, out, version, false) {
 			return false
 		}
 	}
@@ -923,7 +904,7 @@ func remapEntityMeta(version int32, body []byte) []byte {
 		// (it tracks eid→type from spawn packets).
 		out = append(out, idx)
 		wireType := typ
-		if (typ == metaTypePose || typ == VillagerDataSerializer770 || typ == metaTypeOptUInt || typ == metaTypeParticles) && version >= 773 {
+		if (typ == metaTypePose || typ == VillagerDataSerializer770 || typ == metaTypeOptUInt || typ == metaTypeParticles || typ == metaTypeParticle) && version >= 773 {
 			wireType = typ - 1 // COMPOUND_TAG (16) left the serializer list in 1.21.6
 		}
 		if typ == ArmadilloStateSerializer770 {
@@ -972,7 +953,11 @@ func remapEntityMeta(version int32, body []byte) []byte {
 				return body
 			}
 		case metaTypeParticles:
-			if !copyMetaParticles(r, &out, func(id int32) int32 { return remapParticleID(version, id) }) {
+			if !copyMetaParticles(r, &out, version) {
+				return body
+			}
+		case metaTypeParticle:
+			if !copyParticle(r, &out, version, false) {
 				return body
 			}
 		case metaTypeRotations:
@@ -1013,6 +998,17 @@ func remapEntityMeta(version int32, body []byte) []byte {
 				state = RemapID(RegBlockState, version, state)
 			}
 			out = AppendVarInt(out, state)
+		case DyeColorSerializer777:
+			// Only FixCushionMeta writes it (canonical 770 has no such id),
+			// and only for a 26.3 client: a VarInt DyeColor id.
+			if version < 777 {
+				return body
+			}
+			v, err := ReadVarInt(r)
+			if err != nil {
+				return body
+			}
+			out = AppendVarInt(out, v)
 		default:
 			if isVariantHolderSerializer(typ) { // a mob-variant holder: one varint (registry id), carried verbatim
 				v, err := ReadVarInt(r)
@@ -1268,7 +1264,11 @@ func rewriteMetaEntries(body []byte, mapEntry func(idx byte, typ int32) (byte, i
 				out = append(out, p[:]...)
 			}
 		case metaTypeParticles: // canonical ids, carried as they are
-			if !copyMetaParticles(r, &out, func(id int32) int32 { return id }) {
+			if !copyMetaParticles(r, &out, canonicalParticle) {
+				return body
+			}
+		case metaTypeParticle:
+			if !copyParticle(r, &out, canonicalParticle, false) {
 				return body
 			}
 		default:
@@ -2479,6 +2479,30 @@ var weatheringCopperStateSerializer = map[int32]int32{774: 34, 775: 38, 776: 38,
 // EntityDataSerializers' registration order: the golem's own interaction
 // animation (idle, getting/dropping an item, with or without one), index 17.
 var copperGolemStateSerializer = map[int32]int32{774: 33, 775: 37, 776: 37, 777: 37}
+
+// DyeColorSerializer777 is EntityDataSerializers.DYE_COLOR, a serializer only
+// 26.3 has (the last registration, 43): DyeColor.STREAM_CODEC, one VarInt id
+// (white 0 … black 15). Canonical 770 has none, so the engine sends a
+// cushion's colour as an INT placeholder and FixCushionMeta restores it.
+const DyeColorSerializer777 = 43
+
+// FixCushionMeta rewrites a cushion's DATA_COLOR (index 8, Cushion's first
+// field after Entity's eight) from the INT placeholder to DYE_COLOR for a
+// 26.3 client; the VarInt value (the DyeColor id) is unchanged. Only 26.3 has
+// the cushion — earlier clients see a stand-in and get none of its metadata
+// (IsSubstituted) — so every other version is left alone. A gateway calls
+// this only for entities it knows are cushions.
+func FixCushionMeta(version int32, body []byte) []byte {
+	if version < 777 {
+		return body
+	}
+	return rewriteMetaEntries(body, func(idx byte, typ int32) (byte, int32) {
+		if idx == 8 && typ == metaTypeVarInt {
+			return idx, DyeColorSerializer777
+		}
+		return idx, typ
+	})
+}
 
 // FixCopperGolemMeta rewrites a copper golem's index-16 metadata serializer type
 // from the INT placeholder to WEATHERING_COPPER_STATE for the client version, and

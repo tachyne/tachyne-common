@@ -34,6 +34,13 @@ const (
 	swing776               = 63 // serverbound: 26.3's punch maps here (protomap_777_gen.go)
 	playerAction776        = 41 // serverbound
 
+	// PlayerActionChangeDestroyDirection is the canonical player_action
+	// (block_dig) status a 26.3 CHANGE_DESTROY_DIRECTION arrives as: the
+	// canonical list ends at STAB (7), so it is 8, carrying the new face.
+	// ServerPlayerGameMode keeps it as the destroyDirection its 2019/2020
+	// level events report.
+	PlayerActionChangeDestroyDirection = 8
+
 	// SwingAnimation777 is the clientbound swing_animation id at 26.3.
 	SwingAnimation777 = 123
 )
@@ -504,8 +511,10 @@ func rewriteChunkLightBitSets777(_ State, body []byte) []byte {
 // ServerboundPlayerActionPacket.Action, which moved every later action up
 // one. Without this a 26.3 client's "finished breaking" (3) read as "drop
 // the whole stack", and its drop, release and swap keys each as the next
-// one along. The new action has nothing to map to below 26.3 and is dropped.
-// Body: VarInt action, i64 position, u8 face, VarInt sequence.
+// one along. The new action (the client, mid-break, now hits another face
+// of the block) has no canonical number, so it takes the one after STAB:
+// PlayerActionChangeDestroyDirection. Body: VarInt action, i64 position,
+// u8 face, VarInt sequence.
 func rewritePlayerAction777(_ State, body []byte) []byte {
 	r := bytes.NewReader(body)
 	action, err := ReadVarInt(r)
@@ -514,7 +523,7 @@ func rewritePlayerAction777(_ State, body []byte) []byte {
 	}
 	switch {
 	case action == 1:
-		return nil
+		action = PlayerActionChangeDestroyDirection
 	case action >= 2:
 		action--
 	}

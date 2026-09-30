@@ -198,6 +198,7 @@ var (
 	typeSlime       = protocol.CanonicalEntity("slime")
 	typeMagmaCube   = protocol.CanonicalEntity("magma_cube")
 	typeCopperGolem = protocol.CanonicalEntity("copper_golem")
+	typeCushion     = protocol.CanonicalEntity("cushion")
 	typePainting    = protocol.CanonicalEntity("painting")
 	typeItemFrame   = protocol.CanonicalEntity("item_frame")
 	typeGlowFrame   = protocol.CanonicalEntity("glow_item_frame")
@@ -997,6 +998,12 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 					// clients that have the serializer (774+), else it type-mismatches.
 					if etype == typeCopperGolem {
 						p.Body = protocol.FixCopperGolemMeta(clientProto, p.Body)
+					}
+					// A cushion's colour ships as an INT placeholder; 26.3 reads
+					// it as DYE_COLOR (earlier clients never get here: the
+					// cushion is substituted on them).
+					if etype == typeCushion {
+						p.Body = protocol.FixCushionMeta(clientProto, p.Body)
 					}
 					// The painting variant's serializer id renumbered in 26.x
 					// (COMPOUND_TAG removed, sound-variant serializers added).

@@ -14,9 +14,9 @@ func TestEffectParticlesMeta(t *testing.T) {
 	body = append(body, 10)
 	body = AppendVarInt(body, metaTypeParticles)
 	body = AppendVarInt(body, 2)
-	body = AppendVarInt(body, particleEntityEffect770)
+	body = AppendVarInt(body, ParticleEntityEffect770)
 	body = append(body, 0xff, 0x33, 0x99, 0xcc)
-	body = AppendVarInt(body, particleItemSlime770)
+	body = AppendVarInt(body, 49) // item_slime (Oozing), no options
 	body = append(body, 11)
 	body = AppendVarInt(body, metaTypeBoolean)
 	body = append(body, 0, 0xff)
@@ -38,7 +38,9 @@ func TestEffectParticlesMeta(t *testing.T) {
 	// An unknown particle bails rather than guessing its payload.
 	bad := append(AppendVarInt(nil, 42), 10)
 	bad = AppendVarInt(bad, metaTypeParticles)
-	bad = append(bad, 1, 7, 0xff)
+	bad = append(bad, 1)
+	bad = AppendVarInt(bad, 200) // past the canonical registry
+	bad = append(bad, 0xff)
 	if got := remapEntityMeta(777, bad); !bytes.Equal(got, bad) {
 		t.Errorf("an unknown particle was rewritten: %x", got)
 	}

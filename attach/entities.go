@@ -596,7 +596,7 @@ type Collect struct {
 // World-effect frames (stage 5 of the domain-events refactor).
 const (
 	MsgSound     = 0x28 // w→gw: named positioned sound
-	MsgParticles = 0x29 // w→gw: payload-free particle burst
+	MsgParticles = 0x29 // w→gw: particle burst (offsets, force, options)
 	MsgWorldFX   = 0x2a // w→gw: positioned world event (block-break FX, …)
 )
 
@@ -616,26 +616,91 @@ type Sound struct {
 	EID int32 `json:"eid,omitempty"`
 }
 
-// Particles is a payload-free particle burst. PID is the CANONICAL (770)
-// particle type id; gateway translator chains remap it per client version.
+// Particles is a particle burst — vanilla ServerLevel.sendParticles and its
+// ClientboundLevelParticlesPacket. PID is the CANONICAL (770) particle type
+// id; gateway translator chains remap it per client version.
+//
+// The offsets are DX/DY/DZ (the packet's xDist/yDist/zDist). An engine that
+// predates them sent one Spread for all three axes; Spread still stands for
+// all three whenever DX, DY and DZ are all zero. Force is the packet's
+// overrideLimiter (the client draws it at any distance, as /particle's
+// "force" and a few vanilla effects ask), AlwaysShow its alwaysShow (drawn
+// whatever the client's particle setting); both false is sendParticles'
+// ordinary case. Options carries the type's ParticleOptions for the types
+// that have them; a type without options ignores it.
 type Particles struct {
-	PID    int32   `json:"pid"`
-	X      float64 `json:"x"`
-	Y      float64 `json:"y"`
-	Z      float64 `json:"z"`
-	Spread float32 `json:"spread"`
-	Speed  float32 `json:"speed"`
-	Count  int32   `json:"count"`
+	PID        int32            `json:"pid"`
+	X          float64          `json:"x"`
+	Y          float64          `json:"y"`
+	Z          float64          `json:"z"`
+	Spread     float32          `json:"spread"`
+	DX         float32          `json:"dx,omitempty"`
+	DY         float32          `json:"dy,omitempty"`
+	DZ         float32          `json:"dz,omitempty"`
+	Speed      float32          `json:"speed"`
+	Count      int32            `json:"count"`
+	Force      bool             `json:"force,omitempty"`
+	AlwaysShow bool             `json:"alwaysShow,omitempty"`
+	Options    *ParticleOptions `json:"options,omitempty"`
 }
 
-// WorldFX is a positioned world event (e.g. 2001 = block-break particles +
-// sound, rendered by the client from Data = the block state).
+// ParticleOptions is one particle type's options, after vanilla's
+// ParticleOptions classes; each field names the types that read it.
+//
+//   - State: BlockParticleOption (block, block_marker, falling_dust,
+//     dust_pillar, block_crumble) — a canonical block-state id.
+//   - Color: DustParticleOptions (dust, RGB), DustColorTransitionOptions
+//     (dust_color_transition's from colour, RGB), ColorParticleOption
+//     (entity_effect, tinted_leaves, flash — ARGB), SpellParticleOption
+//     (effect, instant_effect — RGB), TrailParticleOption (trail, RGB).
+//   - ToColor: dust_color_transition's to colour (RGB).
+//   - Scale: dust and dust_color_transition (0.01–4).
+//   - Power: PowerParticleOption (dragon_breath) and SpellParticleOption
+//     (effect, instant_effect); vanilla's default is 1.
+//   - Roll: SculkChargeParticleOptions (sculk_charge), radians.
+//   - Delay: ShriekParticleOption (shriek), ticks.
+//   - Item: ItemParticleOption (item) — a non-empty stack.
+//   - TX/TY/TZ: trail's target point; vibration's destination block (the
+//     block holding the point) when TargetEID is 0.
+//   - TargetEID, TargetYOffset: vibration's EntityPositionSource.
+//   - Ticks: trail's duration; vibration's arrival in ticks.
+//
+// dragon_breath, effect, instant_effect and flash took their options in
+// 26.x: sent without Options they go out with the codec defaults (power 1,
+// colour -1), with Options exactly as given — so set Power (and the colour)
+// when sending them.
+type ParticleOptions struct {
+	State         int32      `json:"state,omitempty"`
+	Color         int32      `json:"color,omitempty"`
+	ToColor       int32      `json:"toColor,omitempty"`
+	Scale         float32    `json:"scale,omitempty"`
+	Power         float32    `json:"power,omitempty"`
+	Roll          float32    `json:"roll,omitempty"`
+	Delay         int32      `json:"delay,omitempty"`
+	Item          *ItemStack `json:"item,omitempty"`
+	TX            float64    `json:"tx,omitempty"`
+	TY            float64    `json:"ty,omitempty"`
+	TZ            float64    `json:"tz,omitempty"`
+	TargetEID     int32      `json:"targetEid,omitempty"`
+	TargetYOffset float32    `json:"targetYOffset,omitempty"`
+	Ticks         int32      `json:"ticks,omitempty"`
+}
+
+// WorldFX is a positioned world event (vanilla ClientboundLevelEventPacket,
+// e.g. 2001 = block-break particles + sound, rendered by the client from
+// Data = the block state). Global is the packet's globalEvent:
+// ServerLevel.globalLevelEvent (the wither's spawn 1023, the dragon's death
+// 1028, the end portal opening 1038) sends it to every player on the server
+// with the position pulled to within 32 blocks of each, and the client plays
+// the sound from that direction rather than at the block. An engine that
+// predates the flag never sets it: every event goes out local.
 type WorldFX struct {
-	Event int32 `json:"event"`
-	X     int   `json:"x"`
-	Y     int   `json:"y"`
-	Z     int   `json:"z"`
-	Data  int32 `json:"data"`
+	Event  int32 `json:"event"`
+	X      int   `json:"x"`
+	Y      int   `json:"y"`
+	Z      int   `json:"z"`
+	Data   int32 `json:"data"`
+	Global bool  `json:"global,omitempty"`
 }
 
 // Stage-6a frames: the last clientbound stragglers become typed events.

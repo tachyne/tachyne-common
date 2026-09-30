@@ -556,18 +556,22 @@ func TestWorldEventBlockBreakRemap(t *testing.T) {
 func TestWorldParticlesRemap(t *testing.T) {
 	prefix := make([]byte, 46)
 	body := AppendVarInt(append([]byte(nil), prefix...), 21) // explosion_emitter
-	out := remapWorldParticles(776, body)
-	r := bytes.NewReader(out[46:])
-	if id, _ := ReadVarInt(r); id != 29 {
+	out, drop := remapLevelParticles(776, body)
+	if drop {
+		t.Fatal("a simple particle was dropped")
+	}
+	if id, _ := ReadVarInt(bytes.NewReader(out[46:])); id != 29 {
 		t.Fatalf("explosion_emitter @776 = %d, want 29", id)
 	}
-	if id, _ := ReadVarInt(bytes.NewReader(remapWorldParticles(773, body)[46:])); id != 22 {
+	out, _ = remapLevelParticles(773, body)
+	if id, _ := ReadVarInt(bytes.NewReader(out[46:])); id != 22 {
 		t.Fatalf("explosion_emitter @773 should be 22, got %d", id)
 	}
-	// A particle with a payload after the id must be left untouched.
+	// Bytes after a simple particle are not a particle this walker knows:
+	// the packet goes, rather than reach the client unreadable.
 	withPayload := append(append([]byte(nil), body...), 0x05)
-	if !bytes.Equal(remapWorldParticles(776, withPayload), withPayload) {
-		t.Fatal("payload particles must pass through untouched")
+	if _, drop := remapLevelParticles(776, withPayload); !drop {
+		t.Fatal("a simple particle with trailing bytes should be dropped")
 	}
 }
 
