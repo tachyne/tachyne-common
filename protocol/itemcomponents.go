@@ -21,6 +21,11 @@ import "bytes"
 //	block_state               67   74   76   76   78
 //	entity_data               49   56   58   58   60
 //	painting/variant          89   97  102  103  109
+//	unbreakable                4    4    4    4    4
+//	can_place_on              11   14   14   14   14
+//	can_break                 12   15   15   15   15
+//	profile                   61   68   70   70   72
+//	note_block_sound          62   69   71   71   73
 const (
 	componentItemName         = 6  // item_name: a text component (network NBT)
 	componentRarity           = 9  // rarity: the Rarity enum, one varint
@@ -35,6 +40,11 @@ const (
 	componentBlockState       = 67 // block_state: property name -> value strings
 	componentEntityData       = 49 // entity_data: the entity's tag (TypedEntityData from 1.21.9)
 	componentPaintingVariant  = 89 // painting/variant: Holder<PaintingVariant>
+	componentUnbreakable      = 4  // unbreakable: a Unit, no payload
+	componentCanPlaceOn       = 11 // can_place_on: AdventureModePredicate
+	componentCanBreak         = 12 // can_break: AdventureModePredicate
+	componentProfile          = 61 // profile: ResolvableProfile (a player head's owner)
+	componentNoteBlockSound   = 62 // note_block_sound: an Identifier
 )
 
 // laterComponentIDs: each canonical id above at 774, 775, 776 and 777.
@@ -52,6 +62,11 @@ var laterComponentIDs = map[int32][4]int32{
 	componentBlockState:       {74, 76, 76, 78},
 	componentEntityData:       {56, 58, 58, 60},
 	componentPaintingVariant:  {97, 102, 103, 109},
+	componentUnbreakable:      {4, 4, 4, 4},
+	componentCanPlaceOn:       {14, 14, 14, 14},
+	componentCanBreak:         {15, 15, 15, 15},
+	componentProfile:          {68, 70, 70, 72},
+	componentNoteBlockSound:   {69, 71, 71, 73},
 }
 
 func laterCompID(canon, version int32) int32 {
@@ -83,6 +98,8 @@ var knownComponents = []int32{
 	componentBucketEntityData, componentSalmonSize, componentFishPattern,
 	componentFishBaseColor, componentFishPatternColor, componentAxolotlVariant,
 	componentBlockState, componentEntityData, componentPaintingVariant,
+	componentUnbreakable, componentCanPlaceOn, componentCanBreak, componentProfile,
+	componentNoteBlockSound,
 }
 
 // componentIDAt is a known canonical component's id at a client version —
@@ -236,6 +253,20 @@ func copyLaterComponent(r *bytes.Reader, out *[]byte, canon int32, remap func(in
 		return true
 	case componentEntityData:
 		return copyEntityData(r, out, version, serverbound)
+	case componentUnbreakable:
+		return true // Unit.STREAM_CODEC: nothing on the wire
+	case componentNoteBlockSound:
+		// Identifier.STREAM_CODEC: one STRING_UTF8, the same on every version.
+		s, err := ReadString(r)
+		if err != nil || len(s) > 32767 {
+			return false
+		}
+		*out = AppendString(*out, s)
+		return true
+	case componentProfile:
+		return copyProfile(r, out, version, serverbound)
+	case componentCanPlaceOn, componentCanBreak:
+		return copyAdventurePredicate(r, out, version, serverbound)
 	case componentPaintingVariant:
 		// Holder<PaintingVariant>: registry id + 1, our own synced registry's
 		// order on every version. 0 is an inline variant, which a creative

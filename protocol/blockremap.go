@@ -1989,7 +1989,7 @@ func copyComponentPatch(r *bytes.Reader, out *[]byte, remap func(int32) int32, v
 	}
 	addC, e1 := ReadVarInt(r)
 	remC, e2 := ReadVarInt(r)
-	if e1 != nil || e2 != nil || addC < 0 || addC > 8 || remC != 0 {
+	if e1 != nil || e2 != nil || addC < 0 || addC > 16 || remC != 0 {
 		return false // richer components than we ever send — don't guess
 	}
 	*out = AppendVarInt(*out, addC)
