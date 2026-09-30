@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"bytes"
+	"encoding/binary"
 	"io"
 	"testing"
 )
@@ -932,14 +933,15 @@ func TestReadSlot770(t *testing.T) {
 }
 
 // A dyed leather helmet keeps its colour across versions: the component id
-// renumbers (35 → 42 → 44) and the rgb varint rides through unchanged.
+// renumbers (35 → 42 → 44) and the rgb — a four-byte int, as
+// DyedItemColor's ByteBufCodecs.INT writes it — rides through unchanged.
 func TestDyedColorComponentRenumbers(t *testing.T) {
 	slot := AppendVarInt(nil, 1) // count
 	slot = AppendVarInt(slot, 5) // some item
 	slot = AppendVarInt(slot, 1) // one component added
 	slot = AppendVarInt(slot, 0) // none removed
 	slot = AppendVarInt(slot, componentDyedColor)
-	slot = AppendVarInt(slot, 0xA06540)
+	slot = AppendI32(slot, 0xA06540)
 	for _, tc := range []struct {
 		version int32
 		want    int32
@@ -956,8 +958,12 @@ func TestDyedColorComponentRenumbers(t *testing.T) {
 		if id, _ := ReadVarInt(r); id != tc.want {
 			t.Errorf("v%d: dyed_color id = %d, want %d", tc.version, id, tc.want)
 		}
-		if rgb, _ := ReadVarInt(r); rgb != 0xA06540 {
-			t.Errorf("v%d: rgb = %#x, want a06540", tc.version, rgb)
+		var rgb [4]byte
+		if _, err := io.ReadFull(r, rgb[:]); err != nil || binary.BigEndian.Uint32(rgb[:]) != 0xA06540 {
+			t.Errorf("v%d: rgb = % x, want 00 a0 65 40", tc.version, rgb)
+		}
+		if r.Len() != 0 {
+			t.Errorf("v%d: %d bytes left after the rgb", tc.version, r.Len())
 		}
 	}
 	// Serverbound (a 26.2 creative slot) maps the client's 44 back to 35.
@@ -966,7 +972,7 @@ func TestDyedColorComponentRenumbers(t *testing.T) {
 	sb = AppendVarInt(sb, 1)
 	sb = AppendVarInt(sb, 0)
 	sb = AppendVarInt(sb, 44)
-	sb = AppendVarInt(sb, 0x123456)
+	sb = AppendI32(sb, 0x123456)
 	var out []byte
 	if !copyFullSlot(bytes.NewReader(sb), &out, func(id int32) int32 { return id }, 776, true) {
 		t.Fatal("serverbound dyed slot refused")

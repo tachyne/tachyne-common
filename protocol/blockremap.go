@@ -1326,7 +1326,7 @@ const (
 	componentLore            = 8  // minecraft:lore (list of NBT texts), canonical
 	componentStoredEnch      = 34 // minecraft:stored_enchantments (books), canonical
 	componentMapID           = 37 // minecraft:map_id (varint), canonical
-	componentDyedColor       = 35 // minecraft:dyed_color (varint rgb), canonical
+	componentDyedColor       = 35 // minecraft:dyed_color (four-byte int rgb), canonical
 	componentTrim            = 47 // minecraft:trim (2 holder varints), canonical
 	componentPotionContents  = 42 // minecraft:potion_contents, canonical
 	componentStewEffects     = 44 // minecraft:suspicious_stew_effects, canonical
@@ -2017,14 +2017,15 @@ func copyComponentPatch(r *bytes.Reader, out *[]byte, remap func(int32) int32, v
 			*out = AppendVarInt(*out, mapOut)
 			*out = AppendVarInt(*out, val)
 		case dyedIn:
-			// dyed_color: one rgb varint (leather armour, wolf armour);
-			// only the component id renumbers.
-			rgb, err := ReadVarInt(r)
-			if err != nil {
+			// dyed_color: the rgb as a four-byte int (DyedItemColor's
+			// ByteBufCodecs.INT; leather armour, wolf armour); only the
+			// component id renumbers.
+			var rgb [4]byte
+			if _, err := io.ReadFull(r, rgb[:]); err != nil {
 				return false
 			}
 			*out = AppendVarInt(*out, dyedOut)
-			*out = AppendVarInt(*out, rgb)
+			*out = append(*out, rgb[:]...)
 		case baseIn:
 			// base_color: one DyeColor varint (a decorated shield's banner
 			// base); the enum is stable, only the component id renumbers.
