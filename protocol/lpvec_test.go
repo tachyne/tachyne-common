@@ -88,3 +88,26 @@ func TestRewriteEntityVelocity773(t *testing.T) {
 		t.Fatalf("zero velocity should be eid + 0x00, got % x", out)
 	}
 }
+
+// Past 1.21.5's ±3.9 clamp the canonical body carries the exact impulse:
+// 26.x's vector is built from it, and a 1.21.5 client gets the shorts alone.
+func TestVelocityExactPastClamp(t *testing.T) {
+	body := AppendVarInt(nil, 7)
+	for _, v := range []int16{int16(3.9 * 8000), 8000, 0} {
+		body = AppendI16(body, v)
+	}
+	short := append([]byte(nil), body...)
+	body = AppendF64(AppendF64(AppendF64(body, 6), 1), 0)
+	r := bytes.NewReader(rewriteEntityVelocity773(body))
+	if eid, _ := ReadVarInt(r); eid != 7 {
+		t.Fatalf("eid %d", eid)
+	}
+	x, y, z := decodeLpVec3(t, r)
+	if math.Abs(x-6) > 0.01 || math.Abs(y-1) > 0.01 || math.Abs(z) > 0.01 || r.Len() != 0 {
+		t.Fatalf("26.x vector (%v,%v,%v), %d left", x, y, z, r.Len())
+	}
+	_, out, _ := TranslatorFor(770).Clientbound(StatePlay, canonEntityVelocity, body)
+	if !bytes.Equal(out, short) {
+		t.Errorf("770: %x, want the shorts alone %x", out, short)
+	}
+}

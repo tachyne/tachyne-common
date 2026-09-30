@@ -79,3 +79,24 @@ func TestDefaultSpawnBodyChangesAt773(t *testing.T) {
 		t.Errorf("dimension = %q, want minecraft:the_nether", dim)
 	}
 }
+
+// set_entity_motion, also to a player itself (knockback, explosions,
+// Entity.push): three shorts in 1/8000 block/tick, each clamped to ±3.9 as
+// 1.21.5's packet does; past the clamp the exact impulse follows as three
+// doubles for the 26.x vector.
+func TestVelocitySelfAndClamp(t *testing.T) {
+	w := protocol.AppendVarInt(nil, 42)
+	w = protocol.AppendI16(w, int16(0.5*8000))
+	w = protocol.AppendI16(w, int16(0.25*8000))
+	w = protocol.AppendI16(w, int16(-1*8000))
+	eq(t, "knockback", Velocity(attach.Velocity{EID: 42, VX: 0.5, VY: 0.25, VZ: -1}), IDVelocity, w)
+
+	w = protocol.AppendVarInt(nil, 42)
+	w = protocol.AppendI16(w, int16(3.9*8000))
+	w = protocol.AppendI16(w, int16(1*8000))
+	w = protocol.AppendI16(w, int16(-3.9*8000))
+	w = protocol.AppendF64(w, 6)
+	w = protocol.AppendF64(w, 1)
+	w = protocol.AppendF64(w, -10)
+	eq(t, "launch", Velocity(attach.Velocity{EID: 42, VX: 6, VY: 1, VZ: -10}), IDVelocity, w)
+}

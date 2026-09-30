@@ -84,6 +84,7 @@ func remapClientboundIDs(version, id int32, body []byte) ([]byte, bool) {
 		if version >= 773 {
 			return rewriteEntityVelocity773(body), false
 		}
+		return stripExactVelocity(body), false
 	case canonJoinGame:
 		// 26.2 (proto 776) INSERTED onlineMode(bool) before the trailing
 		// enforcesSecureChat(bool) in Join. The canonical packet's last byte
@@ -2389,7 +2390,28 @@ func rewriteEntityVelocity773(body []byte) []byte {
 		return float64(int16(uint16(v[i])<<8|uint16(v[i+1]))) / 8000
 	}
 	out := AppendVarInt(nil, eid)
+	if r.Len() == 24 { // the exact impulse past 1.21.5's clamp (render770.Velocity)
+		var d [24]byte
+		if _, err := io.ReadFull(r, d[:]); err != nil {
+			return body
+		}
+		f := func(i int) float64 { return math.Float64frombits(binary.BigEndian.Uint64(d[i:])) }
+		return appendLpVec3(out, f(0), f(8), f(16))
+	}
 	return appendLpVec3(out, vec(0), vec(2), vec(4))
+}
+
+// stripExactVelocity leaves a 1.21.5 client the shorts alone: the exact
+// impulse that may follow them (render770.Velocity) is 26.x's.
+func stripExactVelocity(body []byte) []byte {
+	r := bytes.NewReader(body)
+	if _, err := ReadVarInt(r); err != nil {
+		return body
+	}
+	if r.Len() == 6+24 {
+		return body[:len(body)-24]
+	}
+	return body
 }
 
 // appendLpVec3 encodes Mojang's 1.21.9+ low-precision movement vector (wire

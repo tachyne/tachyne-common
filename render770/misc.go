@@ -69,12 +69,38 @@ func VehicleMove(e attach.VehicleMove) Packet {
 // velocityUnit is the set_entity_velocity unit: 1/8000 block per tick.
 const velocityUnit = 8000
 
-// Velocity renders set_entity_velocity from a blocks/tick impulse.
+// velocityClamp is 1.21.5's set_entity_motion limit: each axis clamped to
+// ±3.9 blocks/tick before it is packed into a short.
+const velocityClamp = 3.9
+
+// Velocity renders set_entity_velocity (set_entity_motion) from a
+// blocks/tick impulse — to the entity's viewers, and to a player itself
+// when EID is its own entity (vanilla's hurtMarked / knockback / explosion
+// push). 1.21.5 packs each axis into a short, clamped to ±3.9; 26.x sends
+// the vector as it is, so when an axis is past the clamp the exact impulse
+// follows the shorts (three doubles), which the translation chain uses for
+// 26.x and leaves off for 1.21.5.
 func Velocity(e attach.Velocity) Packet {
+	clamp := func(v float64) int16 {
+		return int16(max(-velocityClamp, min(velocityClamp, v)) * velocityUnit)
+	}
 	b := protocol.AppendVarInt(nil, e.EID)
-	b = protocol.AppendI16(b, int16(e.VX*velocityUnit))
-	b = protocol.AppendI16(b, int16(e.VY*velocityUnit))
-	return Packet{IDVelocity, protocol.AppendI16(b, int16(e.VZ*velocityUnit))}
+	b = protocol.AppendI16(b, clamp(e.VX))
+	b = protocol.AppendI16(b, clamp(e.VY))
+	b = protocol.AppendI16(b, clamp(e.VZ))
+	if max(abs64(e.VX), abs64(e.VY), abs64(e.VZ)) > velocityClamp {
+		b = protocol.AppendF64(b, e.VX)
+		b = protocol.AppendF64(b, e.VY)
+		b = protocol.AppendF64(b, e.VZ)
+	}
+	return Packet{IDVelocity, b}
+}
+
+func abs64(v float64) float64 {
+	if v < 0 {
+		return -v
+	}
+	return v
 }
 
 // Trades renders merchant_offers from the opaque canonical body.
