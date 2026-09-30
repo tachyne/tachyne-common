@@ -164,3 +164,22 @@ type GameProfile struct {
 	UUID       [16]byte   `json:"uuid"`
 	Properties []Property `json:"properties,omitempty"`
 }
+
+// MsgChunksBiomes (w→gw): chunks whose biomes changed in place — vanilla
+// ClientboundChunksBiomesPacket, which /fillbiome (ChunkMap.resendBiomesForChunks)
+// sends so the client recolours grass, water and sky without a chunk resend.
+const MsgChunksBiomes = 0x98
+
+// ChunkBiomes is one chunk's biomes by name, one per section bottom→top,
+// as ChunkHeader.Biomes: every section of the chunk's column, since the
+// client reads the whole column's biome containers.
+type ChunkBiomes struct {
+	CX     int32    `json:"cx"`
+	CZ     int32    `json:"cz"`
+	Biomes []string `json:"biomes"`
+}
+
+// ChunksBiomes is a batch of chunks, as vanilla sends them together.
+type ChunksBiomes struct {
+	Chunks []ChunkBiomes `json:"chunks"`
+}

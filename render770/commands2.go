@@ -145,3 +145,27 @@ func AppendProfileNBT(b []byte, p attach.GameProfile) []byte {
 	}
 	return protocol.NBTEnd(b)
 }
+
+// IDChunksBiomes is chunks_biomes at canonical 770 (0x0d, as on 26.2 and
+// 26.3).
+const IDChunksBiomes = 0x0d
+
+// ChunksBiomes renders chunks_biomes: a list of (ChunkPos as a long — x in
+// the low 32 bits, z in the high — then a byte array of the column's biome
+// containers, one per section). Each section is a single-valued paletted
+// container (bits 0, then the biome id), the form chunk sections carry.
+// biomeID resolves a name for the client's version.
+func ChunksBiomes(e attach.ChunksBiomes, biomeID func(string) int32) Packet {
+	b := protocol.AppendVarInt(nil, int32(len(e.Chunks)))
+	for _, c := range e.Chunks {
+		b = protocol.AppendI64(b, int64(uint64(uint32(c.CX))|uint64(uint32(c.CZ))<<32))
+		var buf []byte
+		for _, name := range c.Biomes {
+			buf = protocol.AppendU8(buf, 0)
+			buf = protocol.AppendVarInt(buf, biomeID(name))
+		}
+		b = protocol.AppendVarInt(b, int32(len(buf)))
+		b = append(b, buf...)
+	}
+	return Packet{IDChunksBiomes, b}
+}

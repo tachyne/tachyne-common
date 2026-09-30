@@ -867,6 +867,12 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 					p := render770.Hurt(e)
 					cc.send(p.ID, p.Body)
 				}
+			case attach.MsgChunksBiomes:
+				var e attach.ChunksBiomes
+				if json.Unmarshal(payload, &e) == nil {
+					p := render770.ChunksBiomes(e, func(name string) int32 { return protocol.BiomeIDFor(clientProto, name) })
+					cc.send(p.ID, p.Body)
+				}
 			case attach.MsgBlockDisplay:
 				var e attach.BlockDisplay
 				if json.Unmarshal(payload, &e) == nil {

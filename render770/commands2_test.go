@@ -1,6 +1,7 @@
 package render770
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/tachyne/tachyne-common/attach"
@@ -78,4 +79,23 @@ func TestBlockDisplaySkull(t *testing.T) {
 	// A head with no owner: an empty tag.
 	p, _ = BlockDisplay(attach.BlockDisplay{Pos: [3]int32{1, 2, 3}, Kind: attach.DisplaySkull})
 	eq(t, "bare skull", p, IDBlockEntityData, append(protocol.AppendVarInt(protocol.AppendPosition(nil, 1, 2, 3), 16), 10, 0))
+}
+
+// chunks_biomes: VarInt count; per chunk ChunkPos.pack (x low, z high) as a
+// long, then a VarInt-length byte array of one single-valued biome
+// container per section (bits 0, VarInt id). The packet keeps id 13 through
+// the 26.3 chain.
+func TestChunksBiomes(t *testing.T) {
+	ids := map[string]int32{"minecraft:plains": 1, "minecraft:desert": 7}
+	p := ChunksBiomes(attach.ChunksBiomes{Chunks: []attach.ChunkBiomes{
+		{CX: -2, CZ: 3, Biomes: []string{"minecraft:desert", "minecraft:plains"}},
+	}}, func(n string) int32 { return ids[n] })
+	w := []byte{1}                                    // one chunk
+	w = append(w, 0, 0, 0, 3, 0xff, 0xff, 0xff, 0xfe) // z=3 high, x=-2 low
+	w = append(w, 4, 0, 7, 0, 1)                      // 4 bytes: desert, plains
+	eq(t, "chunks_biomes", p, IDChunksBiomes, w)
+	id, body, drop := protocol.TranslatorFor(777).Clientbound(protocol.StatePlay, p.ID, p.Body)
+	if drop || id != 13 || !bytes.Equal(body, w) {
+		t.Errorf("26.3: id %d drop=%v %x", id, drop, body)
+	}
 }
