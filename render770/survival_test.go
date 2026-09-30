@@ -89,3 +89,25 @@ func TestDamageEventMatchesOracle(t *testing.T) {
 	w2 = protocol.AppendF64(protocol.AppendF64(protocol.AppendF64(w2, 1), 2), 3)
 	eq(t, "damage event unknown type", DamageEvent(attach.DamageEvent{EID: 7, Type: "nonsense", Src: &src}), IDDamageEvent, w2)
 }
+
+// A death message as a component: player_combat_kill's message is the
+// network-NBT component {translate, with: [compounds…]}, preferred over the
+// literal Message. Bytes written out by hand.
+func TestDeathComponent(t *testing.T) {
+	str := func(b []byte, s string) []byte { return append(append(b, byte(len(s)>>8), byte(len(s))), s...) }
+	w := protocol.AppendVarInt(nil, 5)
+	w = append(w, 10)
+	w = str(str(append(w, 8), "translate"), "death.attack.mob")
+	w = str(append(w, 9), "with")
+	w = append(w, 10, 0, 0, 0, 2)
+	w = append(str(str(append(w, 8), "text"), "Legion"), 0)
+	w = str(str(append(w, 8), "translate"), "entity.minecraft.zombie")
+	w = append(str(str(append(w, 8), "color"), "red"), 0)
+	w = append(w, 0)
+	eq(t, "death component", Death(attach.Death{EID: 5, Message: "Legion was slain by Zombie",
+		Component: &attach.Text{Translate: "death.attack.mob", With: []attach.Text{
+			{Text: "Legion"}, {Translate: "entity.minecraft.zombie", Color: "red"}}}}), IDDeathCombat, w)
+	// Without a component the literal message goes, as before.
+	eq(t, "death literal", Death(attach.Death{EID: 5, Message: "x"}), IDDeathCombat,
+		append(protocol.AppendVarInt(nil, 5), chatNBT("x")...))
+}

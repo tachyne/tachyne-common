@@ -92,7 +92,46 @@ func Hurt(e attach.Hurt) Packet {
 // Death renders the death screen (death_combat_event).
 func Death(e attach.Death) Packet {
 	b := protocol.AppendVarInt(nil, e.EID)
+	if e.Component != nil {
+		return Packet{IDDeathCombat, append(b, TextNBT(*e.Component)...)}
+	}
 	return Packet{IDDeathCombat, append(b, chatNBT(e.Message)...)}
+}
+
+// TextNBT encodes a chat component as network NBT (ComponentSerialization's
+// codec, nameless root): a compound with "text" or "translate" (+ "with",
+// a list of compounds, and "fallback"), then "color" and "extra".
+func TextNBT(t attach.Text) []byte {
+	return appendTextFields(protocol.NBTRoot(), t)
+}
+
+// appendTextFields writes a component's fields into an open compound and
+// closes it.
+func appendTextFields(b []byte, t attach.Text) []byte {
+	if t.Translate != "" {
+		b = protocol.NBTString(b, "translate", t.Translate)
+		if t.Fallback != "" {
+			b = protocol.NBTString(b, "fallback", t.Fallback)
+		}
+		if len(t.With) > 0 {
+			b = protocol.NBTCompoundList(b, "with", len(t.With))
+			for _, a := range t.With {
+				b = appendTextFields(b, a)
+			}
+		}
+	} else {
+		b = protocol.NBTString(b, "text", t.Text)
+	}
+	if t.Color != "" {
+		b = protocol.NBTString(b, "color", t.Color)
+	}
+	if len(t.Extra) > 0 {
+		b = protocol.NBTCompoundList(b, "extra", len(t.Extra))
+		for _, x := range t.Extra {
+			b = appendTextFields(b, x)
+		}
+	}
+	return protocol.NBTEnd(b)
 }
 
 // optEntityID is writeOptionalEntityId: id+1, with 0 for none (ids start at 1).

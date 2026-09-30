@@ -441,6 +441,26 @@ type DamageEvent struct {
 type Death struct {
 	EID     int32  `json:"eid"`
 	Message string `json:"message"`
+	// Component is the death message as vanilla builds it
+	// (CombatTracker.getDeathMessage: a translatable "death.attack.…" key
+	// with the victim, killer and weapon as arguments), which the client
+	// renders in its own language. Renderers prefer it when set; Message is
+	// the literal fallback an older engine sends alone.
+	Component *Text `json:"component,omitempty"`
+}
+
+// Text is a chat component (vanilla Component): literal Text, or a
+// Translate key filled from With (each argument itself a Text), with an
+// optional Fallback for a key the client lacks and a Color (a colour name
+// such as "red", or "#rrggbb"). Extra is appended after it, as vanilla's
+// siblings.
+type Text struct {
+	Text      string `json:"text,omitempty"`
+	Translate string `json:"translate,omitempty"`
+	With      []Text `json:"with,omitempty"`
+	Fallback  string `json:"fallback,omitempty"`
+	Color     string `json:"color,omitempty"`
+	Extra     []Text `json:"extra,omitempty"`
 }
 
 // Item/container frames (stage 4 of the domain-events refactor).
