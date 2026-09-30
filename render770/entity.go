@@ -258,8 +258,14 @@ func Head(e attach.EntityHead) Packet {
 const playerInfoAddFlags = 0x01 | 0x04 | 0x08 | 0x10
 
 // PlayerInfoAdd renders a tab-list add (with skin properties when present).
+// A player with a chat session also carries INITIALIZE_CHAT (vanilla's
+// createPlayerInitializing), so a newcomer can verify their signed chat.
 func PlayerInfoAdd(e attach.PlayerInfo) Packet {
-	b := protocol.AppendU8(nil, playerInfoAddFlags)
+	flags := uint8(playerInfoAddFlags)
+	if e.Chat != nil {
+		flags |= 0x02
+	}
+	b := protocol.AppendU8(nil, flags)
 	b = protocol.AppendVarInt(b, 1) // one entry
 	b = append(b, e.UUID[:]...)
 	b = protocol.AppendString(b, e.Name)
@@ -271,6 +277,9 @@ func PlayerInfoAdd(e attach.PlayerInfo) Packet {
 		if pr.Signature != "" {
 			b = protocol.AppendString(b, pr.Signature)
 		}
+	}
+	if e.Chat != nil { // INITIALIZE_CHAT: its field follows ADD_PLAYER's
+		b = appendChatSession(b, e.Chat)
 	}
 	b = protocol.AppendVarInt(b, e.Gamemode) // the player's own game mode
 	b = protocol.AppendVarInt(b, 1)          // listed = true

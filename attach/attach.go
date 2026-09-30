@@ -134,6 +134,19 @@ type Hello struct {
 	//                pod→pod; ResumeToken correlates the pending state.
 	Purpose     string `json:"purpose,omitempty"`
 	ResumeToken string `json:"resume_token,omitempty"` // == the migration MigID, on Purpose=="resume"
+	// Features are the optional frames this gateway renders (FeaturePlayerChat,
+	// FeatureDialog); the world sends them only to sessions that list them.
+	Features []string `json:"features,omitempty"`
+}
+
+// HasFeature reports whether a Hello advertises a feature.
+func (h Hello) HasFeature(f string) bool {
+	for _, x := range h.Features {
+		if x == f {
+			return true
+		}
+	}
+	return false
 }
 
 // Welcome accepts the session.

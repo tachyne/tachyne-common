@@ -68,6 +68,9 @@ type Authenticator struct {
 	pub           []byte // X.509 SubjectPublicKeyInfo, as the client expects it
 	SessionServer string
 	HTTP          *http.Client
+	// Keys validate players' chat sessions (secure chat) — the services
+	// key set vanilla's online server fetches beside session auth.
+	Keys *ServicesKeys
 }
 
 // NewAuthenticator makes the key pair. sessionServer "" = Mojang's.
@@ -83,7 +86,8 @@ func NewAuthenticator(sessionServer string) (*Authenticator, error) {
 	if sessionServer == "" {
 		sessionServer = DefaultSessionServer
 	}
-	return &Authenticator{key: key, pub: pub, SessionServer: sessionServer, HTTP: &http.Client{Timeout: authTimeout}}, nil
+	return &Authenticator{key: key, pub: pub, SessionServer: sessionServer, HTTP: &http.Client{Timeout: authTimeout},
+		Keys: NewServicesKeys("")}, nil
 }
 
 // errAuthDown marks a session service that could not be reached, as opposed

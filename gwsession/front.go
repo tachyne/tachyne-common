@@ -84,9 +84,18 @@ func (s *Server) sessionConfig() Config {
 		AttachToken: s.AttachToken, SID: s.SID,
 		ViewCap:      s.ViewCap,
 		Online:       s.Auth != nil,
+		ChatKeys:     s.chatKeys(),
 		MOTD:         s.MOTD,
 		ResourcePack: s.ResourcePack,
 	}
+}
+
+// chatKeys is the services key set of an online server (nil offline).
+func (s *Server) chatKeys() *ServicesKeys {
+	if s.Auth == nil {
+		return nil
+	}
+	return s.Auth.Keys
 }
 
 // Run listens on s.Listen and serves until ctx is cancelled.
@@ -105,6 +114,7 @@ func (s *Server) Run(ctx context.Context) error {
 
 // Serve accepts connections on ln until it is closed.
 func (s *Server) Serve(ln net.Listener) error {
+	s.chatKeys().Prefetch() // secure chat: have the key set before the first join
 	for {
 		c, err := ln.Accept()
 		if err != nil {

@@ -50,6 +50,9 @@ type Config struct {
 	// join packet then tells the client the server is online and enforces
 	// secure chat, so it shows no "chat messages can't be verified" toast.
 	Online bool
+	// ChatKeys is the services key set that validates players' chat
+	// sessions (secure chat); nil = none, so chat stays unsigned.
+	ChatKeys *ServicesKeys
 	// ClientIP is this session's client address (set per login).
 	ClientIP string
 	// MOTD is the server description sent in server_data after the join
@@ -96,6 +99,9 @@ func packResponseTerminal(data []byte) (terminal, declined bool) {
 	}
 	return act != 3 && act != 4, act == 1 // ACCEPTED (3) and DOWNLOADED (4) are not final
 }
+
+// gatewayFeatures are the optional frames this gateway renders (attach Hello).
+var gatewayFeatures = []string{attach.FeaturePlayerChat}
 
 // viewCap resolves the deployment's render-distance ceiling: the client's
 // slider is honored up to this. Kept well below the engine's hard attach
@@ -272,6 +278,8 @@ type clientConn struct {
 	// menus maps an open window id → its canonical menu type, for the
 	// window data a client version does not have (windowDataFits).
 	menus map[int32]int32
+	// chat is the connection's secure-chat state (securechat.go).
+	chat *chatState
 }
 
 func (cc *clientConn) send(id int32, data []byte) error {
@@ -306,6 +314,7 @@ func Run(cfg Config, br *bufio.Reader, c net.Conn, name string, uuid [16]byte, u
 	w, welcome, err := attach.DialSession(cfg.Backend, attach.Hello{
 		Token: cfg.AttachToken, Gateway: fmt.Sprintf("%s/%d", cfg.Name, cfg.SID),
 		Name: name, UUID: uuidStr, Roles: roles, Edition: "java", Props: props, IP: cfg.ClientIP,
+		Features: gatewayFeatures,
 	})
 	if err != nil {
 		if errors.Is(err, attach.ErrRefused) {
@@ -340,7 +349,8 @@ func Run(cfg Config, br *bufio.Reader, c net.Conn, name string, uuid [16]byte, u
 	}
 	c.SetDeadline(time.Time{})
 	log.Printf("%s: %q entering play (spawn %.1f,%.1f,%.1f)", c.RemoteAddr(), name, welcome.Spawn.X, welcome.Spawn.Y, welcome.Spawn.Z)
-	return play(cfg, br, &clientConn{c: c, tr: tr, entTypes: map[int32]int32{}, menus: map[int32]int32{}}, w, name, uuidStr, roles, welcome, clientView, clientProto)
+	cc := &clientConn{c: c, tr: tr, entTypes: map[int32]int32{}, menus: map[int32]int32{}, chat: newChatState(uuid, cfg.Online, cfg.ChatKeys)}
+	return play(cfg, br, cc, w, name, uuidStr, roles, welcome, clientView, clientProto)
 }
 
 // loginDisconnect sends a clientbound Login Disconnect with a JSON text reason.
@@ -505,7 +515,7 @@ func dialResume(cfg Config, destSID int32, token, name, uuidStr string, roles []
 	return attach.DialSession(fmt.Sprintf(cfg.WorldPattern, destSID), attach.Hello{
 		Token: cfg.AttachToken, Gateway: fmt.Sprintf("%s/%d", cfg.Name, cfg.SID),
 		Name: name, UUID: uuidStr, Roles: roles, Edition: "java",
-		Purpose: "resume", ResumeToken: token,
+		Purpose: "resume", ResumeToken: token, Features: gatewayFeatures,
 	})
 }
 
@@ -552,6 +562,10 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 	// event stream (tachyne-common/render770): relative moves vs absolute
 	// resyncs, NoSync entities, skins, projectile launch arcs.
 	view := render770.NewEntityView()
+	chat := cc.chat
+	if chat == nil {
+		chat = newChatState([16]byte{}, false, nil)
+	}
 
 	errs := make(chan error, 4)
 	var once sync.Once
@@ -798,6 +812,30 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 				var e attach.Chat
 				if json.Unmarshal(payload, &e) == nil {
 					p := render770.Chat(e)
+					cc.send(p.ID, p.Body)
+				}
+			case attach.MsgPlayerChat:
+				// sendPlayerChatMessage: this recipient's index and cache.
+				var e attach.PlayerChat
+				if json.Unmarshal(payload, &e) == nil {
+					p, kick := chat.render(e)
+					cc.send(p.ID, p.Body)
+					if kick != "" {
+						kickTranslated(cc, kick)
+						errs <- fmt.Errorf("secure chat: %s", kick)
+						return
+					}
+				}
+			case attach.MsgPlayerInfoChat:
+				var e attach.PlayerInfoChat
+				if json.Unmarshal(payload, &e) == nil {
+					p := render770.PlayerInfoChat(e)
+					cc.send(p.ID, p.Body)
+				}
+			case attach.MsgDeleteChat:
+				var e attach.DeleteChat
+				if json.Unmarshal(payload, &e) == nil && len(e.Signature) == render770.SignatureBytes {
+					p := chat.renderDelete(e.Signature)
 					cc.send(p.ID, p.Body)
 				}
 			case attach.MsgStats:
@@ -1611,9 +1649,73 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 					b.Write(attach.MsgCommand, attach.Command{Cmd: cmd})
 				}
 			case playServerChatMessage:
-				if text, err := protocol.ReadString(pkt.Body()); err == nil && text != "" {
-					b.Write(attach.MsgChat, attach.Chat{Text: text})
+				// handleChat: the last-seen update, the characters, then the
+				// message chain; a signed message carries its signature to
+				// the world, which relays it to every player.
+				m, ok := render770.ParseChatMessage(pkt.Data)
+				if !ok {
+					continue
 				}
+				res := chat.receiveChat(m, time.Now())
+				if res.kick != "" {
+					kickTranslated(cc, res.kick)
+					errs <- fmt.Errorf("secure chat: %s", res.kick)
+					return
+				}
+				if res.refuse != "" {
+					log.Printf("secure chat: %q: %s", name, res.refuse)
+					refuseChat(cc, res.refuse)
+					continue
+				}
+				if m.Text != "" {
+					b.Write(attach.MsgChat, attach.Chat{Text: m.Text, Signed: res.signed})
+				}
+			case render770.SIDChatCommandSigned:
+				// handleSignedChatCommand: acknowledgements first, then the
+				// command itself, as chat_command would carry it.
+				c, ok := render770.ParseChatCommandSigned(pkt.Data)
+				if !ok {
+					continue
+				}
+				res := chat.receiveSignedCommand(c)
+				if res.kick != "" {
+					kickTranslated(cc, res.kick)
+					errs <- fmt.Errorf("secure chat: %s", res.kick)
+					return
+				}
+				if res.refuse != "" {
+					refuseChat(cc, res.refuse)
+					continue
+				}
+				if c.Command != "" {
+					b.Write(attach.MsgCommand, attach.Command{Cmd: c.Command})
+				}
+			case render770.SIDChatAck:
+				if off, ok := render770.ParseChatAck(pkt.Data); ok {
+					if kick := chat.ack(off); kick != "" {
+						kickTranslated(cc, kick)
+						errs <- fmt.Errorf("secure chat: %s", kick)
+						return
+					}
+				}
+				continue
+			case render770.SIDChatSessionUpdate:
+				// handleChatSessionUpdate: a session Mojang signed becomes the
+				// player's, and the world tells everyone (INITIALIZE_CHAT).
+				in, ok := render770.ParseChatSessionUpdate(pkt.Data)
+				if !ok {
+					continue
+				}
+				fwd, kick := chat.sessionUpdate(in)
+				if kick != "" {
+					kickTranslated(cc, kick)
+					errs <- fmt.Errorf("secure chat: %s", kick)
+					return
+				}
+				if fwd != nil {
+					b.Write(attach.MsgChatSession, *fwd)
+				}
+				continue
 			case render770.SIDUseItem:
 				if e, ok := render770.ParseUseItem(pkt.Data); ok {
 					b.Write(attach.MsgUseItem, e)

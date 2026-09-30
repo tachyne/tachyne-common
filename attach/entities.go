@@ -21,6 +21,9 @@ type PlayerInfo struct {
 	Props    []Property `json:"props,omitempty"`   // game-profile properties (textures = skin)
 	Gamemode int32      `json:"gamemode"`          // 0 survival, 1 creative, 2 adventure, 3 spectator
 	Latency  int32      `json:"latency,omitempty"` // ms, from the player's keep-alive replies
+	// Chat is the player's chat session (INITIALIZE_CHAT), nil until the
+	// player's gateway validated one.
+	Chat *ChatSession `json:"chat,omitempty"`
 }
 
 // MsgLatency (gw→w): the player's connection latency, measured by the
@@ -161,6 +164,10 @@ type Chat struct {
 	// sent as the system message in place of Text. Text stays the plain
 	// fallback for renderers that cannot draw a component.
 	Component json.RawMessage `json:"component,omitempty"`
+	// Signed (gw→w only) carries the signature, chain link and signed body
+	// of a secure-chat message whose content is Text. Nil for unsigned chat;
+	// a world that does not know it reads Text alone, as before.
+	Signed *SignedChat `json:"signed,omitempty"`
 }
 
 // Interaction frames (attach v2.1): block breaking/placing from gateway
