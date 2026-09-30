@@ -345,8 +345,14 @@ type PlayerAction struct {
 type RespawnReq struct{}
 
 type CreativeSlot struct {
-	Slot int32     `json:"slot"`
-	Item ItemStack `json:"item"` // id+count (most components not needed world-side)
+	Slot int32 `json:"slot"`
+	// Item is the stack the client put there: id, count and its component
+	// patch in canonical form (Components; the gateway's chain has turned
+	// the client's delimited, client-numbered patch into canonical ids and
+	// layouts — entity_data as 1.21.5's tag with its "id", so an armor
+	// stand item keeps its pose). Components the chain does not know, and
+	// removed components, are left out.
+	Item ItemStack `json:"item"`
 	// PaintingVariant is the painting/variant item component when the slot
 	// holds a creative-menu painting preset — vanilla places exactly that
 	// variant instead of the random largest-fit selection.

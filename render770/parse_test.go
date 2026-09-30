@@ -126,46 +126,42 @@ func TestParseChunkBatchReceived(t *testing.T) {
 }
 
 // TestCreativeSlotPaintingVariant: a creative-menu painting preset's
-// painting/variant component is extracted (per-version component ids), and
-// non-preset slots degrade to "" (random fit).
+// painting/variant component is extracted, and non-preset slots degrade to
+// "" (random fit). The parser sees the chain's output — a canonical Slot
+// (protocol's TestCreativeSlotComponents covers the 26.x delimited input) —
+// and hands the whole component patch on.
 func TestCreativeSlotPaintingVariant(t *testing.T) {
 	kebab := protocol.PaintingVariantIndex("kebab")
 	if kebab < 0 {
 		t.Fatal("no kebab in the synced registry")
 	}
-	compose := func(compID int32) []byte {
-		b := []byte{0, 36}                   // slot 36
-		b = protocol.AppendVarInt(b, 1)      // count
-		b = protocol.AppendVarInt(b, 1213)   // item id (painting)
-		b = protocol.AppendVarInt(b, 1)      // components added
+	painting := protocol.CanonicalItem("painting")
+	patch := func(compID int32) []byte {
+		b := protocol.AppendVarInt(nil, 1)   // components added
 		b = protocol.AppendVarInt(b, 0)      // components removed
 		b = protocol.AppendVarInt(b, compID) // painting/variant component
-		holder := protocol.AppendVarInt(nil, kebab+1)
-		b = protocol.AppendVarInt(b, int32(len(holder))) // untrusted codec: length-prefixed value
-		b = append(b, holder...)
-		return b
+		return protocol.AppendVarInt(b, kebab+1)
 	}
-	e, ok := ParseCreativeSlot(compose(89), 770)
-	if !ok || e.PaintingVariant != "kebab" { // SHORT name — the engine table is unprefixed
-		t.Fatalf("770 preset: ok=%v variant=%q", ok, e.PaintingVariant)
+	slot := func(p []byte) []byte {
+		b := []byte{0, 36}              // slot 36
+		b = protocol.AppendVarInt(b, 1) // count
+		b = protocol.AppendVarInt(b, painting)
+		return append(b, p...)
 	}
-	e, ok = ParseCreativeSlot(compose(103), 776)
-	if !ok || e.PaintingVariant == "" {
-		t.Fatalf("776 preset: ok=%v variant=%q", ok, e.PaintingVariant)
+	e, ok := ParseCreativeSlot(slot(patch(protocol.ComponentPaintingVariant770)), 777)
+	if !ok || e.PaintingVariant != "kebab" || e.Item.ID != painting { // SHORT name — the engine table is unprefixed
+		t.Fatalf("preset: ok=%v %+v", ok, e)
 	}
-	// the wrong component id for the version → no preset, but still a valid slot
-	e, ok = ParseCreativeSlot(compose(89), 776)
-	if !ok || e.PaintingVariant != "" {
-		t.Fatalf("mismatched component id must degrade: ok=%v variant=%q", ok, e.PaintingVariant)
+	if !bytes.Equal(e.Item.Components, patch(protocol.ComponentPaintingVariant770)) {
+		t.Errorf("components %x not handed on", e.Item.Components)
 	}
-	// a componentless painting → no preset
-	plain := []byte{0, 36}
-	plain = protocol.AppendVarInt(plain, 1)
-	plain = protocol.AppendVarInt(plain, 1213)
-	plain = protocol.AppendVarInt(plain, 0)
-	plain = protocol.AppendVarInt(plain, 0)
-	if e, ok := ParseCreativeSlot(plain, 776); !ok || e.PaintingVariant != "" {
-		t.Fatalf("plain painting: ok=%v variant=%q", ok, e.PaintingVariant)
+	// A component the walker cannot measure: still a valid slot, no preset.
+	if e, ok := ParseCreativeSlot(slot(patch(1000)), 777); !ok || e.PaintingVariant != "" || e.Item.ID != painting {
+		t.Fatalf("unknown component must degrade: ok=%v %+v", ok, e)
+	}
+	// A componentless painting.
+	if e, ok := ParseCreativeSlot(slot([]byte{0, 0}), 776); !ok || e.PaintingVariant != "" || e.Item.Components != nil {
+		t.Fatalf("plain painting: ok=%v %+v", ok, e)
 	}
 }
 

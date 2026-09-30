@@ -516,6 +516,7 @@ func TestEnchantmentsComponentRenumbered(t *testing.T) {
 	cs = AppendVarInt(cs, 1)
 	cs = AppendVarInt(cs, 0)
 	cs = AppendVarInt(cs, 13)
+	cs = AppendVarInt(cs, 3) // the untrusted codec: each value length-prefixed
 	cs = AppendVarInt(cs, 1)
 	cs = AppendVarInt(cs, 32)
 	cs = AppendVarInt(cs, 3)

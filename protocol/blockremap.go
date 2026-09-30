@@ -1285,40 +1285,6 @@ func rewriteMetaEntries(body []byte, mapEntry func(idx byte, typ int32) (byte, i
 	}
 }
 
-// unmapCreativeSlot (serverbound): i16 slot, Slot — translate the client's item ID
-// back to canonical so the server stores the right item.
-func unmapCreativeSlot(version int32, body []byte) []byte {
-	r := bytes.NewReader(body)
-	if !skip(r, 2) { // slot (i16)
-		return body
-	}
-	// An item the canonical registry never had cannot be shifted back — the
-	// reverse table would land it on whatever entry now occupies that id, so
-	// a 26.3 client's poplar planks became redstone ore in the world. The
-	// slot is emptied instead: the engine genuinely has no such item, and the
-	// inventory it pushes back tells the client so.
-	if at := len(body) - r.Len(); addedItemInSlot(version, body[at:]) {
-		return AppendVarInt(append([]byte(nil), body[:at]...), 0) // empty slot
-	}
-	// Serverbound: the client speaks ITS component ids — translate back.
-	return remapTrailingSlot(body, r, func(i int32) int32 { return UnmapID(RegItem, version, i) },
-		version, true)
-}
-
-// addedItemInSlot reports whether a full Slot (VarInt count, VarInt item, …)
-// leads with an item this client version has and the canonical registry does
-// not. A slot it cannot read is left to the remap path, which bails to the
-// original body on the same trouble.
-func addedItemInSlot(version int32, slot []byte) bool {
-	r := bytes.NewReader(slot)
-	count, err := ReadVarInt(r)
-	if err != nil || count <= 0 {
-		return false
-	}
-	item, err := ReadVarInt(r)
-	return err == nil && IDAdded(RegItem, version, item)
-}
-
 // remapWindowItems: VarInt window, VarInt stateId, VarInt count, count Slots, then
 // the carried (cursor) Slot. Each Slot is fully parsed to reach the next; bails to
 // the original body if a Slot carries components (which our encoder never sends).

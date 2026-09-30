@@ -19,6 +19,8 @@ import "bytes"
 //	tropical_fish/pattern_col 81   88   90   91   97
 //	axolotl/variant           91   99  104  105  111
 //	block_state               67   74   76   76   78
+//	entity_data               49   56   58   58   60
+//	painting/variant          89   97  102  103  109
 const (
 	componentItemName         = 6  // item_name: a text component (network NBT)
 	componentRarity           = 9  // rarity: the Rarity enum, one varint
@@ -31,6 +33,8 @@ const (
 	componentFishPatternColor = 81 // tropical_fish/pattern_color: DyeColor id
 	componentAxolotlVariant   = 91 // axolotl/variant: Axolotl.Variant id
 	componentBlockState       = 67 // block_state: property name -> value strings
+	componentEntityData       = 49 // entity_data: the entity's tag (TypedEntityData from 1.21.9)
+	componentPaintingVariant  = 89 // painting/variant: Holder<PaintingVariant>
 )
 
 // laterComponentIDs: each canonical id above at 774, 775, 776 and 777.
@@ -46,6 +50,8 @@ var laterComponentIDs = map[int32][4]int32{
 	componentFishPatternColor: {88, 90, 91, 97},
 	componentAxolotlVariant:   {99, 104, 105, 111},
 	componentBlockState:       {74, 76, 76, 78},
+	componentEntityData:       {56, 58, 58, 60},
+	componentPaintingVariant:  {97, 102, 103, 109},
 }
 
 func laterCompID(canon, version int32) int32 {
@@ -76,7 +82,7 @@ var knownComponents = []int32{
 	componentItemName, componentRarity, componentTooltipDisplay, componentChargedProj,
 	componentBucketEntityData, componentSalmonSize, componentFishPattern,
 	componentFishBaseColor, componentFishPatternColor, componentAxolotlVariant,
-	componentBlockState,
+	componentBlockState, componentEntityData, componentPaintingVariant,
 }
 
 // componentIDAt is a known canonical component's id at a client version —
@@ -227,6 +233,18 @@ func copyLaterComponent(r *bytes.Reader, out *[]byte, canon int32, remap func(in
 			}
 			*out = AppendString(*out, s)
 		}
+		return true
+	case componentEntityData:
+		return copyEntityData(r, out, version, serverbound)
+	case componentPaintingVariant:
+		// Holder<PaintingVariant>: registry id + 1, our own synced registry's
+		// order on every version. 0 is an inline variant, which a creative
+		// preset never is and the engine cannot place.
+		v, err := ReadVarInt(r)
+		if err != nil || v <= 0 {
+			return false
+		}
+		*out = AppendVarInt(*out, v)
 		return true
 	case componentChargedProj:
 		// charged_projectiles: the stacks a crossbow holds loaded. They

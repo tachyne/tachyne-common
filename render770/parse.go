@@ -8,6 +8,7 @@ package render770
 import (
 	"bytes"
 	"encoding/binary"
+	"io"
 	"math"
 
 	attach "github.com/tachyne/tachyne-common/attach"
@@ -467,8 +468,13 @@ func ParseSignUpdate(data []byte) (attach.SignUpdate, bool) {
 	return e, true
 }
 
-// ParseCreativeSlot decodes set_creative_mode_slot: slot + a FULL Slot, of
-// which id+count are kept (components not needed world-side).
+// ParseCreativeSlot decodes set_creative_mode_slot as the translation chain
+// leaves it: slot, then a canonical Slot — count, item, and the component
+// patch the chain has already brought to canonical (undelimited, canonical
+// ids and layouts; see protocol's unmapCreativeSlot). The patch rides to
+// the engine whole in Item.Components, and a painting preset's variant is
+// also lifted out by name. clientProto is kept for the callers; the bytes
+// are canonical whatever the client.
 func ParseCreativeSlot(data []byte, clientProto int32) (attach.CreativeSlot, bool) {
 	br := bytes.NewReader(data)
 	slot, ok := readI16(br)
@@ -486,46 +492,36 @@ func ParseCreativeSlot(data []byte, clientProto int32) (attach.CreativeSlot, boo
 			return attach.CreativeSlot{}, false
 		}
 		e.Item = attach.ItemStack{ID: item, Count: count}
-		e.PaintingVariant = creativePaintingVariant(br, clientProto)
+		if br.Len() > 0 {
+			patch := make([]byte, br.Len())
+			if _, err := io.ReadFull(br, patch); err != nil {
+				return attach.CreativeSlot{}, false
+			}
+			if !bytes.Equal(patch, []byte{0, 0}) {
+				e.Item.Components = patch
+			}
+			e.PaintingVariant = creativePaintingVariant(patch)
+		}
 	}
 	return e, true
 }
 
-// creativePaintingVariant extracts the painting/variant component from a
-// creative slot's component list, if it is the first added component — the
-// creative menu's painting presets carry exactly that one. Components are
-// still in the CLIENT's id space (the back-translation renumbers only the
-// item id), so the component-type id is looked up per version. Anything
-// unexpected yields "" (the engine falls back to vanilla's random largest
-// fit).
-func creativePaintingVariant(br *bytes.Reader, clientProto int32) string {
-	compID := protocol.PaintingComponentID(clientProto)
-	if compID < 0 {
-		return ""
-	}
-	nAdd, err := protocol.ReadVarInt(br)
-	if err != nil || nAdd < 1 {
-		return ""
-	}
-	if _, err := protocol.ReadVarInt(br); err != nil { // remove-count precedes the entries
-		return ""
-	}
-	typ, err := protocol.ReadVarInt(br)
-	if err != nil || typ != compID {
-		return "" // a different component leads — unknown payload, stop
-	}
-	// The untrusted slot codec (all serverbound creative slots) wraps each
-	// component value in a byte-length prefix (vanilla
-	// DataComponentPatch.DELIMITED_STREAM_CODEC).
-	vlen, err := protocol.ReadVarInt(br)
-	if err != nil || vlen < 1 || vlen > 5 {
-		return ""
-	}
-	holder, err := protocol.ReadVarInt(br)
-	if err != nil || holder <= 0 {
-		return "" // 0 would be an inline definition — not a menu preset
-	}
-	return protocol.PaintingVariantName(holder - 1)
+// creativePaintingVariant is the painting/variant component's variant name
+// in a canonical component patch — the creative menu's painting presets
+// carry it — or "" (the engine then picks vanilla's random largest fit).
+// A holder of 0 would be an inline definition, never a menu preset.
+func creativePaintingVariant(patch []byte) string {
+	name := ""
+	protocol.WalkCanonicalComponents(patch, func(id int32, payload []byte) {
+		if id != protocol.ComponentPaintingVariant770 || name != "" {
+			return
+		}
+		holder, err := protocol.ReadVarInt(bytes.NewReader(payload))
+		if err == nil && holder > 0 {
+			name = protocol.PaintingVariantName(holder - 1)
+		}
+	})
+	return name
 }
 
 // ParseBundleSelect decodes bundle_item_selected: the slot holding the bundle
