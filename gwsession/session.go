@@ -1388,6 +1388,15 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 			case attach.MsgMapData:
 				var e attach.MapData
 				if json.Unmarshal(payload, &e) == nil {
+					// 26.3's new decorations: the nearest icon a 26.2 client has.
+					if len(e.Decor) > 0 {
+						decor := make([]attach.MapDecoration, len(e.Decor))
+						for i, d := range e.Decor {
+							d.Type = protocol.MapDecorationFor(clientProto, d.Type)
+							decor[i] = d
+						}
+						e.Decor = decor
+					}
 					p := render770.MapItemData(e)
 					cc.send(p.ID, p.Body)
 				}

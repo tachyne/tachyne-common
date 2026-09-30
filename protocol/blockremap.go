@@ -1918,6 +1918,20 @@ func copyFullSlotBody(r *bytes.Reader, out *[]byte, remap func(int32) int32, ver
 		return false
 	}
 	*out = AppendVarInt(*out, remap(item))
+	if entry := explorerMapItemName(version, item); entry != nil && !serverbound {
+		// An explorer map this client shows as a plain filled map: named,
+		// so it does not read "Map".
+		var patch []byte
+		if !copyComponentPatch(r, &patch, remap, version, serverbound, depth) {
+			return false
+		}
+		named, ok := prependComponent(patch, entry)
+		if !ok {
+			return false
+		}
+		*out = append(*out, named...)
+		return true
+	}
 	return copyComponentPatch(r, out, remap, version, serverbound, depth)
 }
 
