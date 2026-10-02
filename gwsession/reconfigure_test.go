@@ -205,3 +205,36 @@ func TestPlayUpdateTagsResolvesConfiguredRegistries(t *testing.T) {
 		t.Fatal("placeable missing")
 	}
 }
+
+// The engine names tag registries by their data-pack folder; the gateway
+// resolves them as the registry keys. A vanilla tag that no longer loads
+// arrives empty and goes out empty.
+func TestTagExtrasFolderRegistries(t *testing.T) {
+	x := configExtras(&attach.ConfigData{Tags: []attach.TagSet{
+		{Registry: "block", Tags: []attach.Tag{{Name: "minecraft:logs", Entries: []string{}}}},
+		{Registry: "worldgen/biome", Tags: []attach.Tag{{Name: "minecraft:is_forest", Entries: []string{"minecraft:plains"}}}},
+	}})
+	if len(x.Tags) != 2 || x.Tags[0].Registry != "minecraft:block" || x.Tags[1].Registry != "minecraft:worldgen/biome" {
+		t.Fatalf("registries %+v", x.Tags)
+	}
+	body := protocol.UpdateTagsPacketWith(777, x)
+	r := bytes.NewReader(body)
+	n, _ := protocol.ReadVarInt(r)
+	for i := int32(0); i < n; i++ {
+		reg, _ := protocol.ReadString(r)
+		c, _ := protocol.ReadVarInt(r)
+		for j := int32(0); j < c; j++ {
+			name, _ := protocol.ReadString(r)
+			k, _ := protocol.ReadVarInt(r)
+			for l := int32(0); l < k; l++ {
+				protocol.ReadVarInt(r)
+			}
+			if reg == "minecraft:block" && name == "minecraft:logs" && k != 0 {
+				t.Fatalf("logs kept %d members", k)
+			}
+		}
+	}
+	if r.Len() != 0 {
+		t.Fatalf("%d trailing bytes", r.Len())
+	}
+}

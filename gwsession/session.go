@@ -1328,9 +1328,8 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 				// again, resolved against the configured registries.
 				var e attach.UpdateTags
 				if json.Unmarshal(payload, &e) == nil {
-					data := curConfig
-					data.Tags = e.Tags
-					cc.send(playClientUpdateTags, protocol.UpdateTagsPacketWith(clientProto, configExtras(&data)))
+					curConfig.Tags = e.Tags // a later configuration phase keeps them too
+					cc.send(playClientUpdateTags, protocol.UpdateTagsPacketWith(clientProto, configExtras(&curConfig)))
 				}
 			case attach.MsgRehome:
 				// The player was migrated to a neighbour shard. Swap our world

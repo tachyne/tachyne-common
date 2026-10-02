@@ -45,7 +45,11 @@ type RegistryEntry struct {
 
 // TagSet is a data pack's tags in one registry, each a flat list of member
 // names (tag references already expanded, as the network form requires).
-// A tag the built-in set has is replaced; a new one is added.
+// A tag the built-in set has is replaced; a new one is added; an empty list
+// is a tag that no longer loads. The registry may be its key
+// ("minecraft:block") or its data-pack folder ("block", "worldgen/biome").
+// The engine's tagSet (registry → tag id → member ids) is exactly this, so
+// pack.tags.changedTags() maps one entry per registry.
 type TagSet struct {
 	Registry string `json:"registry"`
 	Tags     []Tag  `json:"tags"`

@@ -2,6 +2,7 @@ package gwsession
 
 import (
 	"log"
+	"strings"
 
 	attach "github.com/tachyne/tachyne-common/attach"
 	"github.com/tachyne/tachyne-common/protocol"
@@ -45,7 +46,7 @@ func dimsOf(in []attach.DimensionInfo) protocol.Dimensions {
 func registryExtras(in []attach.RegistryEntries) []protocol.RegistryExtra {
 	var out []protocol.RegistryExtra
 	for _, r := range in {
-		rx := protocol.RegistryExtra{Registry: r.Registry}
+		rx := protocol.RegistryExtra{Registry: namespaced(r.Registry)}
 		for _, e := range r.Entries {
 			pe := protocol.RegistryEntry{Name: e.Name}
 			if len(e.Data) > 0 {
@@ -65,11 +66,22 @@ func registryExtras(in []attach.RegistryEntries) []protocol.RegistryExtra {
 func tagExtras(in []attach.TagSet) []protocol.TagExtra {
 	var out []protocol.TagExtra
 	for _, set := range in {
+		reg := namespaced(set.Registry)
 		for _, t := range set.Tags {
-			out = append(out, protocol.TagExtra{Registry: set.Registry, Name: t.Name, Entries: t.Entries})
+			out = append(out, protocol.TagExtra{Registry: reg, Name: namespaced(t.Name), Entries: t.Entries})
 		}
 	}
 	return out
+}
+
+// namespaced is an id with the minecraft namespace when it has none: the
+// engine names tag registries by their data-pack folder ("block",
+// "worldgen/biome"), the registry packets by key ("minecraft:block").
+func namespaced(id string) string {
+	if id == "" || strings.Contains(id, ":") {
+		return id
+	}
+	return "minecraft:" + id
 }
 
 // welcomeDims is a Welcome's dimension table (nil = the default three).
