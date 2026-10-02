@@ -63,7 +63,13 @@ func Score(e attach.Score) Packet {
 	b := protocol.AppendString(nil, e.Owner)
 	b = protocol.AppendString(b, e.Objective)
 	b = protocol.AppendVarInt(b, e.Value)
-	b = protocol.AppendBool(b, false) // no display-name override
+	// display: ComponentSerialization.TRUSTED_OPTIONAL_STREAM_CODEC — a
+	// presence flag, then the component as network NBT. The layout is the
+	// same on every served version (1.21.5 through 26.3).
+	b = protocol.AppendBool(b, e.Display != nil)
+	if e.Display != nil {
+		b = append(b, TextNBT(*e.Display)...)
+	}
 	b = appendNumberFormat(b, e.Format)
 	return Packet{IDSetScore, b}
 }

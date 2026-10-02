@@ -1196,6 +1196,10 @@ type Score struct {
 	// Format is this score's own number format (ScoreAccess.numberFormatOverride,
 	// /scoreboard players display numberformat); nil = the objective's.
 	Format *NumberFormat `json:"format,omitempty"`
+	// Display is this score's own display name (vanilla ScoreAccess.display,
+	// /scoreboard players display name): the sidebar shows it in place of
+	// Owner. nil = no override (the owner name is shown).
+	Display *Text `json:"display,omitempty"`
 }
 
 type Team struct {

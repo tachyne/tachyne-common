@@ -6,6 +6,7 @@ package render770
 
 import (
 	"bytes"
+	"encoding/json"
 	"testing"
 
 	attach "github.com/tachyne/tachyne-common/attach"
@@ -152,4 +153,39 @@ func TestNumberFormats(t *testing.T) {
 	obj = protocol.AppendVarInt(obj, 0)
 	eq(t, "objective fixed", Objective(attach.Objective{Name: "kills", Method: attach.ObjAdd, Title: "Kills",
 		Format: &attach.NumberFormat{Kind: attach.NumberFormatBlank}}), IDSetObjective, append(obj, 1, 0))
+}
+
+// TestScoreDisplayName: set_score's display override
+// (ComponentSerialization.TRUSTED_OPTIONAL_STREAM_CODEC) is a presence flag
+// and the component as network NBT, before the number format. The frame
+// goes through its JSON payload first — the gateway's entry path.
+func TestScoreDisplayName(t *testing.T) {
+	raw, err := json.Marshal(attach.Score{Owner: "w", Objective: "kills", Value: 7,
+		Display: &attach.Text{Text: "Hi", Color: "red"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var e attach.Score
+	if err := json.Unmarshal(raw, &e); err != nil {
+		t.Fatal(err)
+	}
+	want := protocol.AppendString(nil, "w")
+	want = protocol.AppendString(want, "kills")
+	want = protocol.AppendVarInt(want, 7)
+	want = append(want, 1, // display present
+		10,                                          // TAG_Compound (nameless root)
+		8, 0, 4, 't', 'e', 'x', 't', 0, 2, 'H', 'i', // "text": "Hi"
+		8, 0, 5, 'c', 'o', 'l', 'o', 'r', 0, 3, 'r', 'e', 'd', // "color": "red"
+		0, // TAG_End
+		0) // no number format
+	eq(t, "score display", Score(e), IDSetScore, want)
+
+	// The translated form, with a number format after it.
+	e = attach.Score{Owner: "w", Objective: "kills", Value: 7,
+		Display: &attach.Text{Translate: "a.b"}, Format: &attach.NumberFormat{Kind: attach.NumberFormatBlank}}
+	want = protocol.AppendString(nil, "w")
+	want = protocol.AppendString(want, "kills")
+	want = protocol.AppendVarInt(want, 7)
+	want = append(want, 1, 10, 8, 0, 9, 't', 'r', 'a', 'n', 's', 'l', 'a', 't', 'e', 0, 3, 'a', '.', 'b', 0, 1, 0)
+	eq(t, "score display translate", Score(e), IDSetScore, want)
 }
