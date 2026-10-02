@@ -1219,6 +1219,8 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 			case attach.MsgCommandTree:
 				var e attach.CommandTree
 				if json.Unmarshal(payload, &e) == nil {
+					// The tree also says which arguments the client signs.
+					chat.setCommandTree(e.Data)
 					p := render770.CommandTree(e)
 					cc.send(p.ID, p.Body)
 				}
@@ -1669,6 +1671,12 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 				}
 			case playServerChatCommand:
 				if cmd, err := protocol.ReadString(pkt.Body()); err == nil && cmd != "" {
+					// performUnsignedChatCommand: a command with a message
+					// argument must come signed while secure chat is enforced.
+					if chat.unsignedCommandRefused(cmd) {
+						refuseChat(cc, keyInvalidCommandSig)
+						continue
+					}
 					b.Write(attach.MsgCommand, attach.Command{Cmd: cmd})
 				}
 			case playServerChatMessage:
@@ -1700,7 +1708,7 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 				if !ok {
 					continue
 				}
-				res := chat.receiveSignedCommand(c)
+				res := chat.receiveSignedCommand(c, time.Now())
 				if res.kick != "" {
 					kickTranslated(cc, res.kick)
 					errs <- fmt.Errorf("secure chat: %s", res.kick)
@@ -1711,7 +1719,10 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 					continue
 				}
 				if c.Command != "" {
-					b.Write(attach.MsgCommand, attach.Command{Cmd: c.Command})
+					// The signed message arguments ride with the command; the
+					// world resolves each message argument to its signed
+					// message and relays it as player chat.
+					b.Write(attach.MsgCommand, attach.Command{Cmd: c.Command, Signed: res.args})
 				}
 			case render770.SIDChatAck:
 				if off, ok := render770.ParseChatAck(pkt.Data); ok {

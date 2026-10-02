@@ -207,31 +207,48 @@ type chatChain struct {
 // unpack is SignedMessageChain.Decoder.unpack: it returns the link index the
 // message was signed at, or the refusal's translation key.
 func (c *chatChain) unpack(sender [16]byte, sig []byte, content string, ts, salt int64, lastSeen [][]byte, now time.Time) (int32, string) {
+	index, _, refuse := c.unpackAny(sender, sig, []string{content}, ts, salt, lastSeen, now)
+	return index, refuse
+}
+
+// unpackAny is unpack for a body whose content is one of several candidates:
+// a signed command argument, whose value the gateway knows only as a suffix
+// of the command line (see render770.MessageCandidates). The signature
+// verifies against at most one of them; that one is the signed content.
+// Every candidate is checked at the same link, which advances once.
+func (c *chatChain) unpackAny(sender [16]byte, sig []byte, contents []string, ts, salt int64, lastSeen [][]byte, now time.Time) (int32, string, string) {
 	if len(sig) != render770.SignatureBytes {
-		return 0, keyMissingProfileKey
+		return 0, "", keyMissingProfileKey
 	}
 	if c.expiresAt < now.UnixMilli() {
-		return 0, keyExpiredProfileKey
+		return 0, "", keyExpiredProfileKey
 	}
 	if c.broken {
-		return 0, keyChainBroken
+		return 0, "", keyChainBroken
 	}
 	if ts < c.lastTS {
 		c.broken = true
-		return 0, keyOutOfOrderChat
+		return 0, "", keyOutOfOrderChat
 	}
 	c.lastTS = ts
 	index := c.next
-	if !verifyMessage(c.pub, sender, c.sessionID, index, content, ts, salt, lastSeen, sig) {
+	content, ok := "", false
+	for _, cand := range contents {
+		if verifyMessage(c.pub, sender, c.sessionID, index, cand, ts, salt, lastSeen, sig) {
+			content, ok = cand, true
+			break
+		}
+	}
+	if !ok {
 		c.broken = true
-		return 0, keyInvalidSignature
+		return 0, "", keyInvalidSignature
 	}
 	if index == math.MaxInt32 { // SignedMessageLink.advance: the chain ends
 		c.broken = true
 	} else {
 		c.next = index + 1
 	}
-	return index, ""
+	return index, content, ""
 }
 
 // messagePayload is what a chat signature covers (PlayerChatMessage.
@@ -412,6 +429,7 @@ type chatState struct {
 	lastSeen  *lastSeenValidator
 	cache     sigCache
 	nextIndex int32
+	signable  render770.SignableIndex // the command tree's message arguments
 }
 
 func newChatState(profile [16]byte, online bool, keys *ServicesKeys) *chatState {
@@ -474,6 +492,7 @@ type chatResult struct {
 	refuse  string             // tell the player this (red) and drop the message
 	signed  *attach.SignedChat // the signed half, for a signed message
 	lastSee [][]byte           // the acknowledged signatures
+	args    []attach.SignedArgument
 }
 
 // receiveChat is handleChat up to broadcastChatMessage: apply the last-seen
@@ -504,26 +523,91 @@ func (s *chatState) receiveChat(m render770.ChatMessage, now time.Time) chatResu
 	}}
 }
 
-// receiveSignedCommand is handleSignedChatCommand up to performCommand. The
-// command tree this server sends has no message arguments, so the client
-// signs none; an argument signature names an argument the server does not
-// have, which vanilla answers by breaking the chain.
-func (s *chatState) receiveSignedCommand(c render770.ChatCommandSigned) chatResult {
+// receiveSignedCommand is handleSignedChatCommand up to performCommand:
+// the acknowledgements, the characters, then collectSignedArguments. The
+// world owns the parser, so which arguments are signable comes from the
+// command tree it sent (render770.SignableArguments, held in signable): a
+// signature for an argument the command does not have breaks the chain, as
+// vanilla's mismatch does; each named argument is unpacked through the
+// chain against the command line's possible message values. With no
+// signatures the command's message arguments are unsigned
+// (collectUnsignedArguments), which a key-holding player or an enforcing
+// server refuses.
+func (s *chatState) receiveSignedCommand(c render770.ChatCommandSigned, now time.Time) chatResult {
+	enforce := s.enforce() // may fetch the key set: before the lock
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, err := s.lastSeen.applyUpdate(c.LastSeen); err != nil {
+	seen, err := s.lastSeen.applyUpdate(c.LastSeen)
+	if err != nil {
 		return chatResult{kick: keyValidationFailed}
 	}
 	if !allowedChat(c.Command) {
 		return chatResult{kick: keyIllegalCharacters}
 	}
-	if len(c.Arguments) > 0 {
-		if s.chain != nil {
-			s.chain.broken = true
+	expected := s.signable.For(c.Command)
+	if len(c.Arguments) == 0 {
+		if len(expected) > 0 && (s.chain != nil || enforce) {
+			return chatResult{refuse: keyMissingProfileKey}
 		}
-		return chatResult{refuse: keyInvalidCommandSig}
+		return chatResult{lastSee: seen}
 	}
-	return chatResult{}
+	byName := map[string]render770.SignableArg{}
+	for _, a := range expected {
+		byName[a.Name] = a
+	}
+	var args []attach.SignedArgument
+	done := map[string]bool{}
+	for _, in := range c.Arguments {
+		want, ok := byName[in.Name]
+		if !ok || done[in.Name] {
+			if s.chain != nil {
+				s.chain.broken = true
+			}
+			return chatResult{refuse: keyInvalidCommandSig}
+		}
+		done[in.Name] = true
+		if s.chain == nil { // SignedMessageChain.Decoder.unsigned
+			if enforce {
+				return chatResult{refuse: keyMissingProfileKey}
+			}
+			continue
+		}
+		cands := render770.MessageCandidates(c.Command)
+		if skip := want.Depth - 1; skip > 0 && skip <= len(cands) {
+			cands = cands[skip:] // the words before the message are other arguments
+		}
+		index, content, refuse := s.chain.unpackAny(s.profile, in.Signature, cands, c.Timestamp, c.Salt, seen, now)
+		if refuse != "" {
+			return chatResult{refuse: refuse}
+		}
+		args = append(args, attach.SignedArgument{Name: in.Name, Content: content, Chat: attach.SignedChat{
+			Index: index, Signature: in.Signature, Timestamp: c.Timestamp, Salt: c.Salt, LastSeen: seen,
+		}})
+	}
+	return chatResult{lastSee: seen, args: args}
+}
+
+// unsignedCommandRefused is performUnsignedChatCommand's check: an
+// enforcing server refuses a plain chat_command whose parse reaches a
+// signable argument (the client should have signed it).
+func (s *chatState) unsignedCommandRefused(cmd string) bool {
+	enforce := s.enforce()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return enforce && len(s.signable.For(cmd)) > 0
+}
+
+// setCommandTree indexes the command tree the world sent for its signable
+// arguments. An unreadable tree leaves nothing signable.
+func (s *chatState) setCommandTree(tree []byte) {
+	idx, ok := render770.SignableArguments(tree)
+	if !ok {
+		log.Printf("secure chat: command tree unreadable: no signable arguments")
+		idx = nil
+	}
+	s.mu.Lock()
+	s.signable = idx
+	s.mu.Unlock()
 }
 
 // ack is handleChatAck.

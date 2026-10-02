@@ -251,6 +251,23 @@ const MsgCommand = 0x17
 
 type Command struct {
 	Cmd string `json:"cmd"`
+	// Signed holds the command's signed message arguments, already checked
+	// against the player's message chain by the gateway (vanilla
+	// CommandSigningContext.SignedArguments, built by
+	// ServerGamePacketListenerImpl.collectSignedArguments). A message
+	// argument named here resolves to this signed message
+	// (MessageArgument.resolveChatMessage); one not named here is unsigned.
+	// Older engines ignore the field and run the command as before.
+	Signed []SignedArgument `json:"signed,omitempty"`
+}
+
+// SignedArgument is one signed minecraft:message argument: the argument's
+// node name, its value (the signed content, exactly as it appears at the
+// end of Cmd) and the signed half of the message.
+type SignedArgument struct {
+	Name    string     `json:"name"`
+	Content string     `json:"content"`
+	Chat    SignedChat `json:"chat"`
 }
 
 // (0x18/0x19 were MsgRaw/MsgRawServer, the raw play-packet bridge — deleted

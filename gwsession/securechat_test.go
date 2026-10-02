@@ -306,10 +306,10 @@ func TestSecureChatRefusals(t *testing.T) {
 	}
 
 	// A signed command with argument signatures the tree cannot have.
-	if r := q.st.receiveSignedCommand(render770.ChatCommandSigned{Command: "say hi", Arguments: []render770.ArgumentSignature{{Name: "message"}}}); r.refuse != keyInvalidCommandSig {
+	if r := q.st.receiveSignedCommand(render770.ChatCommandSigned{Command: "say hi", Arguments: []render770.ArgumentSignature{{Name: "message"}}}, now); r.refuse != keyInvalidCommandSig {
 		t.Fatalf("signed argument: %+v", r)
 	}
-	if r := off.receiveSignedCommand(render770.ChatCommandSigned{Command: "list"}); r.kick != "" || r.refuse != "" {
+	if r := off.receiveSignedCommand(render770.ChatCommandSigned{Command: "list"}, now); r.kick != "" || r.refuse != "" {
 		t.Fatalf("plain signed command: %+v", r)
 	}
 }
