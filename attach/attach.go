@@ -179,6 +179,13 @@ type Welcome struct {
 	NoRespawnScreen bool `json:"no_respawn_screen,omitempty"`
 	LimitedCrafting bool `json:"limited_crafting,omitempty"`
 	ReducedDebug    bool `json:"reduced_debug,omitempty"`
+	// Dim is the dimension the player is in (0 = the overworld, where every
+	// join has started so far; a MsgRejoin may place the player elsewhere).
+	Dim int32 `json:"dim,omitempty"`
+	// Config is what the world adds to the configuration phase: its
+	// dimension table (empty = the default three), a data pack's registry
+	// entries and tags. nil = the built-in data.
+	Config *ConfigData `json:"config,omitempty"`
 }
 
 // Want declares the chunk view the gateway needs.

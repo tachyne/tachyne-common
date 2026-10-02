@@ -436,6 +436,21 @@ func newChatState(profile [16]byte, online bool, keys *ServicesKeys) *chatState 
 	return &chatState{profile: profile, online: online, keys: keys, lastSeen: newLastSeenValidator(render770.LastSeenMax)}
 }
 
+// reset is the fresh state of a new game listener (a rejoin after
+// reconfiguration builds a new ServerGamePacketListenerImpl): no session or
+// chain until the client sends its session again, an empty last-seen
+// window, cache and index. The command tree's index stays until the world
+// sends the tree again.
+func (s *chatState) reset() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.session = nil
+	s.chain = nil
+	s.lastSeen = newLastSeenValidator(render770.LastSeenMax)
+	s.cache = sigCache{}
+	s.nextIndex = 0
+}
+
 // enforce is MinecraftServer.enforceSecureProfile: online, and able to
 // validate profile keys (enforce-secure-profile is always on here).
 func (s *chatState) enforce() bool { return s.online && s.keys.CanValidate() }

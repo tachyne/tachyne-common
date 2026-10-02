@@ -155,14 +155,12 @@ const IDRespawn = 0x4b
 
 // Respawn renders the respawn packet for a dimension event, keeping
 // attributes + metadata (flag 0x03) — portal travel, not a fresh join.
-func Respawn(e attach.Dimension) Packet {
-	id, name := int32(protocol.DimensionOverworldID), "minecraft:overworld"
-	switch e.Dim {
-	case 1:
-		id, name = int32(protocol.DimensionNetherID), "minecraft:the_nether"
-	case 2:
-		id, name = int32(protocol.DimensionEndID), "minecraft:the_end"
-	}
+func Respawn(e attach.Dimension) Packet { return RespawnIn(e, nil) }
+
+// RespawnIn is Respawn against the world's dimension table (nil = the
+// default three): the dimension's type id and level key come from it.
+func RespawnIn(e attach.Dimension, dims protocol.Dimensions) Packet {
+	id, name := dims.TypeID(e.Dim), dims.Key(e.Dim)
 	b := protocol.AppendVarInt(nil, id)
 	b = protocol.AppendString(b, name)
 	b = protocol.AppendI64(b, 0) // hashed seed
@@ -170,31 +168,26 @@ func Respawn(e attach.Dimension) Packet {
 	b = protocol.AppendU8(b, 0xFF)    // previous gamemode: none
 	b = protocol.AppendBool(b, false) // debug
 	b = protocol.AppendBool(b, false) // flat
-	b = AppendDeathLocation(b, e.Death)
+	b = AppendDeathLocationIn(b, e.Death, dims)
 	b = protocol.AppendVarInt(b, 0)  // portal cooldown
 	b = protocol.AppendVarInt(b, 63) // sea level
 	return Packet{IDRespawn, protocol.AppendU8(b, 0x03)}
 }
 
-// dimensionKey is the dimension's ResourceKey<Level> identifier.
-func dimensionKey(dim int32) string {
-	switch dim {
-	case 1:
-		return "minecraft:the_nether"
-	case 2:
-		return "minecraft:the_end"
-	}
-	return "minecraft:overworld"
-}
-
 // AppendDeathLocation writes CommonPlayerSpawnInfo's Optional<GlobalPos>
 // last death location: absent, or the dimension key and the block position.
 func AppendDeathLocation(b []byte, d *attach.DeathPos) []byte {
+	return AppendDeathLocationIn(b, d, nil)
+}
+
+// AppendDeathLocationIn is AppendDeathLocation against the world's dimension
+// table (nil = the default three).
+func AppendDeathLocationIn(b []byte, d *attach.DeathPos, dims protocol.Dimensions) []byte {
 	if d == nil {
 		return protocol.AppendBool(b, false)
 	}
 	b = protocol.AppendBool(b, true)
-	b = protocol.AppendString(b, dimensionKey(d.Dim))
+	b = protocol.AppendString(b, dims.Key(d.Dim))
 	return protocol.AppendPosition(b, int(d.X), int(d.Y), int(d.Z))
 }
 

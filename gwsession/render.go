@@ -36,13 +36,19 @@ var fullDark [2048]byte
 // (enforcesSecureChat) carries it, and the 26.x step writes it into both
 // onlineMode and enforcesSecureChat. Chat reaches clients as system messages,
 // which a secure-chat client shows; only player chat is ever verified.
+//
+// The level list and the spawn info come from the world's dimension table
+// (w.Config; none = the overworld, the End and the Nether), the player's
+// dimension from w.Dim.
 func joinPacket(eid int32, gamemode int32, view int32, death *attach.DeathPos, online bool, w attach.Welcome) []byte {
+	dims := welcomeDims(w)
 	b := protocol.AppendI32(nil, eid)
 	b = protocol.AppendBool(b, false) // hardcore
-	b = protocol.AppendVarInt(b, 3)
-	b = protocol.AppendString(b, "minecraft:overworld")
-	b = protocol.AppendString(b, "minecraft:the_end")
-	b = protocol.AppendString(b, "minecraft:the_nether")
+	keys := joinLevelKeys(dims)
+	b = protocol.AppendVarInt(b, int32(len(keys)))
+	for _, k := range keys {
+		b = protocol.AppendString(b, k)
+	}
 	b = protocol.AppendVarInt(b, 100)              // max players
 	b = protocol.AppendVarInt(b, view)             // view distance
 	b = protocol.AppendVarInt(b, view)             // simulation distance
@@ -50,18 +56,32 @@ func joinPacket(eid int32, gamemode int32, view int32, death *attach.DeathPos, o
 	b = protocol.AppendBool(b, !w.NoRespawnScreen) // !immediate_respawn
 	b = protocol.AppendBool(b, w.LimitedCrafting)  // limited_crafting
 	// SpawnInfo
-	b = protocol.AppendVarInt(b, protocol.DimensionOverworldID)
-	b = protocol.AppendString(b, "minecraft:overworld")
+	b = protocol.AppendVarInt(b, dims.TypeID(w.Dim))
+	b = protocol.AppendString(b, dims.Key(w.Dim))
 	b = protocol.AppendI64(b, 0)             // hashed seed
 	b = protocol.AppendI8(b, int8(gamemode)) // game mode
 	b = protocol.AppendU8(b, 0xFF)           // previous gamemode: none
 	b = protocol.AppendBool(b, false)        // debug
 	b = protocol.AppendBool(b, false)        // flat
-	b = render770.AppendDeathLocation(b, death)
+	b = render770.AppendDeathLocationIn(b, death, dims)
 	b = protocol.AppendVarInt(b, 0)    // portal cooldown
 	b = protocol.AppendVarInt(b, 63)   // sea level
 	b = protocol.AppendBool(b, online) // enforces secure chat: online mode
 	return b
+}
+
+// joinLevelKeys is the login packet's level list: the server's levels.
+// The default table keeps the order this server has always sent (overworld,
+// End, Nether); a world's own table is sent in its order.
+func joinLevelKeys(dims protocol.Dimensions) []string {
+	if len(dims) == 0 {
+		return []string{"minecraft:overworld", "minecraft:the_end", "minecraft:the_nether"}
+	}
+	keys := make([]string, 0, len(dims))
+	for _, d := range dims {
+		keys = append(keys, d.Key)
+	}
+	return keys
 }
 
 var teleportID atomic.Int32
@@ -193,6 +213,13 @@ func sectionHasLight(levels []uint8) bool {
 // sizes derive from the chunk's own section count (attach ChunkHeader), so a
 // tall earth overworld and a vanilla-height nether render from one path.
 func chunkPacket(h attach.ChunkHeader, body *attach.ChunkBody, clientProto int32) []byte {
+	return chunkPacketIn(h, body, clientProto, protocol.DefaultDimensions.SkyLight(h.Dim))
+}
+
+// chunkPacketIn is chunkPacket with the chunk's dimension's sky light from
+// the world's table: a sky-lit dimension ships the trimmed sky arrays, the
+// others the full form.
+func chunkPacketIn(h attach.ChunkHeader, body *attach.ChunkBody, clientProto int32, skyLight bool) []byte {
 	sections := h.SectionCount()
 	lightSections := sections + 2 // one below + one above the world
 	var col []byte
@@ -226,7 +253,7 @@ func chunkPacket(h attach.ChunkHeader, body *attach.ChunkBody, clientProto int32
 	// The no-sky dims keep the legacy full-array form (24 sections, cheap).
 	skyBits := make([]int, 0, lightSections)
 	blkBits := make([]int, 0, lightSections)
-	if h.Dim == 0 {
+	if skyLight {
 		maxH := minY - 1
 		for _, hv := range body.Heightmap {
 			if int(hv) > maxH {

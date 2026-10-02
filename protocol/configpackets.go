@@ -20,52 +20,97 @@ func ConfigRegistryPackets(v int32) [][]byte {
 // ceiling; dimension_type is inlined for EVERY client version, so the
 // declared height always wins over the client's built-in registry.
 func ConfigRegistryPacketsFor(v int32, overworldHeight int32) [][]byte {
+	return ConfigRegistryPacketsWith(v, overworldHeight, ConfigExtras{})
+}
+
+// regEntryOut is one registry_data entry: its name and, when has is set,
+// its inline data.
+type regEntryOut struct {
+	name string
+	nbt  []byte
+	has  bool
+}
+
+// regOut is one registry_data packet before encoding.
+type regOut struct {
+	id      string
+	entries []regEntryOut
+}
+
+// configRegistries composes the registry_data packets at version v (see
+// ConfigRegistryPackets), with the world's dimension table deciding the
+// dimension_type and world_clock entries.
+func configRegistries(v int32, overworldHeight int32, dims Dimensions) []regOut {
 	inlineOK := v < 775
-	var out [][]byte
+	var out []regOut
 	for _, reg := range SyncedRegistries {
 		entries := reg.Entries
 		if reg.ID == "minecraft:worldgen/biome" {
 			entries = biomeEntriesFor(v, reg.Entries)
+		} else if reg.ID == "minecraft:dimension_type" {
+			entries = dims.TypeEntries()
 		} else if !inlineOK {
 			if ex := extra26xEntries[reg.ID]; len(ex) > 0 {
 				entries = append(append([]string(nil), reg.Entries...), ex...)
 			}
 		}
-		data := AppendString(nil, reg.ID)
-		data = AppendVarInt(data, int32(len(entries)))
+		r := regOut{id: reg.ID}
 		for _, entry := range entries {
-			data = AppendString(data, entry)
 			inline := inlineOK || reg.ID == "minecraft:dimension_type"
-			if nbt, hasData := registryEntryDataFor(reg.ID, entry, v, overworldHeight); hasData && inline {
-				data = AppendBool(data, true)
-				data = append(data, nbt...)
+			nbt, hasData := registryEntryDataFor(reg.ID, entry, v, overworldHeight)
+			if reg.ID == "minecraft:dimension_type" {
+				if own, ok := dims.typeNBT(entry); ok {
+					nbt, hasData = own, true
+				}
+			}
+			if hasData && inline {
+				r.entries = append(r.entries, regEntryOut{name: entry, nbt: nbt, has: true})
 			} else {
-				data = AppendBool(data, false) // resolve via known pack
+				r.entries = append(r.entries, regEntryOut{name: entry}) // resolve via known pack
 			}
 		}
-		out = append(out, data)
+		out = append(out, r)
 	}
 	if v >= 775 {
 		for _, reg := range extra26xRegistries {
-			data := AppendString(nil, reg.id)
-			data = AppendVarInt(data, int32(len(reg.entries)))
-			for _, e := range reg.entries {
-				data = AppendString(data, e)
-				data = AppendBool(data, false)
+			entries := reg.entries
+			if reg.id == "minecraft:world_clock" {
+				entries = dims.clocks(reg.entries)
 			}
-			out = append(out, data)
+			r := regOut{id: reg.id}
+			for _, e := range entries {
+				r.entries = append(r.entries, regEntryOut{name: e})
+			}
+			out = append(out, r)
 		}
 	}
 	if v >= 777 {
 		for _, reg := range extra263Registries {
-			data := AppendString(nil, reg.id)
-			data = AppendVarInt(data, int32(len(reg.entries)))
+			r := regOut{id: reg.id}
 			for _, e := range reg.entries {
-				data = AppendString(data, e)
-				data = AppendBool(data, false)
+				r.entries = append(r.entries, regEntryOut{name: e})
 			}
-			out = append(out, data)
+			out = append(out, r)
 		}
+	}
+	return out
+}
+
+// encodeRegistries writes each registry_data body: the registry id, the
+// entry count, then per entry its name and optional inline data.
+func encodeRegistries(rs []regOut) [][]byte {
+	out := make([][]byte, 0, len(rs))
+	for _, r := range rs {
+		data := AppendString(nil, r.id)
+		data = AppendVarInt(data, int32(len(r.entries)))
+		for _, e := range r.entries {
+			data = AppendString(data, e.name)
+			data = AppendBool(data, e.has)
+			if e.has {
+				data = append(data, e.nbt...)
+			}
+		}
+		out = append(out, data)
 	}
 	return out
 }
@@ -326,8 +371,17 @@ func tags26x(version int32) []byte {
 	if b, ok := tags26xByVer[version]; ok {
 		return b
 	}
+	b := buildTags26x(version, dynamic26xIndexFor(version), nil)
+	tags26xByVer[version] = b
+	return b
+}
+
+// buildTags26x composes a 26.x update_tags body against the dynamic
+// registries' declared order dyn, with a world's extra tags merged in (a
+// tag of an existing name replaced, a new one appended to its registry, a
+// registry the set lacks added at the end).
+func buildTags26x(version int32, dyn map[string]map[string]int32, extra []TagExtra) []byte {
 	full := version >= 776
-	dyn := dynamic26xIndexFor(version)
 	// The tag set and the static-registry ids are the client's own version's:
 	// 26.3 (777) inserted blocks, items and entities ahead of the 26.2 ids and
 	// references tags 26.2 never had.
@@ -356,6 +410,36 @@ func tags26x(version int32) []byte {
 			sent = append(sent, reg)
 		}
 	}
+	for _, t := range extra {
+		if tags26xSkip[t.Registry] {
+			continue
+		}
+		i := -1
+		for j := range sent {
+			if sent[j].registry == t.Registry {
+				i = j
+				break
+			}
+		}
+		if i < 0 {
+			sent = append(sent, tagReg26x{registry: t.Registry})
+			i = len(sent) - 1
+		}
+		// Copy before changing: sent shares the generated tables' slices.
+		tags := append([]tag26x(nil), sent[i].tags...)
+		replaced := false
+		for k := range tags {
+			if tags[k].name == t.Name {
+				tags[k] = tag26x{name: t.Name, entries: t.Entries}
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
+			tags = append(tags, tag26x{name: t.Name, entries: t.Entries})
+		}
+		sent[i].tags = tags
+	}
 	b := AppendVarInt(nil, int32(len(sent)))
 	for _, reg := range sent {
 		b = AppendString(b, reg.registry)
@@ -379,6 +463,5 @@ func tags26x(version int32) []byte {
 			}
 		}
 	}
-	tags26xByVer[version] = b
 	return b
 }

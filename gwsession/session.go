@@ -101,7 +101,7 @@ func packResponseTerminal(data []byte) (terminal, declined bool) {
 }
 
 // gatewayFeatures are the optional frames this gateway renders (attach Hello).
-var gatewayFeatures = []string{attach.FeaturePlayerChat, attach.FeatureDialog}
+var gatewayFeatures = []string{attach.FeaturePlayerChat, attach.FeatureDialog, attach.FeatureReconfigure}
 
 // viewCap resolves the deployment's render-distance ceiling: the client's
 // slider is honored up to this. Kept well below the engine's hard attach
@@ -280,6 +280,13 @@ type clientConn struct {
 	menus map[int32]int32
 	// chat is the connection's secure-chat state (securechat.go).
 	chat *chatState
+
+	// Reconfiguration (reconfigure.go), guarded by mu. phase is where the
+	// client is: in play, sent back to configuration (play packets are
+	// dropped from start_configuration on), or done configuring and waiting
+	// for the world's rejoin (still dropped: nothing may precede the login).
+	phase         int
+	pendingConfig *attach.StartConfiguration
 }
 
 func (cc *clientConn) send(id int32, data []byte) error {
@@ -289,6 +296,9 @@ func (cc *clientConn) send(id int32, data []byte) error {
 	}
 	cc.mu.Lock()
 	defer cc.mu.Unlock()
+	if cc.phase != phasePlay {
+		return nil // the client is between phases: no play packets
+	}
 	return protocol.WriteCompressed(cc.c, id, data, compressThreshold)
 }
 
@@ -298,6 +308,9 @@ func (cc *clientConn) send(id int32, data []byte) error {
 func (cc *clientConn) sendRaw(id int32, data []byte) error {
 	cc.mu.Lock()
 	defer cc.mu.Unlock()
+	if cc.phase != phasePlay {
+		return nil
+	}
 	return protocol.WriteCompressed(cc.c, id, data, compressThreshold)
 }
 
@@ -343,7 +356,7 @@ func Run(cfg Config, br *bufio.Reader, c net.Conn, name string, uuid [16]byte, u
 	if err != nil || ack.ID != 0x03 {
 		return fmt.Errorf("login ack: %v", err)
 	}
-	clientView, err := configure(cfg, br, c, tr, int32(welcome.Sections)*16, clientProto)
+	clientView, err := configure(cfg, br, c, tr, int32(welcome.Sections)*16, clientProto, configExtras(welcome.Config))
 	if err != nil {
 		return fmt.Errorf("configuration: %w", err)
 	}
@@ -386,7 +399,12 @@ func loginDisconnect(c net.Conn, msg string) {
 // and has its own tag set), then passed through the client's translator for
 // the packet ids. Composing at the gateway's pinned version left a 26.3
 // client without block_transformer and crashed it at finish_configuration.
-func configure(cfg Config, br *bufio.Reader, c net.Conn, tr protocol.Translator, worldHeight, clientProto int32) (int32, error) {
+//
+// x is what the world adds (attach ConfigData): its dimension table, a data
+// pack's registry entries and tags. The same function runs a
+// reconfiguration (ServerGamePacketListenerImpl.switchToConfig), whose
+// tasks are the same as the first configuration's.
+func configure(cfg Config, br *bufio.Reader, c net.Conn, tr protocol.Translator, worldHeight, clientProto int32, x protocol.ConfigExtras) (int32, error) {
 	// send translates the packet id to the client version.
 	send := func(id int32, data []byte) error {
 		id, data, drop := tr.Clientbound(protocol.StateConfiguration, id, data)
@@ -430,12 +448,12 @@ func configure(cfg Config, br *bufio.Reader, c net.Conn, tr protocol.Translator,
 			// The overworld dimension declares the WORLD's real height
 			// (attach Welcome) — a tall earth world tells the client its
 			// true ceiling so chunk columns and the build limit match.
-			for _, data := range protocol.ConfigRegistryPacketsFor(clientProto, worldHeight) {
+			for _, data := range protocol.ConfigRegistryPacketsWith(clientProto, worldHeight, x) {
 				if err := send(cfgClientRegistryData, data); err != nil {
 					return 0, err
 				}
 			}
-			if err := send(cfgClientUpdateTags, protocol.UpdateTagsPacket(clientProto)); err != nil {
+			if err := send(cfgClientUpdateTags, protocol.UpdateTagsPacketWith(clientProto, x)); err != nil {
 				return 0, err
 			}
 			// ServerResourcePackConfigurationTask: the pack goes after the
@@ -524,6 +542,22 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 	defer func() { b.Get().Close() }() // close the CURRENT backend (post-swap) on exit
 	pos := welcome.Spawn
 	var curDim atomic.Int32
+	curDim.Store(welcome.Dim)
+	// The world's configuration data (dimension table, data-pack registry
+	// entries and tags): the login's, then each reconfiguration's. Read by
+	// the world reader; dims is its dimension table for the chunk workers.
+	var curConfig attach.ConfigData
+	if welcome.Config != nil {
+		curConfig = *welcome.Config
+	}
+	var dims atomic.Pointer[protocol.Dimensions]
+	setDims := func(d []attach.DimensionInfo) {
+		t := dimsOf(d)
+		dims.Store(&t)
+	}
+	setDims(curConfig.Dimensions)
+	curDims := func() protocol.Dimensions { return *dims.Load() }
+	worldHeight := int32(welcome.Sections) * 16 // for a reconfiguration's dimension types
 	// The vehicle this player rides (0 = none), from Passengers frames. A
 	// server-driven vehicle (a minecart) carries the player without the
 	// client ever reporting a new position — a passenger only sends its
@@ -536,10 +570,13 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 	var viewDist atomic.Int32
 	viewDist.Store(effectiveView(clientView, cfg.viewCap()))
 	onGround := true // updated from every movement packet's flag bit
-	// The join-time center chunk, immutable: its arrival releases the client
-	// from "Loading terrain" (spawnSync). ccx/ccz drift with movement and
-	// belong to the reader goroutines; the pacer must not race on them.
-	spawnCX, spawnCZ := ccx, ccz
+	// The join-time center chunk: its arrival releases the client from
+	// "Loading terrain" (spawnSync). ccx/ccz drift with movement and belong
+	// to the reader goroutines; the pacer reads these instead. A rejoin
+	// after reconfiguration sets them again.
+	var spawnCX, spawnCZ atomic.Int32
+	spawnCX.Store(ccx)
+	spawnCZ.Store(ccz)
 
 	cc.send(playClientLogin, joinPacket(welcome.EID, welcome.Gamemode, viewDist.Load(), welcome.Death, cfg.Online, welcome))
 	cc.send(playClientGameEvent, []byte{13, 0, 0, 0, 0})
@@ -554,7 +591,7 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 	// before that menu can show options; composed at the client's version.
 	urp := render770.UpdateRecipes(clientProto)
 	cc.send(urp.ID, urp.Body)
-	if err := b.Write(attach.MsgWant, attach.Want{CX: ccx, CZ: ccz, Radius: viewDist.Load(), Dim: 0}); err != nil {
+	if err := b.Write(attach.MsgWant, attach.Want{CX: ccx, CZ: ccz, Radius: viewDist.Load(), Dim: welcome.Dim}); err != nil {
 		return err
 	}
 
@@ -568,11 +605,12 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 	}
 
 	errs := make(chan error, 4)
-	var once sync.Once
+	var spawnPending atomic.Bool // the join's position sync is still owed
+	spawnPending.Store(true)
 	spawnSync := func() {
-		once.Do(func() {
+		if spawnPending.CompareAndSwap(true, false) {
 			cc.send(playClientSyncPosition, syncPositionBody(pos))
-		})
+		}
 	}
 
 	// Chunk delivery is PACED (vanilla 1.20.2+ chunk batches): the world
@@ -620,7 +658,7 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 					j.out.err = err
 				} else {
 					j.out.dim, j.out.cx, j.out.cz = h.Dim, h.CX, h.CZ
-					j.out.pkt = chunkPacket(h, body, clientProto)
+					j.out.pkt = chunkPacketIn(h, body, clientProto, curDims().SkyLight(h.Dim))
 				}
 				close(j.out.done)
 			}
@@ -683,7 +721,7 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 						errs <- err
 						return
 					}
-					if pc.cx == spawnCX && pc.cz == spawnCZ {
+					if pc.cx == spawnCX.Load() && pc.cz == spawnCZ.Load() {
 						spawnSync() // ground under the player's feet exists now
 					}
 					n++
@@ -1229,9 +1267,70 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 				if json.Unmarshal(payload, &e) == nil {
 					curDim.Store(e.Dim)
 					view.Reset() // the client discards its entity world on respawn
-					p := render770.Respawn(e)
+					p := render770.RespawnIn(e, curDims())
 					cc.send(p.ID, p.Body)
 					cc.send(playClientGameEvent, []byte{13, 0, 0, 0, 0})
+				}
+			case attach.MsgStartConfiguration:
+				// switchToConfig: the world has taken the player out of the
+				// level; the client goes back to configuration. The client
+				// reader runs the phase when the client acknowledges.
+				var e attach.StartConfiguration
+				if json.Unmarshal(payload, &e) == nil {
+					curConfig = e.ConfigData
+					if err := cc.startConfiguration(e); err != nil {
+						errs <- fmt.Errorf("start configuration: %w", err)
+						return
+					}
+				}
+			case attach.MsgRejoin:
+				// placeNewPlayer after a reconfiguration: the client has
+				// discarded its level, so this is a join — the login packet
+				// (which reopens play), then the join sequence; the world
+				// sends everything else again.
+				var e attach.Rejoin
+				if json.Unmarshal(payload, &e) != nil {
+					continue
+				}
+				wel := e.Welcome
+				cfgData := curConfig
+				wel.Config = &cfgData
+				setDims(curConfig.Dimensions)
+				welcome = wel
+				pos = wel.Spawn
+				ccx, ccz = int32(math.Floor(pos.X))>>4, int32(math.Floor(pos.Z))>>4
+				curDim.Store(wel.Dim)
+				myVehicle = 0
+				view.Reset()
+				clear(cc.entTypes)
+				clear(cc.menus)
+				chat.reset() // a new game listener: a new chat state, as vanilla's
+				spawnCX.Store(ccx)
+				spawnCZ.Store(ccz)
+				spawnPending.Store(true)
+				if err := cc.rejoin(joinPacket(wel.EID, wel.Gamemode, viewDist.Load(), wel.Death, cfg.Online, wel)); err != nil {
+					errs <- err
+					return
+				}
+				cc.send(playClientGameEvent, []byte{13, 0, 0, 0, 0})
+				if cfg.MOTD != "" {
+					sd := render770.ServerData(cfg.MOTD)
+					cc.send(sd.ID, sd.Body)
+				}
+				cc.send(playClientCenterChunk, protocol.AppendVarInt(protocol.AppendVarInt(nil, ccx), ccz))
+				tp := render770.Time(attach.Time{Time: wel.Time, Clocks: wel.Clocks})
+				cc.send(tp.ID, tp.Body)
+				urp := render770.UpdateRecipes(clientProto)
+				cc.send(urp.ID, urp.Body)
+				b.Write(attach.MsgWant, attach.Want{CX: ccx, CZ: ccz, Radius: viewDist.Load(), Dim: wel.Dim})
+			case attach.MsgUpdateTags:
+				// ClientboundUpdateTagsPacket in play (/reload): the whole set
+				// again, resolved against the configured registries.
+				var e attach.UpdateTags
+				if json.Unmarshal(payload, &e) == nil {
+					data := curConfig
+					data.Tags = e.Tags
+					cc.send(playClientUpdateTags, protocol.UpdateTagsPacketWith(clientProto, configExtras(&data)))
 				}
 			case attach.MsgRehome:
 				// The player was migrated to a neighbour shard. Swap our world
@@ -1501,6 +1600,12 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 		t := time.NewTicker(keepAliveInterval)
 		defer t.Stop()
 		for range t.C {
+			if cc.configuring() {
+				// Between phases there is no play keep-alive to send or
+				// answer; the configuration phase has its own deadline.
+				kaPending.Store(false)
+				continue
+			}
 			if kaPending.Load() {
 				p := render770.Disconnect(attach.Disconnect{Reason: "Timed out"})
 				cc.send(p.ID, p.Body)
@@ -1555,6 +1660,30 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 			}
 			pkt.ID, pkt.Data = sbID, sbData
 			switch pkt.ID {
+			case playServerConfigAck:
+				// handleConfigurationAcknowledged: the client is in
+				// configuration now and sends nothing else until the phase is
+				// over, so it runs here, on the client reader, with the data
+				// the world sent. Its end is the world's to answer: the
+				// player is placed again (MsgRejoin).
+				sc := cc.takeConfig()
+				if sc == nil {
+					errs <- errUnrequestedConfig
+					return
+				}
+				cc.c.SetDeadline(time.Now().Add(30 * time.Second))
+				v, err := configure(cfg, br, cc.c, cc.tr, worldHeight, clientProto, configExtras(&sc.ConfigData))
+				cc.c.SetDeadline(time.Time{})
+				if err != nil {
+					errs <- fmt.Errorf("reconfiguration: %w", err)
+					return
+				}
+				if v > 0 {
+					viewDist.Store(effectiveView(v, cfg.viewCap()))
+				}
+				cc.configured()
+				b.Write(attach.MsgConfigured, attach.Configured{View: v})
+				continue
 			case playServerKeepAlive:
 				// handleKeepAlive: the right answer clears the challenge and
 				// folds the round trip into the latency, (l*3 + sample) / 4.
