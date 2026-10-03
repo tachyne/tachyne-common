@@ -86,12 +86,12 @@ func (cc *clientConn) configuring() bool {
 // rejoin ends the reconfiguration with the login packet, written under the
 // same lock that reopens play, so no other play packet can precede it.
 func (cc *clientConn) rejoin(login []byte) error {
-	id, data, drop := cc.tr.Clientbound(protocol.StatePlay, playClientLogin, login)
 	cc.mu.Lock()
 	defer cc.mu.Unlock()
 	if cc.phase != phaseRejoining {
 		return errEarlyRejoin
 	}
+	id, data, drop := cc.tr.Clientbound(protocol.StatePlay, playClientLogin, login)
 	cc.phase = phasePlay
 	if drop {
 		return nil

@@ -180,7 +180,7 @@ func TestReconfigurationRoundTrip(t *testing.T) {
 
 	go func() { done <- cc.rejoin(joinPacket(9, 0, 8, nil, false, attach.Welcome{Config: &sc.ConfigData})) }()
 	p = readCfg(t, cbr)
-	if want, _, _ := tr.Clientbound(protocol.StatePlay, playClientLogin, nil); p.ID != want {
+	if want, _, _ := tr.Clientbound(protocol.StatePlay, playClientLogin, []byte{0}); p.ID != want { // the join rewriter reads the body's last byte
 		t.Fatalf("rejoin wrote 0x%x first, want the login 0x%x", p.ID, want)
 	}
 	if err := <-done; err != nil {
