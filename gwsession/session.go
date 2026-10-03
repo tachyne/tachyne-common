@@ -280,6 +280,8 @@ type clientConn struct {
 	menus map[int32]int32
 	// chat is the connection's secure-chat state (securechat.go).
 	chat *chatState
+	// props are the login's profile properties, for a handover's Hello.
+	props []attach.Property
 
 	// Reconfiguration (reconfigure.go), guarded by mu. phase is where the
 	// client is: in play, sent back to configuration (play packets are
@@ -356,13 +358,16 @@ func Run(cfg Config, br *bufio.Reader, c net.Conn, name string, uuid [16]byte, u
 	if err != nil || ack.ID != 0x03 {
 		return fmt.Errorf("login ack: %v", err)
 	}
-	clientView, err := configure(cfg, br, c, tr, int32(welcome.Sections)*16, clientProto, configExtras(welcome.Config))
+	// Nothing else writes to the world connection until play starts.
+	clientView, err := configure(cfg, br, c, tr, int32(welcome.Sections)*16, clientProto, configExtras(welcome.Config), func(e attach.CustomClickAction) {
+		attach.WriteJSON(w, attach.MsgCustomClickAction, e)
+	})
 	if err != nil {
 		return fmt.Errorf("configuration: %w", err)
 	}
 	c.SetDeadline(time.Time{})
 	log.Printf("%s: %q entering play (spawn %.1f,%.1f,%.1f)", c.RemoteAddr(), name, welcome.Spawn.X, welcome.Spawn.Y, welcome.Spawn.Z)
-	cc := &clientConn{c: c, tr: tr, entTypes: map[int32]int32{}, menus: map[int32]int32{}, chat: newChatState(uuid, cfg.Online, cfg.ChatKeys)}
+	cc := &clientConn{c: c, tr: tr, entTypes: map[int32]int32{}, menus: map[int32]int32{}, chat: newChatState(uuid, cfg.Online, cfg.ChatKeys), props: props}
 	return play(cfg, br, cc, w, name, uuidStr, roles, welcome, clientView, clientProto)
 }
 
@@ -404,7 +409,11 @@ func loginDisconnect(c net.Conn, msg string) {
 // pack's registry entries and tags. The same function runs a
 // reconfiguration (ServerGamePacketListenerImpl.switchToConfig), whose
 // tasks are the same as the first configuration's.
-func configure(cfg Config, br *bufio.Reader, c net.Conn, tr protocol.Translator, worldHeight, clientProto int32, x protocol.ConfigExtras) (int32, error) {
+//
+// onClick receives the custom click actions the client sends meanwhile (a
+// configuration-phase dialog's, ServerCommonPacketListenerImpl.
+// handleCustomClickAction): the world handles them as it does in play.
+func configure(cfg Config, br *bufio.Reader, c net.Conn, tr protocol.Translator, worldHeight, clientProto int32, x protocol.ConfigExtras, onClick func(attach.CustomClickAction)) (int32, error) {
 	// send translates the packet id to the client version.
 	send := func(id int32, data []byte) error {
 		id, data, drop := tr.Clientbound(protocol.StateConfiguration, id, data)
@@ -426,6 +435,12 @@ func configure(cfg Config, br *bufio.Reader, c net.Conn, tr protocol.Translator,
 		pkt, err := protocol.ReadCompressed(br)
 		if err != nil {
 			return 0, err
+		}
+		if clientProto >= render770.DialogMinProto && pkt.ID == render770.SIDConfigCustomClickAction26x {
+			if e, ok := render770.ParseCustomClickAction(pkt.Data); ok && onClick != nil {
+				onClick(e)
+			}
+			continue
 		}
 		switch pkt.ID {
 		case cfgServerClientInfo:
@@ -529,10 +544,14 @@ func effectiveView(clientView, cap int32) int32 {
 
 // dialResume opens the destination pod on a handover and resumes the player
 // there (Hello{Purpose:"resume", token}). Returns the new conn + its Welcome.
-func dialResume(cfg Config, destSID int32, token, name, uuidStr string, roles []string) (net.Conn, attach.Welcome, error) {
+//
+// The Hello carries everything the login's did — the profile's properties
+// (the skin) and the client's address too: the destination knows the
+// player only from it and the handed-over state.
+func dialResume(cfg Config, destSID int32, token, name, uuidStr string, roles []string, props []attach.Property) (net.Conn, attach.Welcome, error) {
 	return attach.DialSession(fmt.Sprintf(cfg.WorldPattern, destSID), attach.Hello{
 		Token: cfg.AttachToken, Gateway: fmt.Sprintf("%s/%d", cfg.Name, cfg.SID),
-		Name: name, UUID: uuidStr, Roles: roles, Edition: "java",
+		Name: name, UUID: uuidStr, Roles: roles, Edition: "java", Props: props, IP: cfg.ClientIP,
 		Purpose: "resume", ResumeToken: token, Features: gatewayFeatures,
 	})
 }
@@ -871,7 +890,11 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 				// Dialogs are 1.21.6+: composed at the client's own id.
 				var e attach.ShowDialog
 				if json.Unmarshal(payload, &e) == nil && clientProto >= render770.DialogMinProto {
-					if body, ok := render770.ShowDialogBody(e); ok {
+					x := configExtras(&curConfig)
+					body, ok := render770.ShowDialogBodyWith(e, func(n string) (int32, bool) {
+						return protocol.DialogRegistryIDWith(clientProto, x, n)
+					})
+					if ok {
 						cc.sendRaw(render770.ShowDialogID(clientProto), body)
 					} else {
 						log.Printf("dialog: %q: cannot render %s%s", name, e.Ref, e.Dialog)
@@ -1355,7 +1378,7 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 				if json.Unmarshal(payload, &rh) != nil {
 					continue
 				}
-				nw, wel, err := dialResume(cfg, rh.DestSID, rh.Token, name, uuidStr, roles)
+				nw, wel, err := dialResume(cfg, rh.DestSID, rh.Token, name, uuidStr, roles, cc.props)
 				if err != nil {
 					errs <- fmt.Errorf("rehome: %w", err)
 					return
@@ -1363,6 +1386,16 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 				b.Swap(nw) // the next ReadFrame(b.Get()) reads from the destination pod
 				if wel.Recipes != nil {
 					curRecipes = wel.Recipes // same data pack; nothing to resend
+				}
+				// Secure chat across the handover: the client keeps its game
+				// listener (no login, no respawn), so the gateway's chain,
+				// last-seen window and signature cache carry on untouched;
+				// only the destination world lacks the player's chat
+				// session, which every recipient there needs to verify the
+				// player's messages. Tell it, as the client's
+				// chat_session_update told the first.
+				if s := chat.current(); s != nil {
+					b.Write(attach.MsgChatSession, *s)
 				}
 				pos = wel.Spawn
 				ccx, ccz = int32(math.Floor(pos.X))>>4, int32(math.Floor(pos.Z))>>4
@@ -1689,7 +1722,9 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 					return
 				}
 				cc.c.SetDeadline(time.Now().Add(30 * time.Second))
-				v, err := configure(cfg, br, cc.c, cc.tr, worldHeight, clientProto, configExtras(&sc.ConfigData))
+				v, err := configure(cfg, br, cc.c, cc.tr, worldHeight, clientProto, configExtras(&sc.ConfigData), func(e attach.CustomClickAction) {
+					b.Write(attach.MsgCustomClickAction, e)
+				})
 				cc.c.SetDeadline(time.Time{})
 				if err != nil {
 					errs <- fmt.Errorf("reconfiguration: %w", err)

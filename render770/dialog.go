@@ -73,8 +73,15 @@ func ConfigClearDialogID(version int32) int32 {
 // NBT (fromCodecWithRegistriesTrusted). ok is false for an unknown reference
 // or a dialog that is not JSON.
 func ShowDialogBody(e attach.ShowDialog) ([]byte, bool) {
+	return ShowDialogBodyWith(e, protocol.DialogRegistryID)
+}
+
+// ShowDialogBodyWith is ShowDialogBody resolving a reference with the
+// dialog registry the client was configured with (a data pack's dialogs
+// included: protocol.DialogRegistryIDWith).
+func ShowDialogBodyWith(e attach.ShowDialog, registryID func(string) (int32, bool)) ([]byte, bool) {
 	if e.Ref != "" {
-		id, ok := protocol.DialogRegistryID(qualify(e.Ref))
+		id, ok := registryID(qualify(e.Ref))
 		if !ok {
 			return nil, false
 		}

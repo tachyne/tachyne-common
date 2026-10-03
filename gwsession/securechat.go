@@ -451,6 +451,20 @@ func (s *chatState) reset() {
 	s.nextIndex = 0
 }
 
+// current is the validated chat session (nil = none yet): what a world the
+// player is handed over to must be told again, since the session lives on
+// the gateway (ServerGamePacketListenerImpl's chatSession) while each world
+// shard keeps its own copy of it for the other players.
+func (s *chatState) current() *attach.ChatSession {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.session == nil {
+		return nil
+	}
+	c := *s.session
+	return &c
+}
+
 // enforce is MinecraftServer.enforceSecureProfile: online, and able to
 // validate profile keys (enforce-secure-profile is always on here).
 func (s *chatState) enforce() bool { return s.online && s.keys.CanValidate() }

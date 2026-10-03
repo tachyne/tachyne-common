@@ -110,6 +110,18 @@ func dynamicIndexWith(v int32, x ConfigExtras) map[string]map[string]int32 {
 	return idx
 }
 
+// DialogRegistryIDWith is DialogRegistryID over the registries as a
+// world's extras declare them at a client version: a data pack's dialog
+// that replaces a built-in one keeps its id, a new one has the id it was
+// appended at.
+func DialogRegistryIDWith(v int32, x ConfigExtras, name string) (int32, bool) {
+	if len(x.Registries) == 0 {
+		return DialogRegistryID(name)
+	}
+	id, ok := dynamicIndexWith(v, x)["minecraft:dialog"][name]
+	return id, ok
+}
+
 // UpdateTagsPacketWith is UpdateTagsPacket with a world's extras: its tags
 // added or replacing the built-in ones, every name resolved against the
 // registries as the extras declare them. It is the configuration phase's

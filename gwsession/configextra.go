@@ -48,7 +48,7 @@ func registryExtras(in []attach.RegistryEntries) []protocol.RegistryExtra {
 	for _, r := range in {
 		rx := protocol.RegistryExtra{Registry: namespaced(r.Registry)}
 		for _, e := range r.Entries {
-			pe := protocol.RegistryEntry{Name: e.Name}
+			pe := protocol.RegistryEntry{Name: namespaced(e.Name)}
 			if len(e.Data) > 0 {
 				if nbt, ok := protocol.JSONToNBT(e.Data); ok {
 					pe.NBT = nbt
@@ -68,7 +68,11 @@ func tagExtras(in []attach.TagSet) []protocol.TagExtra {
 	for _, set := range in {
 		reg := namespaced(set.Registry)
 		for _, t := range set.Tags {
-			out = append(out, protocol.TagExtra{Registry: reg, Name: namespaced(t.Name), Entries: t.Entries})
+			entries := make([]string, len(t.Entries))
+			for i, e := range t.Entries {
+				entries[i] = namespaced(e)
+			}
+			out = append(out, protocol.TagExtra{Registry: reg, Name: namespaced(t.Name), Entries: entries})
 		}
 	}
 	return out
