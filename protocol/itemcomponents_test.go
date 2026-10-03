@@ -125,6 +125,9 @@ func TestComponentIDsInvert(t *testing.T) {
 		for _, c := range knownComponents {
 			id, ok := componentIDAt(c, v)
 			if !ok {
+				if laterCompID(c, v) < 0 {
+					continue // a later version's component (26.3's sign text)
+				}
 				t.Fatalf("v%d: no id for canonical %d", v, c)
 			}
 			if prev, dup := seen[id]; dup {

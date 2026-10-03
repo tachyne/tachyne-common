@@ -26,26 +26,42 @@ import "bytes"
 //	can_break                 12   15   15   15   15
 //	profile                   61   68   70   70   72
 //	note_block_sound          62   69   71   71   73
+//	block_entity_data         51   58   60   60   62
+//	sign_text_front            -    -    -    -  118
+//	sign_text_back             -    -    -    -  119
+//	waxed                      -    -    -    -  120
+//
+// The last three are new in 26.3 and have no 770 id: their canonical id is
+// their 26.3 one (past 770's 96 components, so no clash), and an older
+// client is not sent them (laterCompID -1; the copier drops them).
 const (
-	componentItemName         = 6  // item_name: a text component (network NBT)
-	componentRarity           = 9  // rarity: the Rarity enum, one varint
-	componentTooltipDisplay   = 15 // tooltip_display: hide flag + a set of component ids
-	componentChargedProj      = 40 // charged_projectiles: a crossbow's loaded stacks
-	componentBucketEntityData = 50 // bucket_entity_data: a compound tag
-	componentSalmonSize       = 77 // salmon/size: Salmon.Variant id
-	componentFishPattern      = 79 // tropical_fish/pattern: Pattern packed id
-	componentFishBaseColor    = 80 // tropical_fish/base_color: DyeColor id
-	componentFishPatternColor = 81 // tropical_fish/pattern_color: DyeColor id
-	componentAxolotlVariant   = 91 // axolotl/variant: Axolotl.Variant id
-	componentBlockState       = 67 // block_state: property name -> value strings
-	componentEntityData       = 49 // entity_data: the entity's tag (TypedEntityData from 1.21.9)
-	componentPaintingVariant  = 89 // painting/variant: Holder<PaintingVariant>
-	componentUnbreakable      = 4  // unbreakable: a Unit, no payload
-	componentCanPlaceOn       = 11 // can_place_on: AdventureModePredicate
-	componentCanBreak         = 12 // can_break: AdventureModePredicate
-	componentProfile          = 61 // profile: ResolvableProfile (a player head's owner)
-	componentNoteBlockSound   = 62 // note_block_sound: an Identifier
+	componentItemName         = 6   // item_name: a text component (network NBT)
+	componentRarity           = 9   // rarity: the Rarity enum, one varint
+	componentTooltipDisplay   = 15  // tooltip_display: hide flag + a set of component ids
+	componentChargedProj      = 40  // charged_projectiles: a crossbow's loaded stacks
+	componentBucketEntityData = 50  // bucket_entity_data: a compound tag
+	componentSalmonSize       = 77  // salmon/size: Salmon.Variant id
+	componentFishPattern      = 79  // tropical_fish/pattern: Pattern packed id
+	componentFishBaseColor    = 80  // tropical_fish/base_color: DyeColor id
+	componentFishPatternColor = 81  // tropical_fish/pattern_color: DyeColor id
+	componentAxolotlVariant   = 91  // axolotl/variant: Axolotl.Variant id
+	componentBlockState       = 67  // block_state: property name -> value strings
+	componentEntityData       = 49  // entity_data: the entity's tag (TypedEntityData from 1.21.9)
+	componentPaintingVariant  = 89  // painting/variant: Holder<PaintingVariant>
+	componentUnbreakable      = 4   // unbreakable: a Unit, no payload
+	componentCanPlaceOn       = 11  // can_place_on: AdventureModePredicate
+	componentCanBreak         = 12  // can_break: AdventureModePredicate
+	componentProfile          = 61  // profile: ResolvableProfile (a player head's owner)
+	componentNoteBlockSound   = 62  // note_block_sound: an Identifier
+	componentBlockEntityData  = 51  // block_entity_data: TypedEntityData<BlockEntityType> from 1.21.9
+	componentSignTextFront    = 118 // sign_text_front: SignText (26.3)
+	componentSignTextBack     = 119 // sign_text_back: SignText (26.3)
+	componentWaxed            = 120 // waxed: a Unit (26.3)
 )
+
+// canonicalComponentCount is the 770 data_component_type registry's size:
+// a canonical id at or past it is a later version's component.
+const canonicalComponentCount = 96
 
 // laterComponentIDs: each canonical id above at 774, 775, 776 and 777.
 var laterComponentIDs = map[int32][4]int32{
@@ -67,6 +83,10 @@ var laterComponentIDs = map[int32][4]int32{
 	componentCanBreak:         {15, 15, 15, 15},
 	componentProfile:          {68, 70, 70, 72},
 	componentNoteBlockSound:   {69, 71, 71, 73},
+	componentBlockEntityData:  {58, 60, 60, 62},
+	componentSignTextFront:    {-1, -1, -1, 118},
+	componentSignTextBack:     {-1, -1, -1, 119},
+	componentWaxed:            {-1, -1, -1, 120},
 }
 
 func laterCompID(canon, version int32) int32 {
@@ -82,6 +102,8 @@ func laterCompID(canon, version int32) int32 {
 		return row[1]
 	case version >= 774:
 		return row[0]
+	case canon >= canonicalComponentCount:
+		return -1
 	}
 	return canon
 }
@@ -99,7 +121,8 @@ var knownComponents = []int32{
 	componentFishBaseColor, componentFishPatternColor, componentAxolotlVariant,
 	componentBlockState, componentEntityData, componentPaintingVariant,
 	componentUnbreakable, componentCanPlaceOn, componentCanBreak, componentProfile,
-	componentNoteBlockSound,
+	componentNoteBlockSound, componentBlockEntityData, componentSignTextFront,
+	componentSignTextBack, componentWaxed,
 }
 
 // componentIDAt is a known canonical component's id at a client version —
@@ -215,8 +238,7 @@ func copyLaterComponent(r *bytes.Reader, out *[]byte, canon int32, remap func(in
 		if err != nil || n < 0 || n > 64 {
 			return false
 		}
-		*out = append(*out, hide)
-		*out = AppendVarInt(*out, n)
+		ids := make([]int32, 0, n)
 		for i := int32(0); i < n; i++ {
 			id, err := ReadVarInt(r)
 			if err != nil {
@@ -226,11 +248,21 @@ func copyLaterComponent(r *bytes.Reader, out *[]byte, canon int32, remap func(in
 			if serverbound {
 				id, ok = componentIDFrom(id, version)
 			} else {
+				if laterCompID(id, version) < 0 {
+					if _, known := laterComponentIDs[id]; known {
+						continue // a component this client lacks: nothing to hide
+					}
+				}
 				id, ok = componentIDAt(id, version)
 			}
 			if !ok {
 				return false
 			}
+			ids = append(ids, id)
+		}
+		*out = append(*out, hide)
+		*out = AppendVarInt(*out, int32(len(ids)))
+		for _, id := range ids {
 			*out = AppendVarInt(*out, id)
 		}
 		return true
@@ -253,6 +285,12 @@ func copyLaterComponent(r *bytes.Reader, out *[]byte, canon int32, remap func(in
 		return true
 	case componentEntityData:
 		return copyEntityData(r, out, version, serverbound)
+	case componentBlockEntityData:
+		return copyBlockEntityData(r, out, version, serverbound)
+	case componentSignTextFront, componentSignTextBack:
+		return copySignText(r, out)
+	case componentWaxed:
+		return true // Unit
 	case componentUnbreakable:
 		return true // Unit.STREAM_CODEC: nothing on the wire
 	case componentNoteBlockSound:

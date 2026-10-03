@@ -1992,6 +1992,7 @@ func copyComponentPatch(r *bytes.Reader, out *[]byte, remap func(int32) int32, v
 	if e1 != nil || e2 != nil || addC < 0 || addC > 16 || remC != 0 {
 		return false // richer components than we ever send — don't guess
 	}
+	countAt := len(*out) // addC ≤ 16: a one-byte VarInt, patched if one is dropped
 	*out = AppendVarInt(*out, addC)
 	*out = AppendVarInt(*out, remC)
 	for i := int32(0); i < addC; i++ {
@@ -2000,6 +2001,16 @@ func copyComponentPatch(r *bytes.Reader, out *[]byte, remap func(int32) int32, v
 			return false
 		}
 		if canon, outID, ok := laterComponent(cid, version, serverbound); ok {
+			if outID < 0 {
+				// A component the client's version does not have (26.3's sign
+				// text on a 26.2 client): walked, and left out.
+				var discard []byte
+				if !copyLaterComponent(r, &discard, canon, remap, version, serverbound, depth) {
+					return false
+				}
+				(*out)[countAt]--
+				continue
+			}
 			*out = AppendVarInt(*out, outID)
 			if !copyLaterComponent(r, out, canon, remap, version, serverbound, depth) {
 				return false

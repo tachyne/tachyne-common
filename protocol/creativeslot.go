@@ -16,7 +16,7 @@ import (
 // layout brought back to canonical, as the slot copier does for every other
 // serverbound stack.
 
-// Canonical ids of two components the creative menu fills in.
+// Canonical ids of components the creative menu fills in.
 const (
 	// ComponentPaintingVariant770 is painting/variant: a painting preset's
 	// Holder<PaintingVariant> (registry id + 1).
@@ -24,6 +24,17 @@ const (
 	// ComponentEntityData770 is entity_data: the spawned entity's tag — an
 	// armor stand item's pose and flags.
 	ComponentEntityData770 = componentEntityData
+	// ComponentBlockEntityData770 is block_entity_data: a compound naming
+	// its block entity type in "id" (1.21.5's form; the copier makes it
+	// TypedEntityData for the client).
+	ComponentBlockEntityData770 = componentBlockEntityData
+	// ComponentSignTextFront, ComponentSignTextBack and ComponentWaxed are
+	// 26.3's sign item components, canonically at their 26.3 ids, in
+	// SignText.STREAM_CODEC's form (waxed: a Unit, no payload). Clients
+	// before 26.3 are not sent them.
+	ComponentSignTextFront = componentSignTextFront
+	ComponentSignTextBack  = componentSignTextBack
+	ComponentWaxed         = componentWaxed
 )
 
 // unmapCreativeSlot (serverbound): i16 slot, then the Slot. An item the
@@ -110,7 +121,7 @@ func translateComponent(cid int32, payload []byte, remap func(int32) int32, vers
 	mini = append(mini, payload...)
 	mr := bytes.NewReader(mini)
 	var conv []byte
-	if !copyComponentPatch(mr, &conv, remap, version, serverbound, 0) || mr.Len() != 0 || len(conv) < 2 {
+	if !copyComponentPatch(mr, &conv, remap, version, serverbound, 0) || mr.Len() != 0 || len(conv) < 2 || conv[0] != 1 {
 		return nil, false
 	}
 	return conv[2:], true // past the patch-of-one's counts (1, 0)
@@ -259,4 +270,88 @@ func nbtTopString(tag []byte, key string) (string, bool) {
 			return "", false
 		}
 	}
+}
+
+// copyBlockEntityData copies block_entity_data, which has entity_data's
+// shape (copyEntityData) over the block_entity_type registry: canonically a
+// compound naming the type in its "id" (1.21.5's CustomData); from 1.21.9
+// TypedEntityData — the type's registry id at the client's version, then
+// the compound, whose "id" the client strips. A type the client lacks (a
+// bed's on 26.x) fails the copy.
+func copyBlockEntityData(r *bytes.Reader, out *[]byte, version int32, serverbound bool) bool {
+	if version < 773 {
+		return copyNBTValue(r, out)
+	}
+	if serverbound {
+		typ, err := ReadVarInt(r)
+		if err != nil {
+			return false
+		}
+		name, ok := blockEntityTypeName(version, typ)
+		if !ok {
+			return false
+		}
+		var tag []byte
+		if !copyNBTValue(r, &tag) || len(tag) < 2 || tag[0] != nbtCompound {
+			return false
+		}
+		*out = append(*out, nbtCompound)
+		if _, had := nbtTopString(tag, "id"); !had {
+			*out = NBTString(*out, "id", name)
+		}
+		*out = append(*out, tag[1:]...)
+		return true
+	}
+	var tag []byte
+	if !copyNBTValue(r, &tag) || len(tag) < 2 || tag[0] != nbtCompound {
+		return false
+	}
+	name, ok := nbtTopString(tag, "id")
+	if !ok {
+		return false
+	}
+	id, ok := BlockEntityTypeID(version, name)
+	if !ok {
+		return false
+	}
+	*out = AppendVarInt(*out, id)
+	*out = append(*out, tag...)
+	return true
+}
+
+// copySignText copies SignText.STREAM_CODEC (sign_text_front and
+// sign_text_back): four text components (network NBT, no count — a fixed
+// size list), the optional four filtered ones (a bool, then four), the
+// DyeColor id and the glowing flag. The same on every version that has it.
+func copySignText(r *bytes.Reader, out *[]byte) bool {
+	lines := func() bool {
+		for i := 0; i < 4; i++ {
+			if !copyNBTValue(r, out) {
+				return false
+			}
+		}
+		return true
+	}
+	if !lines() {
+		return false
+	}
+	has, err := r.ReadByte()
+	if err != nil || has > 1 {
+		return false
+	}
+	*out = append(*out, has)
+	if has == 1 && !lines() {
+		return false
+	}
+	color, err := ReadVarInt(r)
+	if err != nil || color < 0 || color > 15 {
+		return false
+	}
+	*out = AppendVarInt(*out, color)
+	glow, err := r.ReadByte()
+	if err != nil || glow > 1 {
+		return false
+	}
+	*out = append(*out, glow)
+	return true
 }
