@@ -269,3 +269,57 @@ func TestConfigurationCustomClickForwarded(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// Advancements after a /reload (PlayerAdvancements.reload): a Reset tree
+// replaces the held one and goes out with the progress snapshot as one
+// reset packet — the advancement a pack removed is gone, not appended to.
+// A tree without Reset still adds; Removed takes nodes away.
+func TestAdvancementTreeReset(t *testing.T) {
+	h := startPlay(t, 777, Config{}, attach.Welcome{EID: 1, Sections: 24}, nil)
+	node := func(id string) attach.AdvNode {
+		return attach.AdvNode{ID: id, Reqs: [][]string{{"c"}}}
+	}
+	progress := attach.AdvProgress{Reset: true, Entries: []attach.AdvProgressEntry{{ID: "tachyne:a", Done: map[string]int64{"c": 5}}}}
+	wire := func(p render770.Packet) []byte {
+		_, body, _ := h.tr.Clientbound(protocol.StatePlay, p.ID, p.Body)
+		return body
+	}
+	h.send(attach.MsgAdvTree, attach.AdvTree{Nodes: []attach.AdvNode{node("tachyne:a"), node("tachyne:b")}})
+	h.send(attach.MsgAdvProgress, progress)
+	join := h.waitPacket(render770.IDUpdateAdvancements, nil, 0)
+	if !bytes.Equal(join, wire(render770.AdvancementsInit(attach.AdvTree{Nodes: []attach.AdvNode{node("tachyne:a"), node("tachyne:b")}}, progress))) {
+		t.Fatalf("join packet %x", join)
+	}
+
+	// The reload: b is gone from the pack.
+	h.send(attach.MsgAdvTree, attach.AdvTree{Reset: true, Nodes: []attach.AdvNode{node("tachyne:a")}})
+	h.send(attach.MsgAdvProgress, progress)
+	got := h.waitPacket(render770.IDUpdateAdvancements, nil, 1)
+	if !bytes.Equal(got, wire(render770.AdvancementsInit(attach.AdvTree{Nodes: []attach.AdvNode{node("tachyne:a")}}, progress))) {
+		t.Fatalf("reload packet %x", got)
+	}
+	if bytes.Contains(got, []byte("tachyne:b")) {
+		t.Fatal("the removed advancement was sent again")
+	}
+
+	// Without Reset: c is added; then a is taken away by Removed.
+	h.send(attach.MsgAdvTree, attach.AdvTree{Nodes: []attach.AdvNode{node("tachyne:c")}})
+	add := h.waitPacket(render770.IDUpdateAdvancements, nil, 2)
+	if !bytes.Equal(add, wire(render770.AdvancementsAdd(attach.AdvTree{Nodes: []attach.AdvNode{node("tachyne:c")}}))) {
+		t.Fatalf("add packet %x", add)
+	}
+	h.send(attach.MsgAdvTree, attach.AdvTree{Removed: []string{"tachyne:a"}})
+	rm := h.waitPacket(render770.IDUpdateAdvancements, nil, 3)
+	// reset false, no added, removed [tachyne:a], no progress, show
+	want := protocol.AppendString([]byte{0, 0, 1}, "tachyne:a")
+	want = append(want, 0, 1)
+	if !bytes.Equal(rm, want) {
+		t.Fatalf("removal packet %x, want %x", rm, want)
+	}
+	// The next snapshot pairs with the held tree, which is now c alone.
+	h.send(attach.MsgAdvProgress, attach.AdvProgress{Reset: true})
+	last := h.waitPacket(render770.IDUpdateAdvancements, nil, 4)
+	if !bytes.Equal(last, wire(render770.AdvancementsInit(attach.AdvTree{Nodes: []attach.AdvNode{node("tachyne:c")}}, attach.AdvProgress{Reset: true}))) {
+		t.Fatalf("held tree after removal %x", last)
+	}
+}

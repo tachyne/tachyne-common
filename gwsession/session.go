@@ -925,18 +925,33 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 			case attach.MsgAdvTree:
 				var e attach.AdvTree
 				if json.Unmarshal(payload, &e) == nil {
-					if advReqs == nil {
-						// join: hold the visible tree for the reset packet
+					if advReqs == nil || e.Reset {
+						// join, or a reload's whole new tree: hold it for the
+						// reset packet the progress snapshot completes
 						advTree = &e
 						advReqs = render770.ReqIndex(e)
 					} else {
+						if len(e.Removed) > 0 {
+							gone := map[string]bool{}
+							for _, id := range e.Removed {
+								gone[id] = true
+								delete(advReqs, id)
+							}
+							kept := advTree.Nodes[:0]
+							for _, n := range advTree.Nodes {
+								if !gone[n.ID] {
+									kept = append(kept, n)
+								}
+							}
+							advTree.Nodes = kept
+						}
 						// the world revealed more nodes: extend the session
 						// index and ship them (no reset)
 						advTree.Nodes = append(advTree.Nodes, e.Nodes...)
 						for id, crits := range render770.ReqIndex(e) {
 							advReqs[id] = crits
 						}
-						if len(e.Nodes) > 0 {
+						if len(e.Nodes) > 0 || len(e.Removed) > 0 {
 							p := render770.AdvancementsAdd(e)
 							cc.send(p.ID, p.Body)
 						}

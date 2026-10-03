@@ -1045,8 +1045,19 @@ type AdvNode struct {
 	Y          float32   `json:"y,omitempty"` // (row)
 }
 
+// AdvTree is the advancement tree a player sees (or part of it).
+// Reset (vanilla ClientboundUpdateAdvancementsPacket's reset, sent by
+// PlayerAdvancements.flushDirty after PlayerAdvancements.reload — a
+// /reload that changed the tree) makes Nodes the WHOLE tree: the gateway
+// replaces the one it holds, and the MsgAdvProgress{Reset} that follows
+// goes out with it as one reset packet, so advancements a data pack
+// removed disappear. Without Reset the nodes are added to the held tree.
+// Removed lists advancements to take away without a reset (the packet's
+// removed set: nodes that stopped being visible).
 type AdvTree struct {
-	Nodes []AdvNode `json:"nodes"`
+	Nodes   []AdvNode `json:"nodes"`
+	Reset   bool      `json:"reset,omitempty"`
+	Removed []string  `json:"removed,omitempty"`
 }
 
 // AdvProgressEntry is one advancement's obtained criteria → unix millis.

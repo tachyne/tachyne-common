@@ -21,12 +21,12 @@ func TestUpdateRecipesReparse(t *testing.T) {
 		}
 		br := bytes.NewReader(pkt.Body)
 		nsets, _ := protocol.ReadVarInt(br)
-		if nsets != 3 {
-			t.Fatalf("v%d: itemSets %d, want 3 (smithing)", version, nsets)
+		if int(nsets) != len(protocol.RecipePropertySets) {
+			t.Fatalf("v%d: itemSets %d, want %d", version, nsets, len(protocol.RecipePropertySets))
 		}
 		for i := int32(0); i < nsets; i++ {
 			key, err := protocol.ReadString(br)
-			if err != nil || key[:19] != "minecraft:smithing_" {
+			if err != nil || key != protocol.RecipePropertySets[i].Key {
 				t.Fatalf("v%d: set key %q (%v)", version, key, err)
 			}
 			cnt, _ := protocol.ReadVarInt(br)
@@ -125,30 +125,26 @@ func TestStonecutterInputsExistOnServedClients(t *testing.T) {
 	}
 }
 
-// oldUpdateRecipes is the static composition the gateway sent before the
-// world could supply recipes (the map tables in id order).
-func oldUpdateRecipes(version int32) []byte {
+// staticUpdateRecipes is the packet composed straight from the generated
+// tables: vanilla 26.3's property sets by name, then the stonecutter rows.
+func staticUpdateRecipes(version int32) []byte {
 	rid := func(id int32) int32 { return protocol.RemapID(protocol.RegItem, version, id) }
 	sd := slotDisplayIDs{item: 2, itemStack: 3}
 	if version >= 775 {
 		sd = slotDisplayIDs{item: 4, itemStack: 5, templateForm: true}
 	}
-	templates := append([]int32{protocol.SmithingUpgradeTemplate}, sortedKeys(protocol.SmithingTrimTemplate)...)
-	bases := append(append([]int32(nil), protocol.SmithingTrimmable...), sortedKeys(protocol.SmithingTransform)...)
-	sets := []struct {
-		key   string
-		items []int32
-	}{
-		{"minecraft:smithing_template", templates},
-		{"minecraft:smithing_base", bases},
-		{"minecraft:smithing_addition", sortedKeys(protocol.SmithingTrimMaterial)},
-	}
-	b := protocol.AppendVarInt(nil, int32(len(sets)))
-	for _, s := range sets {
-		b = protocol.AppendString(b, s.key)
-		b = protocol.AppendVarInt(b, int32(len(s.items)))
-		for _, it := range s.items {
-			b = protocol.AppendVarInt(b, rid(it))
+	b := protocol.AppendVarInt(nil, int32(len(protocol.RecipePropertySets)))
+	for _, s := range protocol.RecipePropertySets {
+		b = protocol.AppendString(b, s.Key)
+		var ids []int32
+		for _, n := range s.Items {
+			if id := protocol.CanonicalItem(n); protocol.IDPresent(protocol.RegItem, version, id) {
+				ids = append(ids, rid(id))
+			}
+		}
+		b = protocol.AppendVarInt(b, int32(len(ids)))
+		for _, id := range ids {
+			b = protocol.AppendVarInt(b, id)
 		}
 	}
 	b = protocol.AppendVarInt(b, int32(len(protocol.StonecuttingRecipes)))
@@ -164,8 +160,52 @@ func oldUpdateRecipes(version int32) []byte {
 	return b
 }
 
+// Vanilla's nine property sets, keys as RecipePropertySet registers them,
+// none empty; the cookers' and the brewing stand's hold what their recipes
+// take.
+func TestVanillaPropertySets(t *testing.T) {
+	want := []string{"smithing_base", "smithing_template", "smithing_addition", "furnace_input",
+		"blast_furnace_input", "smoker_input", "campfire_input", "brewing_input", "brewing_reagent"}
+	sets := VanillaRecipes().ItemSets
+	if len(sets) != len(want) {
+		t.Fatalf("%d sets", len(sets))
+	}
+	has := func(key, item string) bool {
+		for _, s := range sets {
+			if s.Key == key {
+				for _, id := range s.Items {
+					if id == protocol.CanonicalItem(item) {
+						return true
+					}
+				}
+			}
+		}
+		return false
+	}
+	for i, s := range sets {
+		if s.Key != "minecraft:"+want[i] || len(s.Items) == 0 {
+			t.Errorf("set %d: %s (%d items)", i, s.Key, len(s.Items))
+		}
+	}
+	for _, c := range [][2]string{
+		{"furnace_input", "iron_ore"}, {"furnace_input", "raw_iron"}, {"blast_furnace_input", "raw_gold"},
+		{"smoker_input", "beef"}, {"campfire_input", "potato"}, {"brewing_input", "splash_potion"},
+		{"brewing_reagent", "nether_wart"}, {"brewing_reagent", "blaze_powder"},
+		{"smithing_template", "netherite_upgrade_smithing_template"}, {"smithing_base", "diamond_sword"},
+		{"smithing_addition", "netherite_ingot"},
+	} {
+		if !has("minecraft:"+c[0], c[1]) {
+			t.Errorf("%s lacks %s", c[0], c[1])
+		}
+	}
+	if has("minecraft:smoker_input", "iron_ore") || has("minecraft:brewing_input", "nether_wart") {
+		t.Error("a set holds an item its recipes do not take")
+	}
+}
+
 // The world's recipes, when they are vanilla's, render byte for byte as the
-// static packet did — through the frame's JSON, as the gateway receives it.
+// packet composed from the generated tables — through the frame's JSON, as
+// the gateway receives it.
 func TestUpdateRecipesFromVanillaMatchesStatic(t *testing.T) {
 	raw, err := json.Marshal(VanillaRecipes())
 	if err != nil {
@@ -176,7 +216,7 @@ func TestUpdateRecipesFromVanillaMatchesStatic(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, v := range []int32{776, 777} {
-		want := oldUpdateRecipes(v)
+		want := staticUpdateRecipes(v)
 		if got := UpdateRecipes(v).Body; !bytes.Equal(got, want) {
 			t.Fatalf("v%d: static packet changed", v)
 		}

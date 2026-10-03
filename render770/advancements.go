@@ -142,14 +142,18 @@ func AdvancementsUpdate(reqs map[string][]string, p attach.AdvProgress) Packet {
 }
 
 // AdvancementsAdd renders later-revealed nodes (the frontier growing, a
-// hidden advancement earned) — added only, no reset, no progress.
+// hidden advancement earned) and the ones taken away (t.Removed) — no
+// reset, no progress.
 func AdvancementsAdd(t attach.AdvTree) Packet {
 	b := protocol.AppendBool(nil, false)
 	b = protocol.AppendVarInt(b, int32(len(t.Nodes)))
 	for _, n := range t.Nodes {
 		b = appendAdvNode(b, n)
 	}
-	b = protocol.AppendVarInt(b, 0) // removed
+	b = protocol.AppendVarInt(b, int32(len(t.Removed)))
+	for _, id := range t.Removed {
+		b = protocol.AppendString(b, id)
+	}
 	b = protocol.AppendVarInt(b, 0) // progress
 	b = protocol.AppendBool(b, true)
 	return Packet{IDUpdateAdvancements, b}

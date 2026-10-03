@@ -12,7 +12,6 @@ package render770
 // the same way.
 
 import (
-	"slices"
 	"strings"
 
 	"github.com/tachyne/tachyne-common/attach"
@@ -25,23 +24,24 @@ const IDUpdateRecipes = 0x7e
 // UpdateRecipes composes the packet from the generated vanilla tables.
 func UpdateRecipes(version int32) Packet { return UpdateRecipesFrom(version, nil) }
 
-// VanillaRecipes is the generated tables in the frame's form: the three
-// SMITHING property sets (the smithing menu's client-side slot predicates
-// come from them, so empty sets would refuse every placement; the cooker
-// menus use plain slots and need none) and the stonecutter rows. The map
-// tables are listed in id order.
+// VanillaRecipes is the generated tables in the frame's form: vanilla
+// 26.3's nine recipe property sets (protocol.RecipePropertySets — the
+// smithing menu's slot predicates, the cookers' and the brewing stand's
+// quick-move and slot checks) and the stonecutter rows.
 func VanillaRecipes() attach.UpdateRecipes {
 	return attach.UpdateRecipes{ItemSets: vanillaItemSets(), Stonecutter: vanillaStonecutter()}
 }
 
 func vanillaItemSets() []attach.RecipePropertySet {
-	templates := append([]int32{protocol.SmithingUpgradeTemplate}, sortedKeys(protocol.SmithingTrimTemplate)...)
-	bases := append(append([]int32(nil), protocol.SmithingTrimmable...), sortedKeys(protocol.SmithingTransform)...)
-	return []attach.RecipePropertySet{
-		{Key: "minecraft:smithing_template", Items: templates},
-		{Key: "minecraft:smithing_base", Items: bases},
-		{Key: "minecraft:smithing_addition", Items: sortedKeys(protocol.SmithingTrimMaterial)},
+	out := make([]attach.RecipePropertySet, len(protocol.RecipePropertySets))
+	for i, s := range protocol.RecipePropertySets {
+		ids := make([]int32, len(s.Items))
+		for j, n := range s.Items {
+			ids[j] = protocol.CanonicalItem(n)
+		}
+		out[i] = attach.RecipePropertySet{Key: s.Key, Items: ids}
 	}
+	return out
 }
 
 func vanillaStonecutter() []attach.StonecutterRecipe {
@@ -54,15 +54,6 @@ func vanillaStonecutter() []attach.StonecutterRecipe {
 		}
 	}
 	return rows
-}
-
-func sortedKeys(m map[int32]int32) []int32 {
-	ks := make([]int32, 0, len(m))
-	for k := range m {
-		ks = append(ks, k)
-	}
-	slices.Sort(ks)
-	return ks
 }
 
 // barrierItem stands in for an ingredient whose every item the client
@@ -90,13 +81,21 @@ func UpdateRecipesFrom(version int32, u *attach.UpdateRecipes) Packet {
 		sd = slotDisplayIDs{item: 4, itemStack: 5, templateForm: true}
 	}
 	// item_sets: a map of ResourceKey → RecipePropertySet (a list of Item
-	// holders, registry ids).
+	// holders, registry ids). An item the client's version lacks is left
+	// out: it could never be in the slot, and its stand-in must not be let
+	// in.
 	b := protocol.AppendVarInt(nil, int32(len(sets)))
 	for _, s := range sets {
 		b = protocol.AppendString(b, s.Key)
-		b = protocol.AppendVarInt(b, int32(len(s.Items)))
+		ids := make([]int32, 0, len(s.Items))
 		for _, it := range s.Items {
-			b = protocol.AppendVarInt(b, rid(it))
+			if protocol.IDPresent(protocol.RegItem, version, it) {
+				ids = append(ids, rid(it))
+			}
+		}
+		b = protocol.AppendVarInt(b, int32(len(ids)))
+		for _, id := range ids {
+			b = protocol.AppendVarInt(b, id)
 		}
 	}
 	b = protocol.AppendVarInt(b, int32(len(rows)))
