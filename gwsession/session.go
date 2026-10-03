@@ -587,9 +587,12 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 	cc.send(playClientCenterChunk, protocol.AppendVarInt(protocol.AppendVarInt(nil, ccx), ccz))
 	tp := render770.Time(attach.Time{Time: welcome.Time, Clocks: welcome.Clocks})
 	cc.send(tp.ID, tp.Body)
-	// The stonecutter's recipe list is static vanilla data the client needs
-	// before that menu can show options; composed at the client's version.
-	urp := render770.UpdateRecipes(clientProto)
+	// The synchronized recipe data (property sets, the stonecutter's list)
+	// the client needs before those menus work: the world's, or the
+	// generated vanilla tables; composed at the client's version. Kept for
+	// the session — a rejoin sends it again, a MsgUpdateRecipes replaces it.
+	curRecipes := welcome.Recipes
+	urp := render770.UpdateRecipesFrom(clientProto, curRecipes)
 	cc.send(urp.ID, urp.Body)
 	if err := b.Write(attach.MsgWant, attach.Want{CX: ccx, CZ: ccz, Radius: viewDist.Load(), Dim: welcome.Dim}); err != nil {
 		return err
@@ -1320,9 +1323,21 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 				cc.send(playClientCenterChunk, protocol.AppendVarInt(protocol.AppendVarInt(nil, ccx), ccz))
 				tp := render770.Time(attach.Time{Time: wel.Time, Clocks: wel.Clocks})
 				cc.send(tp.ID, tp.Body)
-				urp := render770.UpdateRecipes(clientProto)
+				if wel.Recipes != nil {
+					curRecipes = wel.Recipes
+				}
+				urp := render770.UpdateRecipesFrom(clientProto, curRecipes)
 				cc.send(urp.ID, urp.Body)
 				b.Write(attach.MsgWant, attach.Want{CX: ccx, CZ: ccz, Radius: viewDist.Load(), Dim: wel.Dim})
+			case attach.MsgUpdateRecipes:
+				// ClientboundUpdateRecipesPacket after a /reload
+				// (PlayerList.reloadResources).
+				var e attach.UpdateRecipes
+				if json.Unmarshal(payload, &e) == nil {
+					curRecipes = &e
+					p := render770.UpdateRecipesFrom(clientProto, curRecipes)
+					cc.send(p.ID, p.Body)
+				}
 			case attach.MsgUpdateTags:
 				// ClientboundUpdateTagsPacket in play (/reload): the whole set
 				// again, resolved against the configured registries.
@@ -1346,6 +1361,9 @@ func play(cfg Config, br *bufio.Reader, cc *clientConn, w net.Conn, name, uuidSt
 					return
 				}
 				b.Swap(nw) // the next ReadFrame(b.Get()) reads from the destination pod
+				if wel.Recipes != nil {
+					curRecipes = wel.Recipes // same data pack; nothing to resend
+				}
 				pos = wel.Spawn
 				ccx, ccz = int32(math.Floor(pos.X))>>4, int32(math.Floor(pos.Z))>>4
 				curDim.Store(0)

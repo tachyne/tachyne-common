@@ -186,6 +186,10 @@ type Welcome struct {
 	// dimension table (empty = the default three), a data pack's registry
 	// entries and tags. nil = the built-in data.
 	Config *ConfigData `json:"config,omitempty"`
+	// Recipes is the world's synchronized recipe data (property sets and
+	// stonecutter rows, see MsgUpdateRecipes); nil = the gateway's generated
+	// vanilla tables. A MsgRejoin's nil keeps what the session has.
+	Recipes *UpdateRecipes `json:"recipes,omitempty"`
 }
 
 // Want declares the chunk view the gateway needs.

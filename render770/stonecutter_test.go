@@ -2,7 +2,11 @@ package render770
 
 import (
 	"bytes"
+	"encoding/json"
+	"fmt"
 	"testing"
+
+	"github.com/tachyne/tachyne-common/attach"
 
 	"github.com/tachyne/tachyne-common/protocol"
 )
@@ -49,10 +53,11 @@ func TestUpdateRecipesReparse(t *testing.T) {
 			}
 			in, _ := protocol.ReadVarInt(br)
 			// A row naming an item the client lacks stays (the buttons must line
-			// up with the engine's list) with that item as air.
+			// up with the engine's list) as its stand-in, or a barrier — never
+			// air, which the client refuses.
 			if !protocol.IDPresent(protocol.RegItem, version, r.In) {
-				if in != 0 {
-					t.Fatalf("v%d row %d: absent input sent as %d", version, i, in)
+				if in == 0 {
+					t.Fatalf("v%d row %d: absent input sent as air", version, i)
 				}
 			} else if got := protocol.UnmapID(protocol.RegItem, version, in); got != r.In {
 				t.Fatalf("v%d row %d: input %d unmaps to %d, want %d", version, i, in, got, r.In)
@@ -117,5 +122,155 @@ func TestStonecutterInputsExistOnServedClients(t *testing.T) {
 				t.Errorf("v%d row %d: input %d is absent on the client", v, i, r.In)
 			}
 		}
+	}
+}
+
+// oldUpdateRecipes is the static composition the gateway sent before the
+// world could supply recipes (the map tables in id order).
+func oldUpdateRecipes(version int32) []byte {
+	rid := func(id int32) int32 { return protocol.RemapID(protocol.RegItem, version, id) }
+	sd := slotDisplayIDs{item: 2, itemStack: 3}
+	if version >= 775 {
+		sd = slotDisplayIDs{item: 4, itemStack: 5, templateForm: true}
+	}
+	templates := append([]int32{protocol.SmithingUpgradeTemplate}, sortedKeys(protocol.SmithingTrimTemplate)...)
+	bases := append(append([]int32(nil), protocol.SmithingTrimmable...), sortedKeys(protocol.SmithingTransform)...)
+	sets := []struct {
+		key   string
+		items []int32
+	}{
+		{"minecraft:smithing_template", templates},
+		{"minecraft:smithing_base", bases},
+		{"minecraft:smithing_addition", sortedKeys(protocol.SmithingTrimMaterial)},
+	}
+	b := protocol.AppendVarInt(nil, int32(len(sets)))
+	for _, s := range sets {
+		b = protocol.AppendString(b, s.key)
+		b = protocol.AppendVarInt(b, int32(len(s.items)))
+		for _, it := range s.items {
+			b = protocol.AppendVarInt(b, rid(it))
+		}
+	}
+	b = protocol.AppendVarInt(b, int32(len(protocol.StonecuttingRecipes)))
+	for _, r := range protocol.StonecuttingRecipes {
+		b = protocol.AppendVarInt(b, 2)
+		b = protocol.AppendVarInt(b, rid(r.In))
+		out := rid(r.Out)
+		if !protocol.IDPresent(protocol.RegItem, version, r.Out) {
+			out = 0
+		}
+		b = appendSlotDisplay(b, sd, out, int(r.Count))
+	}
+	return b
+}
+
+// The world's recipes, when they are vanilla's, render byte for byte as the
+// static packet did — through the frame's JSON, as the gateway receives it.
+func TestUpdateRecipesFromVanillaMatchesStatic(t *testing.T) {
+	raw, err := json.Marshal(VanillaRecipes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var u attach.UpdateRecipes
+	if err := json.Unmarshal(raw, &u); err != nil {
+		t.Fatal(err)
+	}
+	for _, v := range []int32{776, 777} {
+		want := oldUpdateRecipes(v)
+		if got := UpdateRecipes(v).Body; !bytes.Equal(got, want) {
+			t.Fatalf("v%d: static packet changed", v)
+		}
+		if got := UpdateRecipesFrom(v, &u).Body; !bytes.Equal(got, want) {
+			t.Fatalf("v%d: vanilla frame renders differently from the static packet", v)
+		}
+		// A frame with neither half (JSON nulls) is the generated table too.
+		var none attach.UpdateRecipes
+		json.Unmarshal([]byte(`{"item_sets":null}`), &none)
+		if got := UpdateRecipesFrom(v, &none).Body; !bytes.Equal(got, want) {
+			t.Fatalf("v%d: nil halves do not fall back", v)
+		}
+	}
+}
+
+// A data pack's recipes: its own property sets (furnace_input included),
+// a tag ingredient, an explicit list, and an empty stonecutter list ([] is
+// none, not the fallback). Expected bytes from the STREAM_CODECs:
+// map(ResourceKey, list(Item holder)) then list(holderSet, SlotDisplay).
+func TestUpdateRecipesFromWorld(t *testing.T) {
+	stone := protocol.CanonicalItem("stone")
+	slab := protocol.CanonicalItem("stone_slab")
+	coal := protocol.CanonicalItem("coal")
+	var u attach.UpdateRecipes
+	if err := json.Unmarshal([]byte(fmt.Sprintf(`{"item_sets":[{"key":"minecraft:furnace_input","items":[%d,%d]}],
+		"stonecutter":[{"input":{"tag":"minecraft:stone_crafting_materials"},"result":%d,"count":2},
+		{"input":{"items":[%d,%d]},"result":%d,"count":1}]}`, stone, coal, slab, stone, coal, stone)), &u); err != nil {
+		t.Fatal(err)
+	}
+	v := int32(777)
+	r := func(id int32) int32 { return protocol.RemapID(protocol.RegItem, v, id) }
+	var w []byte
+	w = protocol.AppendVarInt(w, 1)
+	w = protocol.AppendString(w, "minecraft:furnace_input")
+	w = protocol.AppendVarInt(w, 2)
+	w = protocol.AppendVarInt(w, r(stone))
+	w = protocol.AppendVarInt(w, r(coal))
+	w = protocol.AppendVarInt(w, 2) // two rows
+	w = protocol.AppendVarInt(w, 0) // tag form
+	w = protocol.AppendString(w, "minecraft:stone_crafting_materials")
+	w = protocol.AppendVarInt(w, 5) // item_stack (26.1+ template form)
+	w = protocol.AppendVarInt(w, r(slab))
+	w = protocol.AppendVarInt(w, 2)
+	w = protocol.AppendVarInt(w, 0)
+	w = protocol.AppendVarInt(w, 0)
+	w = protocol.AppendVarInt(w, 3) // two items + 1
+	w = protocol.AppendVarInt(w, r(stone))
+	w = protocol.AppendVarInt(w, r(coal))
+	w = protocol.AppendVarInt(w, 4) // item
+	w = protocol.AppendVarInt(w, r(stone))
+	if got := UpdateRecipesFrom(v, &u).Body; !bytes.Equal(got, w) {
+		t.Fatalf("got  %x\nwant %x", got, w)
+	}
+
+	empty := attach.UpdateRecipes{Stonecutter: []attach.StonecutterRecipe{}}
+	raw, _ := json.Marshal(empty)
+	var back attach.UpdateRecipes
+	json.Unmarshal(raw, &back)
+	body := UpdateRecipesFrom(v, &back).Body
+	br := bytes.NewReader(body)
+	nsets, _ := protocol.ReadVarInt(br)
+	for i := int32(0); i < nsets; i++ {
+		protocol.ReadString(br)
+		n, _ := protocol.ReadVarInt(br)
+		for j := int32(0); j < n; j++ {
+			protocol.ReadVarInt(br)
+		}
+	}
+	if n, _ := protocol.ReadVarInt(br); n != 0 || br.Len() != 0 {
+		t.Fatalf("empty stonecutter list: %d rows, %d trailing", n, br.Len())
+	}
+}
+
+// An explicit ingredient whose items the client lacks entirely keeps its
+// row (button indices) with a barrier, never an empty or air ingredient.
+func TestUpdateRecipesIngredientNeverAir(t *testing.T) {
+	var absent int32 = -1
+	for _, v := range protocol.ServedVersions() {
+		for id := int32(1); id < 2000; id++ {
+			if protocol.RemapID(protocol.RegItem, v, id) == 0 && !protocol.IDPresent(protocol.RegItem, v, id) {
+				absent = id
+				break
+			}
+		}
+	}
+	in := attach.RecipeIngredient{Items: []int32{absent}}
+	if absent < 0 {
+		in = attach.RecipeIngredient{Items: []int32{}}
+	}
+	b := appendIngredient(nil, in, func(id int32) int32 { return protocol.RemapID(protocol.RegItem, 776, id) })
+	br := bytes.NewReader(b)
+	n, _ := protocol.ReadVarInt(br)
+	id, _ := protocol.ReadVarInt(br)
+	if n != 2 || id == 0 || id != protocol.RemapID(protocol.RegItem, 776, barrierItem) {
+		t.Fatalf("ingredient %x", b)
 	}
 }
