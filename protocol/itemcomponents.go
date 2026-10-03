@@ -380,7 +380,11 @@ func copyNestedStacks(r *bytes.Reader, out *[]byte, n int32, remap func(int32) i
 		empty := count <= 0
 		var patch []byte
 		if !empty {
-			if !copyComponentPatch(r, &patch, remap, version, serverbound, depth) {
+			canonItem := item
+			if serverbound {
+				canonItem = 0
+			}
+			if !copyComponentPatchOf(r, &patch, remap, version, serverbound, depth, canonItem) {
 				return false
 			}
 			item = remap(item)

@@ -119,7 +119,16 @@ func TestSignTextComponents(t *testing.T) {
 	if got := copyPatch(t, canon, 777, false); !bytes.Equal(got, canon) {
 		t.Errorf("26.3:\n got %x\nwant %x", got, canon)
 	}
-	if got, want := copyPatch(t, canon, 776, false), patchOf(comp(componentDamage, AppendVarInt(nil, 2))); !bytes.Equal(got, want) {
+	// 26.2 keeps a sign's text in its block entity tag: the three fold into
+	// a block_entity_data of the sign's own (signfold.go).
+	tag := NBTString(NBTRoot(), "id", "minecraft:sign")
+	tag = append(tag, signSideTag("front_text", false, "red", true)...)
+	tag = append(tag, signSideTag("back_text", true, "white", false)...)
+	tag = NBTEnd(NBTBool(tag, "is_waxed", true))
+	if got, want := copyPatch(t, canon, 776, false), patchOf(
+		comp(componentDamage, AppendVarInt(nil, 2)),
+		comp(60, append(AppendVarInt(nil, 7), tag...)),
+	); !bytes.Equal(got, want) {
 		t.Errorf("26.2:\n got %x\nwant %x", got, want)
 	}
 	// Serverbound from a 26.3 creative slot: canonical ids are 26.3's.
@@ -173,5 +182,76 @@ func TestBlockEntityTypeNames(t *testing.T) {
 		if len(seen) != 49 {
 			t.Errorf("v%d: %d types", v, len(seen))
 		}
+	}
+}
+
+// signSideTag is a SignText as its tag (SignText.DIRECT_CODEC) for
+// signTextWire's lines: each message a {text} compound.
+func signSideTag(key string, filtered bool, color string, glow bool) []byte {
+	b := NBTCompound(nil, key)
+	b = NBTCompoundList(b, "messages", 4)
+	for _, l := range []string{"Hello", "", "tachyne", ""} {
+		b = NBTEnd(NBTString(b, "text", l))
+	}
+	if filtered {
+		b = NBTCompoundList(b, "filtered_messages", 4)
+		for i := 0; i < 4; i++ {
+			b = NBTEnd(NBTString(b, "text", "*"))
+		}
+	}
+	b = NBTString(b, "color", color)
+	b = NBTBool(b, "has_glowing_text", glow)
+	return NBTEnd(b)
+}
+
+// A 26.2 client's copy of a 26.3 sign keeps its text: a hanging sign's
+// fold names hanging_sign; a block_entity_data already on the stack takes
+// the text into its own tag; and the stack the creative client sends back
+// reaches the engine as a block_entity_data holding the text.
+func TestSignTextFoldsFor262(t *testing.T) {
+	front := signTextWire(false, 15, false)
+	slot := func(item int32, comps ...[]byte) []byte {
+		return append(AppendVarInt(AppendVarInt(nil, 1), item), patchOf(comps...)...)
+	}
+	copySlot := func(body []byte) []byte {
+		t.Helper()
+		var out []byte
+		r := bytes.NewReader(body)
+		if !copyFullSlotBody(r, &out, func(i int32) int32 { return RemapID(RegItem, 776, i) }, 776, false, 0) || r.Len() != 0 {
+			t.Fatalf("the copier refused %x", body)
+		}
+		return out
+	}
+	hanging := CanonicalItem("oak_hanging_sign")
+	got := copySlot(slot(hanging, comp(componentSignTextFront, front)))
+	tag := NBTString(NBTRoot(), "id", "minecraft:hanging_sign")
+	tag = NBTEnd(append(tag, signSideTag("front_text", false, "black", false)...))
+	want := append(AppendVarInt(AppendVarInt(nil, 1), RemapID(RegItem, 776, hanging)), patchOf(comp(60, append(AppendVarInt(nil, 8), tag...)))...)
+	if !bytes.Equal(got, want) {
+		t.Errorf("hanging sign:\n got %x\nwant %x", got, want)
+	}
+
+	// With a block_entity_data of its own (a custom key beside the text).
+	sign := CanonicalItem("oak_sign")
+	bed := NBTEnd(NBTInt(NBTString(NBTRoot(), "id", "minecraft:sign"), "x", 3))
+	got = copySlot(slot(sign, comp(componentSignTextFront, front), comp(componentBlockEntityData, bed), comp(componentWaxed, nil)))
+	tag = NBTInt(NBTString(NBTRoot(), "id", "minecraft:sign"), "x", 3)
+	tag = append(tag, signSideTag("front_text", false, "black", false)...)
+	tag = NBTEnd(NBTBool(tag, "is_waxed", true))
+	want = append(AppendVarInt(AppendVarInt(nil, 1), RemapID(RegItem, 776, sign)), patchOf(comp(60, append(AppendVarInt(nil, 7), tag...)))...)
+	if !bytes.Equal(got, want) {
+		t.Errorf("merged:\n got %x\nwant %x", got, want)
+	}
+
+	// Back from the 26.2 creative client: the canonical block_entity_data,
+	// text and all.
+	body := delimitedCreativeSlot(RemapID(RegItem, 776, sign), [][2][]byte{
+		{AppendVarInt(nil, 60), append(AppendVarInt(nil, 7), tag...)},
+	})
+	back := unmapCreativeSlot(776, body)
+	wantBack := AppendVarInt(AppendVarInt(AppendI16(nil, 36), 1), sign)
+	wantBack = append(wantBack, patchOf(comp(componentBlockEntityData, tag))...)
+	if !bytes.Equal(back, wantBack) {
+		t.Errorf("creative:\n got %x\nwant %x", back, wantBack)
 	}
 }

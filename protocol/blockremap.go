@@ -1922,7 +1922,7 @@ func copyFullSlotBody(r *bytes.Reader, out *[]byte, remap func(int32) int32, ver
 		// An explorer map this client shows as a plain filled map: named,
 		// so it does not read "Map".
 		var patch []byte
-		if !copyComponentPatch(r, &patch, remap, version, serverbound, depth) {
+		if !copyComponentPatchOf(r, &patch, remap, version, serverbound, depth, item) {
 			return false
 		}
 		named, ok := prependComponent(patch, entry)
@@ -1932,13 +1932,24 @@ func copyFullSlotBody(r *bytes.Reader, out *[]byte, remap func(int32) int32, ver
 		*out = append(*out, named...)
 		return true
 	}
-	return copyComponentPatch(r, out, remap, version, serverbound, depth)
+	if serverbound {
+		item = 0
+	}
+	return copyComponentPatchOf(r, out, remap, version, serverbound, depth, item)
 }
 
 // copyComponentPatch copies what follows a stack's item id: the added and
 // removed component counts and the added components, each renumbered (and,
 // where its payload changed shape, reshaped) for the other side.
 func copyComponentPatch(r *bytes.Reader, out *[]byte, remap func(int32) int32, version int32, serverbound bool, depth int) bool {
+	return copyComponentPatchOf(r, out, remap, version, serverbound, depth, 0)
+}
+
+// copyComponentPatchOf is copyComponentPatch knowing the stack's item (its
+// canonical id going to a client, 0 when unknown): a sign's 26.3 text, for
+// a client without those components, folds into the block_entity_data its
+// own version keeps it in (signfold.go), which needs to know the sign.
+func copyComponentPatchOf(r *bytes.Reader, out *[]byte, remap func(int32) int32, version int32, serverbound bool, depth int, item int32) bool {
 	// Component-id translation pairs for this direction: canonical (770) ids on
 	// the server side, the client version's ids on the wire side.
 	enchIn, enchOut := int32(componentEnchantments), enchCompID(version)
@@ -1995,6 +2006,8 @@ func copyComponentPatch(r *bytes.Reader, out *[]byte, remap func(int32) int32, v
 	countAt := len(*out) // addC ≤ 16: a one-byte VarInt, patched if one is dropped
 	*out = AppendVarInt(*out, addC)
 	*out = AppendVarInt(*out, remC)
+	var fold signFold
+	bedStart, bedPayload, bedEnd := -1, -1, -1
 	for i := int32(0); i < addC; i++ {
 		cid, err := ReadVarInt(r)
 		if err != nil {
@@ -2003,17 +2016,40 @@ func copyComponentPatch(r *bytes.Reader, out *[]byte, remap func(int32) int32, v
 		if canon, outID, ok := laterComponent(cid, version, serverbound); ok {
 			if outID < 0 {
 				// A component the client's version does not have (26.3's sign
-				// text on a 26.2 client): walked, and left out.
+				// text on a 26.2 client): walked, and left out — a sign's
+				// text and wax folded into its block_entity_data, where the
+				// client's version keeps them (signfold.go).
+				(*out)[countAt]--
+				if !serverbound && version >= 773 {
+					switch canon {
+					case componentSignTextFront, componentSignTextBack:
+						key := "front_text"
+						if canon == componentSignTextBack {
+							key = "back_text"
+						}
+						if !fold.foldSignText(r, key) {
+							return false
+						}
+						continue
+					case componentWaxed:
+						fold.entries = NBTBool(fold.entries, "is_waxed", true)
+						continue
+					}
+				}
 				var discard []byte
 				if !copyLaterComponent(r, &discard, canon, remap, version, serverbound, depth) {
 					return false
 				}
-				(*out)[countAt]--
 				continue
 			}
+			start := len(*out)
 			*out = AppendVarInt(*out, outID)
+			payload := len(*out)
 			if !copyLaterComponent(r, out, canon, remap, version, serverbound, depth) {
 				return false
+			}
+			if canon == componentBlockEntityData && !serverbound {
+				bedStart, bedPayload, bedEnd = start, payload, len(*out)
 			}
 			continue
 		}
@@ -2347,6 +2383,11 @@ func copyComponentPatch(r *bytes.Reader, out *[]byte, remap func(int32) int32, v
 		default:
 			return false
 		}
+	}
+	if !fold.empty() {
+		// Everything after the block_entity_data was appended behind it, so
+		// its span is where it was copied.
+		return fold.apply(out, countAt, bedStart, bedPayload, bedEnd, version, item)
 	}
 	return true
 }
